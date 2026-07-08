@@ -194,11 +194,62 @@ main { padding: 20px; max-width: 1400px; margin: 0 auto; }
 .hint { font-size: 12px; color: var(--muted); margin-top: -6px; margin-bottom: 12px; }
 
 .cyc-cell { text-align: center; font-size: 12px; padding: 6px 8px; white-space: nowrap; }
-.cyc-cell .cyc-detail { font-size: 10px; color: #888; }
+.cyc-cell .cyc-detail { font-size: 10px; color: #555; }
 .cyc-pass { background: #eafaf1; }
 .cyc-fail { background: #fdecea; }
 .cyc-mixed { background: #fef9e7; }
 .cyc-none { background: #f5f5f5; color: #bbb; }
+
+/* ---- Dropdown multi-select chọn cycle ---- */
+.ms-dropdown { position: relative; display: inline-block; }
+.ms-toggle {
+  display: inline-flex; align-items: center; gap: 8px;
+  min-width: 180px; max-width: 420px;
+  padding: 6px 12px; font-size: 13px;
+  background: #fff; border: 1px solid var(--border); border-radius: 6px;
+  cursor: pointer; text-align: left;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ms-toggle:hover { border-color: #3498db; }
+.ms-toggle .ms-count {
+  background: #3498db; color: #fff; font-size: 11px; font-weight: 700;
+  padding: 1px 7px; border-radius: 10px; flex: none;
+}
+.ms-toggle .ms-caret { margin-left: auto; color: #888; flex: none; }
+.ms-panel {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 40;
+  min-width: 240px; max-height: 320px; overflow-y: auto;
+  background: #fff; border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.12); padding: 6px;
+}
+.ms-panel[hidden] { display: none; }
+.ms-actions { display: flex; gap: 6px; padding: 4px 4px 8px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+.ms-actions button {
+  flex: 1; font-size: 11px; padding: 4px 6px; cursor: pointer;
+  background: #f0f3f7; border: 1px solid var(--border); border-radius: 4px;
+}
+.ms-actions button:hover { background: #e3e9f0; }
+.ms-options label {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 13px; padding: 5px 6px; border-radius: 4px; cursor: pointer;
+}
+.ms-options label:hover { background: #f0f3f7; }
+.ms-options .ms-date { color: #888; font-size: 11px; }
+
+/* ---- Cross-table Item × Model × Cycle: cuộn + sticky + gom nhóm ---- */
+.sm-table-wrap { max-height: 60vh; overflow: auto; border: 1px solid var(--border); border-radius: 6px; }
+.sm-matrix { font-size: 12px; }
+.sm-matrix thead th { top: 0; z-index: 3; }
+.sm-matrix .sm-col-item, .sm-matrix .sm-col-model {
+  position: sticky; background: #fff; z-index: 1;
+}
+.sm-matrix .sm-col-item { left: 0; min-width: 130px; }
+.sm-matrix .sm-col-model { left: 130px; min-width: 96px; }
+.sm-matrix thead .sm-col-item, .sm-matrix thead .sm-col-model { z-index: 4; background: #f0f3f7; }
+.sm-matrix .sm-group-item { font-weight: 600; vertical-align: top; border-right: 1px solid var(--border); }
+.sm-matrix .sm-group-start td { border-top: 2px solid #d5dde6; }
+.sm-matrix .sm-overall-row td { background: #eef3fb; font-weight: 600; }
+.sm-matrix tbody tr:hover .cyc-cell { filter: brightness(0.96); }
 
 .form-row {
   display: flex;

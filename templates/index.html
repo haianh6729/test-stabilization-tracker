@@ -53,15 +53,15 @@
 
   <div class="card">
     <h3>🧩 Pass Rate theo Item × Model × Cycle</h3>
-    <p class="hint">Pass rate của từng <b>item (test suite)</b> trên <b>từng model</b>, tách theo <b>từng cycle</b>. Tích/bỏ tích các cycle bên dưới để chọn những cycle muốn xem — dòng <b>“OVERALL”</b> ở đầu là pass rate gộp của <b>toàn bộ script</b> cho các cycle đang chọn.</p>
-    <div class="form-row" id="smCycleChooser" style="gap:14px;">
-      <span style="font-size:13px; color:var(--muted)">Chọn cycle:</span>
-    </div>
+    <p class="hint">Pass rate của từng <b>item (test suite)</b> trên <b>từng model</b>, tách theo <b>từng cycle</b>. Chọn các cycle muốn xem trong ô bên dưới — dòng <b>“OVERALL”</b> ở đầu là pass rate gộp của <b>toàn bộ script</b> cho các cycle đang chọn. Ô càng <span style="color:#1e8449">xanh</span> = pass rate càng cao, càng <span style="color:#c0392b">đỏ</span> = càng thấp.</p>
+    <div class="form-row" id="smCycleChooser" style="gap:12px; align-items:center;"></div>
     <div id="smOverallBox" style="margin:6px 0 12px; font-size:14px;"></div>
-    <table id="suiteModelTable" class="data-table">
-      <thead id="suiteModelHead"></thead>
-      <tbody></tbody>
-    </table>
+    <div class="sm-table-wrap">
+      <table id="suiteModelTable" class="data-table sm-matrix">
+        <thead id="suiteModelHead"></thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </div>
 
   <div class="chart-grid">

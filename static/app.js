@@ -290,37 +290,110 @@ function renderSmChooser() {
   const box = $("#smCycleChooser");
   if (!box) return;
   const cycles = state.suiteModel.cycles || [];
-  box.innerHTML = `<span style="font-size:13px; color:var(--muted)">Chọn cycle:</span>` +
-    cycles.map((c) => `
-      <label style="font-size:13px; display:flex; align-items:center; gap:5px;">
-        <input type="checkbox" class="sm-cyc-cb" value="${c.cycle}" ${state.smSelected.has(c.cycle) ? "checked" : ""}>
-        Cycle ${c.cycle} <span style="color:#888">(${c.cycle_date || ""})</span>
-      </label>`).join("");
-  $$(".sm-cyc-cb").forEach((cb) => cb.addEventListener("change", () => {
-    const cyc = parseInt(cb.value, 10);
-    if (cb.checked) state.smSelected.add(cyc); else state.smSelected.delete(cyc);
-    if (!state.smSelected.size) { state.smSelected.add(cyc); cb.checked = true; return; } // luôn còn ít nhất 1
+  box.innerHTML = `
+    <span style="font-size:13px; color:var(--muted)">Chọn cycle:</span>
+    <div class="ms-dropdown" id="smMs">
+      <button type="button" class="ms-toggle" id="smMsToggle" aria-expanded="false"></button>
+      <div class="ms-panel" id="smMsPanel" hidden>
+        <div class="ms-actions">
+          <button type="button" data-act="all">Tất cả</button>
+          <button type="button" data-act="recent5">5 gần nhất</button>
+          <button type="button" data-act="none">Bỏ chọn</button>
+        </div>
+        <div class="ms-options">
+          ${cycles.map((c) => `
+            <label>
+              <input type="checkbox" class="sm-cyc-cb" value="${c.cycle}" ${state.smSelected.has(c.cycle) ? "checked" : ""}>
+              Cycle ${c.cycle} <span class="ms-date">${c.cycle_date || ""}</span>
+            </label>`).join("")}
+        </div>
+      </div>
+    </div>`;
+
+  updateSmToggleLabel();
+
+  const toggle = $("#smMsToggle");
+  const panel = $("#smMsPanel");
+  const setOpen = (open) => {
+    state._smPanelOpen = open;
+    if (open) { panel.removeAttribute("hidden"); toggle.setAttribute("aria-expanded", "true"); }
+    else { panel.setAttribute("hidden", ""); toggle.setAttribute("aria-expanded", "false"); }
+  };
+  // Giữ trạng thái mở qua các lần refresh dashboard (~15s) để không đóng ngang khi đang chọn.
+  if (state._smPanelOpen) setOpen(true);
+  toggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    setOpen(panel.hasAttribute("hidden"));
+  });
+  // Đóng panel khi click ra ngoài. Gắn 1 lần duy nhất (renderSmChooser chạy lại mỗi
+  // lần refresh dashboard ~15s nên không được add listener lặp lại → rò rỉ).
+  if (!state._smDocClickBound) {
+    document.addEventListener("click", (e) => {
+      const ms = $("#smMs");
+      if (!ms || ms.contains(e.target)) return;
+      state._smPanelOpen = false;
+      const p = $("#smMsPanel"), t = $("#smMsToggle");
+      if (p) p.setAttribute("hidden", "");
+      if (t) t.setAttribute("aria-expanded", "false");
+    });
+    state._smDocClickBound = true;
+  }
+
+  const applySelection = () => {
+    if (!state.smSelected.size && cycles.length) state.smSelected.add(cycles[cycles.length - 1].cycle); // luôn còn ít nhất 1
+    // Đồng bộ lại các checkbox theo state (cho các nút preset).
+    $$(".sm-cyc-cb").forEach((cb) => { cb.checked = state.smSelected.has(parseInt(cb.value, 10)); });
+    updateSmToggleLabel();
     renderSuiteModelHead();
     renderSuiteModelMatrix();
     renderSmOverall();
+  };
+
+  $$(".sm-cyc-cb").forEach((cb) => cb.addEventListener("change", () => {
+    const cyc = parseInt(cb.value, 10);
+    if (cb.checked) state.smSelected.add(cyc); else state.smSelected.delete(cyc);
+    applySelection();
   }));
+
+  $$("#smMsPanel .ms-actions button").forEach((btn) => btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const act = btn.dataset.act;
+    if (act === "all") state.smSelected = new Set(cycles.map((c) => c.cycle));
+    else if (act === "none") state.smSelected = new Set();
+    else if (act === "recent5") state.smSelected = new Set(cycles.slice(-5).map((c) => c.cycle));
+    applySelection();
+  }));
+}
+
+function updateSmToggleLabel() {
+  const toggle = $("#smMsToggle");
+  if (!toggle) return;
+  const sel = smSelectedCyclesList();
+  const label = sel.length ? sel.map((c) => "C" + c.cycle).join(", ") : "Chưa chọn cycle";
+  toggle.innerHTML = `<span class="ms-count">${sel.length} cycle</span> ${label} <span class="ms-caret">▾</span>`;
+}
+
+// Màu heatmap theo pass rate 0..1: đỏ (0) → vàng (0.5) → xanh (1). Nền nhạt, chữ đậm dễ đọc.
+function heatColor(rate) {
+  const hue = Math.round(rate * 120); // 0 = đỏ, 120 = xanh lá
+  return `hsl(${hue}, 62%, 86%)`;
 }
 
 function smCellHtml(cell) {
   if (!cell) return `<td class="cyc-cell cyc-none" data-sortval="-1" title="Không chạy ở cycle này">—</td>`;
   const { pass_rate, fail_count, total, na_count } = cell;
-  let cls = "cyc-none", main = "—", sv = -1;
+  let main = "—", sv = -1, style = "";
   if (pass_rate !== null && pass_rate !== undefined) {
     main = (pass_rate * 100).toFixed(0) + "%"; sv = pass_rate;
-    cls = pass_rate === 1 ? "cyc-pass" : (pass_rate === 0 ? "cyc-fail" : "cyc-mixed");
+    style = ` style="background:${heatColor(pass_rate)}"`;
   }
   const detail = `${fail_count}F / ${total}T${na_count ? " / " + na_count + "NA" : ""}`;
-  return `<td class="cyc-cell ${cls}" data-sortval="${sv}" title="${detail}"><b>${main}</b><br><span class="cyc-detail">${detail}</span></td>`;
+  return `<td class="cyc-cell"${style} data-sortval="${sv}" title="${detail}"><b>${main}</b><br><span class="cyc-detail">${detail}</span></td>`;
 }
 
 function renderSuiteModelHead() {
   const sel = smSelectedCyclesList();
-  let h = `<tr><th>Item (Test suite)</th><th>Model</th>`;
+  let h = `<tr><th class="sm-col-item">Item (Test suite)</th><th class="sm-col-model">Model</th>`;
   for (const c of sel) {
     h += `<th>Cycle ${c.cycle}<br><span style="font-weight:400;font-size:11px;color:#888">${c.cycle_date || ""}</span></th>`;
   }
@@ -334,19 +407,32 @@ function renderSuiteModelMatrix() {
   const overall = state.suiteModel.overall_by_cycle || {};
 
   // Dòng OVERALL (tất cả script) ở đầu bảng.
-  let overallRow = `<tr style="background:#eef3fb; font-weight:600;">
-    <td>OVERALL (tất cả script)</td><td>—</td>`;
+  let overallRow = `<tr class="sm-overall-row">
+    <td class="sm-col-item" colspan="2">OVERALL — tất cả script</td>`;
   for (const c of sel) overallRow += smCellHtml(overall[c.cycle]);
   overallRow += `</tr>`;
 
-  const bodyRows = rows.map((r) => {
-    const cells = sel.map((c) => smCellHtml(r.by_cycle[c.cycle])).join("");
-    return `<tr>
-      <td>${r.test_suite}</td>
-      <td><span class="tag" style="background:#3498db">${r.model}</span></td>
-      ${cells}
-    </tr>`;
-  }).join("");
+  // Gom nhóm theo Item: cột Item chỉ hiện 1 lần (rowspan) cho tất cả model của item đó.
+  const groups = new Map();
+  for (const r of rows) {
+    if (!groups.has(r.test_suite)) groups.set(r.test_suite, []);
+    groups.get(r.test_suite).push(r);
+  }
+
+  let bodyRows = "";
+  for (const [suite, items] of groups) {
+    items.forEach((r, idx) => {
+      const cells = sel.map((c) => smCellHtml(r.by_cycle[c.cycle])).join("");
+      const itemCell = idx === 0
+        ? `<td class="sm-col-item sm-group-item" rowspan="${items.length}">${suite}</td>`
+        : "";
+      bodyRows += `<tr class="${idx === 0 ? "sm-group-start" : ""}">
+        ${itemCell}
+        <td class="sm-col-model"><span class="tag" style="background:#3498db">${r.model}</span></td>
+        ${cells}
+      </tr>`;
+    });
+  }
 
   $("#suiteModelTable tbody").innerHTML = overallRow + bodyRows;
 }
@@ -620,8 +706,11 @@ function ttSetup(table) {
   ttApply(table);
 }
 
+// Lưu ý: KHÔNG đưa "suiteModelTable" vào đây. Bảng đó dùng bố cục gom nhóm (rowspan cột
+// Item + dòng OVERALL colspan) nên không tương thích với hệ sort/filter dùng chung (vốn giả
+// định mọi dòng phẳng, cùng số cột). Cần lọc/sắp xếp chi tiết thì dùng tab "So sánh Cycle".
 const ENHANCED_TABLE_IDS = [
-  "passRateTable", "suiteModelTable", "ownerTable", "suiteTable",
+  "passRateTable", "ownerTable", "suiteTable",
   "cycleMatrixTable", "fixTrackingTable",
   "suiteListTable", "modelListTable", "ownerListTable",
 ];
