@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Test Stabilization Tracker</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/chart.min.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <h1>🧪 Test Stabilization Tracker</h1>
+  <nav id="tabs">
+    <button class="tab-btn active" data-tab="dashboard">📊 Dashboard</button>
+    <button class="tab-btn" data-tab="input-results">📥 Nhập kết quả</button>
+    <button class="tab-btn" data-tab="input-fix">🛠️ Ghi nhận Fix</button>
+    <button class="tab-btn" data-tab="priority">📋 Bảng ưu tiên</button>
+    <button class="tab-btn" data-tab="cycle-compare">🔄 So sánh Cycle</button>
+    <button class="tab-btn" data-tab="fix-tracking">🔬 Theo dõi Fix</button>
+    <button class="tab-btn" data-tab="settings">⚙️ Cài đặt</button>
+  </nav>
+  <div class="topbar-right">
+    <span id="connStatus" class="conn-ok">● Đã kết nối</span>
+    <span id="lastRefresh"></span>
+  </div>
+</header>
+
+<main>
+
+<!-- ============ DASHBOARD ============ -->
+<section id="tab-dashboard" class="tab-panel active">
+
+  <div class="kpi-row" id="kpiRow"></div>
+
+  <div id="insightsBox" class="insights-box">
+    <h3>🔎 Nhận định tự động</h3>
+    <ul id="insightsList"></ul>
+  </div>
+
+  <div class="card">
+    <h3>📈 Pass Rate chi tiết theo Cycle</h3>
+    <p class="hint">Công thức: <b>Pass Rate = (Pass + Check + Manual Check) / (Tổng số − Skip − NA)</b>. Skip (RUNNING) không bao giờ được lưu vào hệ thống nên không xuất hiện trong bảng; NA bị loại khỏi cả tử số lẫn mẫu số (trung lập, không tính là Pass hay Fail).</p>
+    <table id="passRateTable" class="data-table">
+      <thead>
+        <tr>
+          <th>Cycle</th><th>Ngày</th><th>Tổng số</th><th>Pass-like (Pass/Check/Manual Check)</th>
+          <th>NA (loại trừ)</th><th>Fail</th><th>Pass Rate</th><th>Thay đổi so cycle trước</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>🧩 Pass Rate theo Item × Model × Cycle</h3>
+    <p class="hint">Pass rate của từng <b>item (test suite)</b> trên <b>từng model</b>, tách theo <b>từng cycle</b>. Tích/bỏ tích các cycle bên dưới để chọn những cycle muốn xem — dòng <b>“OVERALL”</b> ở đầu là pass rate gộp của <b>toàn bộ script</b> cho các cycle đang chọn.</p>
+    <div class="form-row" id="smCycleChooser" style="gap:14px;">
+      <span style="font-size:13px; color:var(--muted)">Chọn cycle:</span>
+    </div>
+    <div id="smOverallBox" style="margin:6px 0 12px; font-size:14px;"></div>
+    <table id="suiteModelTable" class="data-table">
+      <thead id="suiteModelHead"></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="chart-grid">
+    <div class="card">
+      <h3>Pass Rate theo Cycle</h3>
+      <canvas id="chartTrend"></canvas>
+    </div>
+    <div class="card">
+      <h3>Fail Count theo Cycle</h3>
+      <canvas id="chartFail"></canvas>
+    </div>
+    <div class="card">
+      <h3>Pass Rate theo Model (cycle gần nhất)</h3>
+      <canvas id="chartModel"></canvas>
+    </div>
+    <div class="card">
+      <h3>Phân bố Priority Tier</h3>
+      <canvas id="chartTier"></canvas>
+    </div>
+    <div class="card wide">
+      <h3>Root Cause Pareto (Top 15)</h3>
+      <canvas id="chartPareto"></canvas>
+    </div>
+    <div class="card">
+      <h3>🏆 Resolution Rate theo Owner (KPI)</h3>
+      <canvas id="chartOwner"></canvas>
+    </div>
+    <div class="card">
+      <h3>📦 % Hoàn thành theo Test Suite</h3>
+      <canvas id="chartSuite"></canvas>
+    </div>
+  </div>
+
+  <div class="table-grid">
+    <div class="card wide">
+      <h3>🏆 Owner Leaderboard — KPI cá nhân</h3>
+      <p class="hint">Resolution Rate = % script đã từng fix mà nay <b>hết lỗi hoàn toàn</b> trên mọi model (KPI chính). Verification Rate = % lần fix được xác nhận đúng ngay lần đầu (không bị reopen). Open Workload = số script đang được gán mà còn lỗi.</p>
+      <input type="text" class="table-filter" data-target="ownerTable" placeholder="🔍 Lọc owner...">
+      <table id="ownerTable" class="data-table">
+        <thead>
+          <tr>
+            <th>#</th><th>Owner</th><th>Đã fix (khác nhau)</th><th>Hết lỗi hẳn</th>
+            <th>Resolution Rate</th><th>Verified</th><th>Reopen</th><th>Chờ</th>
+            <th>Verification Rate</th><th>Đang phụ trách (còn lỗi)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="card wide">
+      <h3>📦 Theo Test Suite</h3>
+      <input type="text" class="table-filter" data-target="suiteTable" placeholder="🔍 Lọc test suite...">
+      <table id="suiteTable" class="data-table">
+        <thead>
+          <tr><th>Test suite</th><th>Tổng script</th><th>Đã xong</th><th>Còn lỗi</th><th>% hoàn thành</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+</section>
+
+<!-- ============ INPUT RESULTS ============ -->
+<section id="tab-input-results" class="tab-panel">
+  <div class="card">
+    <h3>📥 Nhập kết quả chạy (dán từ Excel / test farm export)</h3>
+    <p class="hint">Dán dữ liệu theo đúng thứ tự cột — hỗ trợ cả 2 định dạng: <b>6 cột</b> (Test ID, Model, Test suite, Test Case, State, Description) hoặc <b>8 cột</b> (Request ID, Model, Test Suite, Test Case, State, Description, Author, Team) — copy thẳng từ Excel/SDF export là được (tab phân cách). Test Suite/Test Case sẽ được hệ thống <b>tự nhận diện và chuẩn hoá tên</b> (VD: <code>Internet/test suite/Internet_ui90_part4.ts</code> hoặc <code>Browser_000118.py</code> đều tự suy ra đúng Test Suite là <b>Internet</b>, Test Case là <b>Browser_000118</b>). State <b>RUNNING</b> sẽ tự động bị bỏ qua (chưa chạy xong).</p>
+    <p class="hint" style="background:#e3f2fd; padding:8px 10px; border-left:3px solid #2196F3; border-radius:4px;">🗓️ <b>Cycle tự động theo ngày:</b> hệ thống lấy ngày tạo từ Test ID (VD <code>260706</code>-xxx = 06/07/2026). Các Test ID cùng ngày = cùng 1 cycle; ngày sau = cycle kế tiếp. Bạn <b>không cần nhập cycle thủ công</b>. (Nếu Test ID không mã hoá ngày, hệ thống dùng ngày chạy nhập tay bên dưới.)</p>
+    <div class="form-row">
+      <label>Ngày chạy (chỉ dùng khi Test ID không có mã ngày) <input type="date" id="rDate"></label>
+    </div>
+    <textarea id="pasteArea" rows="12" placeholder="Request ID	Model	Test Suite	Test Case	State	Description	Author	Team
+260706-01949	SM-X526B	Internet/test suite/Internet_ui90_part4.ts	Browser_000117.py	PASS	Test case pass successfully!	vu.thuhoai	duyhung.tr
+260706-01949	SM-X526B	Weather/test suite/Weather_ui90.ts	Weather_A135.py	FAIL	this is not Fold device	duc.chinh	manh.thuong"></textarea>
+    <div class="form-row">
+      <label>🔒 Mật khẩu gửi dữ liệu
+        <input type="password" id="rPassword" placeholder="Nhập mật khẩu để được gửi" autocomplete="off">
+      </label>
+      <button class="btn-primary" id="btnParsePreview">Xem trước</button>
+      <button class="btn-primary" id="btnSubmitResults">Gửi dữ liệu</button>
+      <span id="resultsMsg"></span>
+    </div>
+    <div id="previewBox"></div>
+  </div>
+</section>
+
+<!-- ============ INPUT FIX ============ -->
+<section id="tab-input-fix" class="tab-panel">
+  <div class="card narrow">
+    <h3>🛠️ Ghi nhận đã fix xong 1 script</h3>
+    <p class="hint">Mỗi thành viên tự điền ngay khi fix xong. <b>Chọn trực tiếp script đang fail</b> từ danh sách bên dưới — hệ thống tự điền Test suite / Test Case / Model đang lỗi / Fixed_after_cycle. Sau khi ghi nhận, vào tab <b>🔬 Theo dõi Fix</b> để xem lần chạy sau đã hết lỗi chưa.</p>
+    <div class="form-grid">
+      <label class="full">🎯 Chọn script đang fail để fix
+        <input type="text" id="fFailSearch" placeholder="Gõ để lọc nhanh script đang fail..." style="margin-bottom:6px;">
+        <select id="fFailingScript" size="6" style="width:100%;">
+          <option value="">— Đang tải danh sách script fail... —</option>
+        </select>
+      </label>
+      <label>Ngày fix
+        <input type="date" id="fDate">
+      </label>
+      <label>Tên bạn (Owner)
+        <input type="text" id="fOwner" list="ownerList" placeholder="Nhập tên hoặc chọn">
+        <datalist id="ownerList"></datalist>
+      </label>
+      <label>Test suite
+        <input type="text" id="fSuite" list="suiteList" placeholder="Tự điền khi chọn script" readonly>
+        <datalist id="suiteList"></datalist>
+      </label>
+      <label>Test Case
+        <input type="text" id="fCase" list="caseList" placeholder="Tự điền khi chọn script" readonly>
+        <datalist id="caseList"></datalist>
+      </label>
+      <label>Model đã fix
+        <select id="fModel"></select>
+      </label>
+      <label>Fixed after cycle <span class="hint" style="font-weight:normal">(tự động, không cần sửa tay)</span>
+        <input type="number" id="fCycle" min="1" readonly>
+      </label>
+      <label class="full">Root cause — nguyên nhân gốc của lỗi <span style="color:#e74c3c">*bắt buộc</span>
+        <textarea id="fRootCause" rows="2" placeholder="VD: locator button submit bị đổi ID sau update UI; hoặc: server trả timeout do data test hết hạn..."></textarea>
+      </label>
+      <label class="full">Ghi chú thêm (tuỳ chọn)
+        <input type="text" id="fNote" placeholder="VD: đã cập nhật lại locator, chờ cycle sau verify">
+      </label>
+    </div>
+    <div class="form-row">
+      <button class="btn-primary" id="btnSubmitFix">Ghi nhận fix</button>
+      <button class="btn-secondary" id="btnClearFixForm">Nhập tay (bỏ chọn)</button>
+      <span id="fixMsg"></span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PRIORITY TABLE ============ -->
+<section id="tab-priority" class="tab-panel">
+  <div class="card">
+    <h3>📋 Bảng ưu tiên script (P0 trước)</h3>
+    <div class="form-row">
+      <input type="text" id="prioSearch" placeholder="Tìm test suite / test case...">
+      <select id="prioTierFilter">
+        <option value="">Tất cả tier</option>
+        <option value="P0">P0</option>
+        <option value="P1">P1</option>
+        <option value="P2">P2</option>
+        <option value="P3">P3</option>
+        <option value="Done">Done</option>
+      </select>
+      <button class="btn-secondary" id="btnExportExcel">⬇️ Xuất Excel</button>
+      <button class="btn-secondary" id="btnExportCsvResults">⬇️ CSV kết quả thô</button>
+      <button class="btn-secondary" id="btnExportCsvFixes">⬇️ CSV fix log</button>
+    </div>
+    <table id="priorityTable" class="data-table">
+      <thead id="priorityTableHead">
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ CYCLE COMPARISON ============ -->
+<section id="tab-cycle-compare" class="tab-panel">
+  <div class="card">
+    <h3>🔄 So sánh Script qua từng Cycle</h3>
+    <p class="hint">Mỗi dòng là 1 script (test suite / test case)<span id="cycmModeHint">, gộp mọi model đã chạy</span>. Mỗi cột Cycle hiển thị <b>Pass Rate</b>
+      = (Pass+Check+Manual Check) / (Tổng − NA), kèm số Fail/Tổng lượt chạy.
+      Mũi tên so với lần GẦN NHẤT TRƯỚC ĐÓ mà script này có chạy:
+      <span style="color:#1e8449">▲ tốt lên</span> · <span style="color:#c0392b">▼ xấu đi</span> · <span style="color:#888">= không đổi</span>.
+      Cột "Xu hướng" tổng kết 2 lần chạy gần nhất để biết script nào vừa cải thiện hay vừa mới giảm sút.</p>
+    <div class="form-row">
+      <input type="text" id="cycmSearch" placeholder="Tìm test suite / test case / owner...">
+      <select id="cycmTierFilter">
+        <option value="">Tất cả tier</option>
+        <option value="P0">P0</option>
+        <option value="P1">P1</option>
+        <option value="P2">P2</option>
+        <option value="P3">P3</option>
+        <option value="Done">Done</option>
+      </select>
+      <select id="cycmTrendFilter">
+        <option value="">Tất cả xu hướng</option>
+        <option value="regressed">🔻 Giảm sút</option>
+        <option value="improved">🔺 Cải thiện</option>
+        <option value="unchanged">➖ Không đổi</option>
+        <option value="insufficient_data">❔ Chưa đủ dữ liệu</option>
+      </select>
+      <select id="cycmModelFilter" style="display:none">
+        <option value="">Tất cả model</option>
+      </select>
+      <label style="display:flex; align-items:center; gap:6px;">
+        <input type="checkbox" id="cycmByModel"> Tách riêng theo từng model
+      </label>
+    </div>
+    <table id="cycleMatrixTable" class="data-table">
+      <thead id="cycleMatrixHead"></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ FIX TRACKING ============ -->
+<section id="tab-fix-tracking" class="tab-panel">
+  <div class="card">
+    <h3>🔬 Theo dõi Fix — test case đã báo fix thì hết lỗi chưa?</h3>
+    <p class="hint">Mỗi dòng là 1 lần fix đã ghi nhận. Hệ thống đối chiếu với các lần chạy <b>SAU</b> cycle fix để tự đánh giá:
+      <span class="tag" style="background:#2ecc71">✅ Đã hết lỗi</span> (chạy lại Pass và giữ nguyên) ·
+      <span class="tag" style="background:#e67e22">⚠️ Hết rồi fail lại</span> (Pass ngay sau fix nhưng cycle sau tái lỗi) ·
+      <span class="tag" style="background:#e74c3c">❌ Chưa hết lỗi</span> (ngay sau fix vẫn Fail) ·
+      <span class="tag" style="background:#95a5a6">⏳ Chờ dữ liệu</span> (chưa có lần chạy sau fix để đối chiếu).</p>
+
+    <div class="kpi-row" id="fixKpiRow"></div>
+
+    <div class="form-row">
+      <input type="text" id="fixTrackSearch" placeholder="Tìm owner / test case / model...">
+      <select id="fixStatusFilter">
+        <option value="">Tất cả trạng thái</option>
+        <option value="verified">✅ Đã hết lỗi</option>
+        <option value="regressed">⚠️ Hết rồi fail lại</option>
+        <option value="still_failing">❌ Chưa hết lỗi</option>
+        <option value="pending">⏳ Chờ dữ liệu</option>
+      </select>
+    </div>
+    <table id="fixTrackingTable" class="data-table">
+      <thead>
+        <tr>
+          <th>Trạng thái</th><th>Owner</th><th>Test suite</th><th>Test Case</th>
+          <th>Model đã fix</th><th>Root cause</th><th>Fix sau cycle</th><th>Cycle chạy lại</th>
+          <th>Lần chạy sau</th><th>Số fail sau</th><th>Ngày fix</th><th>Ghi chú</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ SETTINGS ============ -->
+<section id="tab-settings" class="tab-panel">
+  <div class="card narrow">
+    <h3>⚙️ Mục tiêu dự án</h3>
+    <div class="form-grid">
+      <label>Target Pass Rate (%)
+        <input type="number" id="sTarget" min="1" max="100" step="1">
+      </label>
+      <label>Deadline (ngày)
+        <input type="date" id="sDeadline">
+      </label>
+    </div>
+    <div class="form-row">
+      <button class="btn-primary" id="btnSaveSettings">Lưu</button>
+      <span id="settingsMsg"></span>
+    </div>
+  </div>
+
+  <div class="lists-grid">
+    <div class="card">
+      <h3>📦 Danh sách Test Suite</h3>
+      <div class="form-row">
+        <input type="text" id="newSuiteName" placeholder="Tên test suite mới">
+        <button class="btn-primary" id="btnAddSuite">+ Thêm</button>
+      </div>
+      <input type="text" class="table-filter" data-target="suiteListTable" placeholder="🔍 Lọc...">
+      <table class="data-table" id="suiteListTable">
+        <thead><tr><th>Tên</th><th style="width:140px">Hành động</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <span id="suiteListMsg" class="hint"></span>
+    </div>
+
+    <div class="card">
+      <h3>📱 Danh sách Model điện thoại</h3>
+      <p class="hint">Khi 1 model bị thay thế bởi model khác trong dự án, dùng "Đổi tên" — toàn bộ kết quả cũ vẫn giữ nguyên, chỉ đổi nhãn hiển thị.</p>
+      <div class="form-row">
+        <input type="text" id="newModelName" placeholder="Tên model mới">
+        <button class="btn-primary" id="btnAddModel">+ Thêm</button>
+      </div>
+      <input type="text" class="table-filter" data-target="modelListTable" placeholder="🔍 Lọc...">
+      <table class="data-table" id="modelListTable">
+        <thead><tr><th>Tên</th><th style="width:140px">Hành động</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <span id="modelListMsg" class="hint"></span>
+    </div>
+
+    <div class="card wide">
+      <h3>👤 Danh sách Owner (thành viên team)</h3>
+      <p class="hint">"Đổi tên" chỉ dùng khi CÙNG một người (VD: sửa chính tả tên) — lịch sử fix tự chuyển theo tên mới. Khi nhân sự <b>nghỉ/rời dự án</b> và người khác tiếp quản, KHÔNG dùng đổi tên — dùng "Ngừng hoạt động" bên dưới rồi qua mục "Chuyển giao công việc" để chuyển các script còn dở sang người mới; lịch sử fix của người cũ vẫn được giữ nguyên, không bị gán nhầm cho người mới.</p>
+      <p class="hint">Mỗi thành viên thuộc 1 <b>Team</b> (nhóm nhỏ, thường đặt theo tên team-lead). Team được <b>tự động điền</b> từ cột Team khi nhập kết quả (Author → Owner + Team); bạn có thể chỉnh tay bằng nút "Đổi Team".</p>
+      <div class="form-row">
+        <input type="text" id="newOwnerName" placeholder="Tên thành viên mới">
+        <input type="text" id="newOwnerTeam" placeholder="Team (tuỳ chọn)">
+        <button class="btn-primary" id="btnAddOwner">+ Thêm</button>
+      </div>
+      <input type="text" class="table-filter" data-target="ownerListTable" placeholder="🔍 Lọc tên hoặc team...">
+      <table class="data-table" id="ownerListTable">
+        <thead><tr><th>Tên</th><th>Team</th><th style="width:280px">Hành động</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <span id="ownerListMsg" class="hint"></span>
+    </div>
+
+    <div class="card wide">
+      <h3>🔄 Chuyển giao công việc (khi nhân sự nghỉ / đổi người phụ trách)</h3>
+      <p class="hint">Chuyển toàn bộ các script <b>đang còn lỗi</b> mà người cũ đang phụ trách sang người mới. Lịch sử các lần fix đã ghi nhận trước đó của người cũ <b>không hề thay đổi</b> — vẫn tính đúng công cho họ.</p>
+      <div class="form-row">
+        <label>Từ (người cũ)
+          <select id="handoverFrom"></select>
+        </label>
+        <label>Sang (người mới)
+          <input type="text" id="handoverTo" list="ownerList" placeholder="Tên người tiếp quản">
+        </label>
+        <button class="btn-primary" id="btnHandover">Chuyển giao</button>
+        <span id="handoverMsg"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- <div class="card narrow">
+    <h3>🌐 Chia sẻ cho team</h3>
+    <p class="hint">Mọi người trong cùng mạng LAN/Wifi văn phòng có thể truy cập bằng địa chỉ IP máy bạn, ví dụ: <code>http://192.168.1.23:5000</code>. Xem IP máy bằng lệnh <code>ipconfig</code> (Windows) hoặc <code>ifconfig</code>/<code>ip a</code> (Mac/Linux).</p>
+    <p class="hint"><b>Lưu ý:</b> hệ thống này không có đăng nhập/xác thực — ai truy cập được vào địa chỉ trên đều có thể nhập và chỉnh sửa mọi dữ liệu, kể cả các danh sách ở trên. Phù hợp cho team nội bộ tin cậy lẫn nhau, không phù hợp nếu cần kiểm soát quyền chặt chẽ.</p>
+  </div> -->
+</section>
+
+<!-- Modal chi tiết Fail -->
+<div id="failDetailsModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+  <div style="background:white; border-radius:8px; padding:20px; max-width:90%; max-height:90%; overflow-y:auto; width:800px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+      <h3 id="failDetailsTitle">Chi tiết Fail</h3>
+      <button onclick="document.getElementById('failDetailsModal').style.display='none'" style="background:none; border:none; font-size:24px; cursor:pointer;">✕</button>
+    </div>
+    <div id="failDetailsContent" style="max-height:500px; overflow-y:auto;">
+      Loading...
+    </div>
+  </div>
+</div>
+
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

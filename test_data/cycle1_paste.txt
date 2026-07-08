@@ -1,0 +1,50 @@
+TID-01-001	S721	Camera	TC001 - Chup anh ngoai troi sang	Pass	Test passed
+TID-01-002	A175	Camera	TC001 - Chup anh ngoai troi sang	Pass	Test passed
+TID-01-003	F966	Camera	TC001 - Chup anh ngoai troi sang	Pass	Test passed
+TID-01-004	F741	Camera	TC001 - Chup anh ngoai troi sang	Fail	Anh bi mo/rung tay khi chup thieu sang
+TID-01-005	X526	Camera	TC001 - Chup anh ngoai troi sang	Fail	Anh bi mo/rung tay khi chup thieu sang
+TID-01-006	S721	Camera	TC002 - Quay video 4K 30fps	Pass	Test passed
+TID-01-007	A175	Camera	TC002 - Quay video 4K 30fps	Fail	Video bi giat/lag khi quay 4K 30fps
+TID-01-008	F966	Camera	TC002 - Quay video 4K 30fps	Pass	Test passed
+TID-01-009	F741	Camera	TC002 - Quay video 4K 30fps	Fail	Video bi giat/lag khi quay 4K 30fps
+TID-01-010	X526	Camera	TC002 - Quay video 4K 30fps	Fail	Video bi giat/lag khi quay 4K 30fps
+TID-01-011	S721	Camera	TC003 - Zoom quang hoc 10x	Fail	App Camera bi crash khi zoom quang hoc qua 8x
+TID-01-012	A175	Camera	TC003 - Zoom quang hoc 10x	Fail	App Camera bi crash khi zoom quang hoc qua 8x
+TID-01-013	F966	Camera	TC003 - Zoom quang hoc 10x	Fail	App Camera bi crash khi zoom quang hoc qua 8x
+TID-01-014	F741	Camera	TC003 - Zoom quang hoc 10x	Fail	App Camera bi crash khi zoom quang hoc qua 8x
+TID-01-015	X526	Camera	TC003 - Zoom quang hoc 10x	Fail	App Camera bi crash khi zoom quang hoc qua 8x
+TID-01-016	S721	Connectivity	TC004 - Ket noi Wifi 5GHz	Pass	Test passed
+TID-01-017	A175	Connectivity	TC004 - Ket noi Wifi 5GHz	Pass	Test passed
+TID-01-018	F966	Connectivity	TC004 - Ket noi Wifi 5GHz	Pass	Test passed
+TID-01-019	F741	Connectivity	TC004 - Ket noi Wifi 5GHz	Fail	Khong ket noi duoc Wifi bang tan 5GHz
+TID-01-020	X526	Connectivity	TC004 - Ket noi Wifi 5GHz	Pass	Test passed
+TID-01-021	S721	Connectivity	TC005 - Ghep doi Bluetooth voi tai nghe	Pass	Test passed
+TID-01-022	A175	Connectivity	TC005 - Ghep doi Bluetooth voi tai nghe	Fail	Mat ket noi Bluetooth sau khi ghep doi voi tai nghe
+TID-01-023	F966	Connectivity	TC005 - Ghep doi Bluetooth voi tai nghe	Pass	Test passed
+TID-01-024	F741	Connectivity	TC005 - Ghep doi Bluetooth voi tai nghe	Fail	Mat ket noi Bluetooth sau khi ghep doi voi tai nghe
+TID-01-025	X526	Connectivity	TC005 - Ghep doi Bluetooth voi tai nghe	Fail	Mat ket noi Bluetooth sau khi ghep doi voi tai nghe
+TID-01-026	S721	Call	TC006 - Cuoc goi video qua 4G	Pass	Test passed
+TID-01-027	A175	Call	TC006 - Cuoc goi video qua 4G	Fail	Khong nghe duoc am thanh trong cuoc goi video
+TID-01-028	F966	Call	TC006 - Cuoc goi video qua 4G	Pass	Test passed
+TID-01-029	F741	Call	TC006 - Cuoc goi video qua 4G	Pass	Test passed
+TID-01-030	X526	Call	TC006 - Cuoc goi video qua 4G	Pass	Test passed
+TID-01-031	S721	Call	TC007 - Chuyen cuoc goi giua Wifi va 4G	Pass	Test passed
+TID-01-032	A175	Call	TC007 - Chuyen cuoc goi giua Wifi va 4G	Pass	Test passed
+TID-01-033	F966	Call	TC007 - Chuyen cuoc goi giua Wifi va 4G	Pass	Test passed
+TID-01-034	F741	Call	TC007 - Chuyen cuoc goi giua Wifi va 4G	Fail	Rot cuoc goi khi chuyen tu Wifi sang 4G
+TID-01-035	X526	Call	TC007 - Chuyen cuoc goi giua Wifi va 4G	Fail	Rot cuoc goi khi chuyen tu Wifi sang 4G
+TID-01-036	S721	Battery	TC008 - Sac nhanh 65W tu 20-80%	Fail	Sac cham hon cong bo khi may nong
+TID-01-037	A175	Battery	TC008 - Sac nhanh 65W tu 20-80%	Pass	Test passed
+TID-01-038	F966	Battery	TC008 - Sac nhanh 65W tu 20-80%	Pass	Test passed
+TID-01-039	F741	Battery	TC008 - Sac nhanh 65W tu 20-80%	Fail	Sac cham hon cong bo khi may nong
+TID-01-040	X526	Battery	TC008 - Sac nhanh 65W tu 20-80%	Pass	Test passed
+TID-01-041	S721	Battery	TC009 - Do hao pin khi quay video 4K lien tuc 4h	Fail	Pin tut nhanh bat thuong khi quay video 4K lien tuc
+TID-01-042	A175	Battery	TC009 - Do hao pin khi quay video 4K lien tuc 4h	Pass	Test passed
+TID-01-043	F966	Battery	TC009 - Do hao pin khi quay video 4K lien tuc 4h	Fail	Pin tut nhanh bat thuong khi quay video 4K lien tuc
+TID-01-044	F741	Battery	TC009 - Do hao pin khi quay video 4K lien tuc 4h	Fail	Pin tut nhanh bat thuong khi quay video 4K lien tuc
+TID-01-045	X526	Battery	TC009 - Do hao pin khi quay video 4K lien tuc 4h	Fail	Pin tut nhanh bat thuong khi quay video 4K lien tuc
+TID-01-046	S721	Performance	TC010 - Mo 10 ung dung cung luc khong lag/crash	Pass	Test passed
+TID-01-047	A175	Performance	TC010 - Mo 10 ung dung cung luc khong lag/crash	Pass	Test passed
+TID-01-048	F966	Performance	TC010 - Mo 10 ung dung cung luc khong lag/crash	Pass	Test passed
+TID-01-049	F741	Performance	TC010 - Mo 10 ung dung cung luc khong lag/crash	Fail	Ung dung bi crash khi mo qua 10 app cung luc
+TID-01-050	X526	Performance	TC010 - Mo 10 ung dung cung luc khong lag/crash	Fail	Ung dung bi crash khi mo qua 10 app cung luc

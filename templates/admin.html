@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin - Test Stabilization Tracker</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .admin-header {
+    background: #d32f2f;
+    color: white;
+    padding: 15px;
+    margin: -15px -15px 15px -15px;
+    border-radius: 4px 4px 0 0;
+  }
+  .search-bar {
+    margin-bottom: 20px;
+    display: flex;
+    gap: 10px;
+  }
+  .search-bar input {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+  }
+  .search-bar button {
+    padding: 10px 20px;
+    background: #2196F3;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .results-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .results-table th, .results-table td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+  }
+  .results-table th {
+    background: #f5f5f5;
+    font-weight: bold;
+  }
+  .results-table tr:hover {
+    background: #f9f9f9;
+  }
+  .action-btns {
+    display: flex;
+    gap: 5px;
+  }
+  .btn-sm {
+    padding: 5px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    border: none;
+    border-radius: 3px;
+  }
+  .btn-edit {
+    background: #FF9800;
+    color: white;
+  }
+  .btn-delete {
+    background: #d32f2f;
+    color: white;
+  }
+  .btn-edit:hover { background: #e68900; }
+  .btn-delete:hover { background: #b71c1c; }
+
+  /* Modal */
+  .modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+  }
+  .modal.show {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-content {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    border-bottom: 2px solid #f0f0f0;
+    padding-bottom: 10px;
+  }
+  .modal-header h2 {
+    margin: 0;
+  }
+  .close-btn {
+    font-size: 24px;
+    cursor: pointer;
+    background: none;
+    border: none;
+    color: #999;
+  }
+  .close-btn:hover { color: #333; }
+
+  .form-group {
+    margin-bottom: 15px;
+  }
+  .form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+  }
+  .form-group input,
+  .form-group textarea {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
+  }
+  .form-group textarea {
+    resize: vertical;
+    min-height: 80px;
+  }
+
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+  }
+  .btn-primary {
+    background: #4CAF50;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .btn-primary:hover { background: #45a049; }
+  .btn-cancel {
+    background: #999;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .btn-cancel:hover { background: #777; }
+
+  .info-box {
+    background: #e3f2fd;
+    border-left: 4px solid #2196F3;
+    padding: 10px;
+    margin-bottom: 15px;
+    border-radius: 4px;
+  }
+  .info-box p {
+    margin: 0;
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <h1>🔐 Admin - Test Stabilization Tracker</h1>
+  <div class="topbar-right">
+    <a href="/" style="color: white; text-decoration: none;">← Quay lại App chính</a>
+  </div>
+</header>
+
+<main>
+<div class="card">
+  <div class="admin-header">
+    <h2>⚙️ Quản lý dữ liệu Cycle Results</h2>
+    <p>Chỉ bạn (admin) mới có quyền sửa/xóa dữ liệu nhập vào. Tìm kiếm theo tên script, model, hoặc người nhập.</p>
+  </div>
+
+  <div class="info-box">
+    <p><strong>Mẹo:</strong> Tìm kiếm cực nhanh - nhập tên script, model, hoặc tên người nhập rồi bấm "Tìm kiếm"</p>
+  </div>
+
+  <div class="search-bar">
+    <input type="text" id="searchInput" placeholder="Tìm kiếm (script, model, người nhập...)">
+    <button onclick="searchResults()">🔍 Tìm kiếm</button>
+    <button onclick="loadAllResults()" style="background: #666;">⟳ Tải lại</button>
+  </div>
+
+  <div style="overflow-x: auto;">
+    <table class="results-table" id="resultsTable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Cycle</th>
+          <th>Test Suite</th>
+          <th>Test Case</th>
+          <th>Model</th>
+          <th>State</th>
+          <th>Result</th>
+          <th>Author (Owner)</th>
+          <th>Team</th>
+          <th>Người nhập</th>
+          <th>Ngày nhập</th>
+          <th>Hành động</th>
+        </tr>
+      </thead>
+      <tbody id="resultsBody">
+      </tbody>
+    </table>
+  </div>
+  <p id="resultCount" style="margin-top: 10px; color: #666; font-size: 12px;"></p>
+</div>
+</main>
+
+<!-- Edit Modal -->
+<div id="editModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>Sửa kết quả Cycle</h2>
+      <button class="close-btn" onclick="closeEditModal()">✕</button>
+    </div>
+    <form id="editForm" onsubmit="saveEdit(event)">
+      <div class="form-group">
+        <label>Cycle:</label>
+        <input type="number" id="editCycle" required>
+      </div>
+      <div class="form-group">
+        <label>Test Suite:</label>
+        <input type="text" id="editTestSuite" required>
+      </div>
+      <div class="form-group">
+        <label>Test Case:</label>
+        <input type="text" id="editTestCase" required>
+      </div>
+      <div class="form-group">
+        <label>Model:</label>
+        <input type="text" id="editModel" required>
+      </div>
+      <div class="form-group">
+        <label>State (Pass/Fail/Check/NA/...):</label>
+        <input type="text" id="editState" required>
+      </div>
+      <div class="form-group">
+        <label>Test ID:</label>
+        <input type="text" id="editTestId">
+      </div>
+      <div class="form-group">
+        <label>Description:</label>
+        <textarea id="editDescription"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Author (Owner):</label>
+        <input type="text" id="editAuthor">
+      </div>
+      <div class="form-group">
+        <label>Team:</label>
+        <input type="text" id="editTeam">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-cancel" onclick="closeEditModal()">Hủy</button>
+        <button type="submit" class="btn-primary">💾 Lưu thay đổi</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const ADMIN_KEY = "haianh6729";
+let currentEditId = null;
+
+async function loadAllResults() {
+  document.getElementById('searchInput').value = '';
+  const response = await fetch(`/api/admin/results?key=${ADMIN_KEY}`);
+  const data = await response.json();
+  displayResults(data);
+}
+
+async function searchResults() {
+  const search = document.getElementById('searchInput').value.trim();
+  if (!search) {
+    loadAllResults();
+    return;
+  }
+  const response = await fetch(`/api/admin/results?key=${ADMIN_KEY}&search=${encodeURIComponent(search)}`);
+  const data = await response.json();
+  displayResults(data);
+}
+
+function displayResults(results) {
+  const tbody = document.getElementById('resultsBody');
+  tbody.innerHTML = '';
+
+  results.forEach((r, idx) => {
+    const row = tbody.insertRow();
+    row.innerHTML = `
+      <td>${r.id}</td>
+      <td>${r.cycle}</td>
+      <td>${r.test_suite}</td>
+      <td>${r.test_case}</td>
+      <td>${r.model}</td>
+      <td><strong>${r.state}</strong></td>
+      <td><span style="color: ${r.result === 'Pass' ? 'green' : 'red'}; font-weight: bold;">${r.result}</span></td>
+      <td>${r.author || '-'}</td>
+      <td>${r.team || '-'}</td>
+      <td>${r.created_by || 'Unknown'}</td>
+      <td>${r.created_at ? r.created_at.split(' ')[0] : '-'}</td>
+      <td>
+        <div class="action-btns">
+          <button class="btn-sm btn-edit" onclick="openEditModal(${r.id}, ${JSON.stringify(r).replace(/"/g, '&quot;')})">✏️ Sửa</button>
+          <button class="btn-sm btn-delete" onclick="deleteResult(${r.id})">🗑️ Xóa</button>
+        </div>
+      </td>
+    `;
+  });
+
+  document.getElementById('resultCount').textContent = `Tổng: ${results.length} kết quả`;
+}
+
+function openEditModal(id, result) {
+  currentEditId = id;
+  document.getElementById('editCycle').value = result.cycle;
+  document.getElementById('editTestSuite').value = result.test_suite;
+  document.getElementById('editTestCase').value = result.test_case;
+  document.getElementById('editModel').value = result.model;
+  document.getElementById('editState').value = result.state;
+  document.getElementById('editTestId').value = result.test_id || '';
+  document.getElementById('editDescription').value = result.description || '';
+  document.getElementById('editAuthor').value = result.author || '';
+  document.getElementById('editTeam').value = result.team || '';
+  document.getElementById('editModal').classList.add('show');
+}
+
+function closeEditModal() {
+  document.getElementById('editModal').classList.remove('show');
+  currentEditId = null;
+}
+
+async function saveEdit(event) {
+  event.preventDefault();
+
+  const data = {
+    cycle: parseInt(document.getElementById('editCycle').value),
+    test_suite: document.getElementById('editTestSuite').value.trim(),
+    test_case: document.getElementById('editTestCase').value.trim(),
+    model: document.getElementById('editModel').value.trim(),
+    state: document.getElementById('editState').value.trim(),
+    test_id: document.getElementById('editTestId').value.trim(),
+    description: document.getElementById('editDescription').value.trim(),
+    author: document.getElementById('editAuthor').value.trim(),
+    team: document.getElementById('editTeam').value.trim(),
+  };
+
+  const response = await fetch(`/api/admin/results/${currentEditId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Admin-Key': ADMIN_KEY
+    },
+    body: JSON.stringify(data)
+  });
+
+  if (response.ok) {
+    alert('✅ Cập nhật thành công!');
+    closeEditModal();
+    loadAllResults();
+  } else {
+    alert('❌ Lỗi cập nhật!');
+  }
+}
+
+async function deleteResult(id) {
+  if (!confirm('⚠️ Xác nhận xóa kết quả này? Không thể hoàn tác!')) {
+    return;
+  }
+
+  const response = await fetch(`/api/admin/results/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'X-Admin-Key': ADMIN_KEY
+    }
+  });
+
+  if (response.ok) {
+    alert('✅ Đã xóa!');
+    loadAllResults();
+  } else {
+    alert('❌ Lỗi xóa!');
+  }
+}
+
+// Load results on page load
+document.addEventListener('DOMContentLoaded', loadAllResults);
+
+// Allow Enter key to search
+document.getElementById('searchInput').addEventListener('keypress', function(e) {
+  if (e.key === 'Enter') searchResults();
+});
+</script>
+</body>
+</html>

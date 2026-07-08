@@ -1,0 +1,50 @@
+TID-03-101	S721	Camera	TC001 - Chup anh ngoai troi sang	Pass	Test passed
+TID-03-102	A175	Camera	TC001 - Chup anh ngoai troi sang	Pass	Test passed
+TID-03-103	F966	Camera	TC001 - Chup anh ngoai troi sang	Pass	Test passed
+TID-03-104	F741	Camera	TC001 - Chup anh ngoai troi sang	Pass	Test passed
+TID-03-105	X526	Camera	TC001 - Chup anh ngoai troi sang	Pass	Test passed
+TID-03-106	S721	Camera	TC002 - Quay video 4K 30fps	Pass	Test passed
+TID-03-107	A175	Camera	TC002 - Quay video 4K 30fps	Pass	Test passed
+TID-03-108	F966	Camera	TC002 - Quay video 4K 30fps	Pass	Test passed
+TID-03-109	F741	Camera	TC002 - Quay video 4K 30fps	Pass	Test passed
+TID-03-110	X526	Camera	TC002 - Quay video 4K 30fps	Pass	Test passed
+TID-03-111	S721	Camera	TC003 - Zoom quang hoc 10x	Fail	App Camera bi crash khi zoom quang hoc qua 8x
+TID-03-112	A175	Camera	TC003 - Zoom quang hoc 10x	Fail	App Camera bi crash khi zoom quang hoc qua 8x
+TID-03-113	F966	Camera	TC003 - Zoom quang hoc 10x	Pass	Test passed
+TID-03-114	F741	Camera	TC003 - Zoom quang hoc 10x	Fail	App Camera bi crash khi zoom quang hoc qua 8x
+TID-03-115	X526	Camera	TC003 - Zoom quang hoc 10x	Fail	App Camera bi crash khi zoom quang hoc qua 8x
+TID-03-116	S721	Connectivity	TC004 - Ket noi Wifi 5GHz	Pass	Test passed
+TID-03-117	A175	Connectivity	TC004 - Ket noi Wifi 5GHz	Pass	Test passed
+TID-03-118	F966	Connectivity	TC004 - Ket noi Wifi 5GHz	Pass	Test passed
+TID-03-119	F741	Connectivity	TC004 - Ket noi Wifi 5GHz	Pass	Test passed
+TID-03-120	X526	Connectivity	TC004 - Ket noi Wifi 5GHz	Pass	Test passed
+TID-03-121	S721	Connectivity	TC005 - Ghep doi Bluetooth voi tai nghe	Pass	Test passed
+TID-03-122	A175	Connectivity	TC005 - Ghep doi Bluetooth voi tai nghe	Pass	Test passed
+TID-03-123	F966	Connectivity	TC005 - Ghep doi Bluetooth voi tai nghe	Pass	Test passed
+TID-03-124	F741	Connectivity	TC005 - Ghep doi Bluetooth voi tai nghe	Fail	Mat ket noi Bluetooth sau khi ghep doi voi tai nghe
+TID-03-125	X526	Connectivity	TC005 - Ghep doi Bluetooth voi tai nghe	Fail	Mat ket noi Bluetooth sau khi ghep doi voi tai nghe
+TID-03-126	S721	Call	TC006 - Cuoc goi video qua 4G	Pass	Test passed
+TID-03-127	A175	Call	TC006 - Cuoc goi video qua 4G	Pass	Test passed
+TID-03-128	F966	Call	TC006 - Cuoc goi video qua 4G	Pass	Test passed
+TID-03-129	F741	Call	TC006 - Cuoc goi video qua 4G	Pass	Test passed
+TID-03-130	X526	Call	TC006 - Cuoc goi video qua 4G	Pass	Test passed
+TID-03-131	S721	Call	TC007 - Chuyen cuoc goi giua Wifi va 4G	Pass	Test passed
+TID-03-132	A175	Call	TC007 - Chuyen cuoc goi giua Wifi va 4G	Pass	Test passed
+TID-03-133	F966	Call	TC007 - Chuyen cuoc goi giua Wifi va 4G	Pass	Test passed
+TID-03-134	F741	Call	TC007 - Chuyen cuoc goi giua Wifi va 4G	Fail	Rot cuoc goi khi chuyen tu Wifi sang 4G
+TID-03-135	X526	Call	TC007 - Chuyen cuoc goi giua Wifi va 4G	Pass	Test passed
+TID-03-136	S721	Battery	TC008 - Sac nhanh 65W tu 20-80%	Pass	Test passed
+TID-03-137	A175	Battery	TC008 - Sac nhanh 65W tu 20-80%	Pass	Test passed
+TID-03-138	F966	Battery	TC008 - Sac nhanh 65W tu 20-80%	Pass	Test passed
+TID-03-139	F741	Battery	TC008 - Sac nhanh 65W tu 20-80%	Pass	Test passed
+TID-03-140	X526	Battery	TC008 - Sac nhanh 65W tu 20-80%	Pass	Test passed
+TID-03-141	S721	Battery	TC009 - Do hao pin khi quay video 4K lien tuc 4h	Fail	Pin tut nhanh bat thuong khi quay video 4K lien tuc
+TID-03-142	A175	Battery	TC009 - Do hao pin khi quay video 4K lien tuc 4h	Pass	Test passed
+TID-03-143	F966	Battery	TC009 - Do hao pin khi quay video 4K lien tuc 4h	Pass	Test passed
+TID-03-144	F741	Battery	TC009 - Do hao pin khi quay video 4K lien tuc 4h	Fail	Pin tut nhanh bat thuong khi quay video 4K lien tuc
+TID-03-145	X526	Battery	TC009 - Do hao pin khi quay video 4K lien tuc 4h	Fail	Pin tut nhanh bat thuong khi quay video 4K lien tuc
+TID-03-146	S721	Performance	TC010 - Mo 10 ung dung cung luc khong lag/crash	Pass	Test passed
+TID-03-147	A175	Performance	TC010 - Mo 10 ung dung cung luc khong lag/crash	Pass	Test passed
+TID-03-148	F966	Performance	TC010 - Mo 10 ung dung cung luc khong lag/crash	Pass	Test passed
+TID-03-149	F741	Performance	TC010 - Mo 10 ung dung cung luc khong lag/crash	Pass	Test passed
+TID-03-150	X526	Performance	TC010 - Mo 10 ung dung cung luc khong lag/crash	Pass	Test passed
