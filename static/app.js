@@ -58,7 +58,11 @@ function initTabs() {
 }
 
 // ---------------- Reference data ----------------
-async function loadReferenceData() {
+function isInputFixTabActive() {
+  return $("#tab-input-fix")?.classList.contains("active") || false;
+}
+
+async function fetchReferenceData() {
   const [models, owners, scripts, latest, lists] = await Promise.all([
     api("/api/models"),
     api("/api/owners"),
@@ -69,10 +73,17 @@ async function loadReferenceData() {
   state.models = models;
   state.owners = owners;
   state.scripts = scripts;
+  return { models, owners, scripts, latest, lists };
+}
 
+function renderReferenceData({ models, owners, scripts, latest, lists }) {
   const modelSel = $("#fModel");
+  const prevModelValue = modelSel.value; // giu lai lua chon hien tai cua nguoi dung truoc khi rebuild
   modelSel.innerHTML = models.map((m) => `<option value="${m}">${m}</option>`).join("") +
     `<option value="All Models">All Models (sua loi chung)</option>`;
+  if (prevModelValue && [...modelSel.options].some((o) => o.value === prevModelValue)) {
+    modelSel.value = prevModelValue;
+  }
 
   $("#ownerList").innerHTML = owners.map((o) => `<option value="${o.name}">`).join("");
   const suites = [...new Set([...lists.test_suites, ...scripts.map((s) => s.test_suite)])];
@@ -85,6 +96,11 @@ async function loadReferenceData() {
   const today = new Date().toISOString().slice(0, 10);
   if (!$("#fDate").value) $("#fDate").value = today;
   if ($("#rDate") && !$("#rDate").value) $("#rDate").value = today;
+}
+
+async function loadReferenceData() {
+  const data = await fetchReferenceData();
+  renderReferenceData(data);
 }
 
 // ---------------- Dashboard ----------------
@@ -888,8 +904,12 @@ function initInputResults() {
 }
 
 // ---------------- Input Fix ----------------
-async function loadFailingScripts() {
+async function fetchFailingScripts() {
   state.failingScripts = await api("/api/failing-scripts");
+}
+
+async function loadFailingScripts() {
+  await fetchFailingScripts();
   renderFailingScriptOptions();
 }
 
@@ -1559,9 +1579,14 @@ async function init() {
   initTableTools();  // sort + filter mỗi cột + xuất Excel cho mọi bảng data-table
 
   setInterval(async () => {
-    await loadReferenceData();
+    // Tab "Ghi nhận Fix" đang mở -> chỉ lấy dữ liệu mới ở nền, không rebuild
+    // dropdown/field đang thao tác dở (tránh làm gián đoạn form đang điền).
+    const inputFixActive = isInputFixTabActive();
+    const refData = await fetchReferenceData();
+    if (!inputFixActive) renderReferenceData(refData);
     await loadPriority();
-    await loadFailingScripts();
+    await fetchFailingScripts();
+    if (!inputFixActive) renderFailingScriptOptions();
     await refreshDashboard();
     if ($("#tab-priority").classList.contains("active")) { renderPriorityTableHead(); renderPriorityTable(); }
     if ($("#tab-cycle-compare").classList.contains("active")) { await loadCycleMatrix(); }
