@@ -173,6 +173,28 @@
     margin: 0;
     font-size: 13px;
   }
+
+  .admin-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .admin-tab-btn {
+    padding: 10px 18px;
+    border: none;
+    border-radius: 6px;
+    background: #e9edf2;
+    color: #1F4E78;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .admin-tab-btn.active {
+    background: #1F4E78;
+    color: white;
+  }
+  .admin-panel { display: none; }
+  .admin-panel.active { display: block; }
 </style>
 </head>
 <body>
@@ -184,6 +206,12 @@
 </header>
 
 <main>
+<div class="admin-tabs">
+  <button class="admin-tab-btn active" data-panel="panel-results" onclick="switchAdminTab('panel-results', this)">📥 Cycle Results</button>
+  <button class="admin-tab-btn" data-panel="panel-fixes" onclick="switchAdminTab('panel-fixes', this)">🛠️ Theo dõi Fix</button>
+</div>
+
+<div id="panel-results" class="admin-panel active">
 <div class="card">
   <div class="admin-header">
     <h2>⚙️ Quản lý dữ liệu Cycle Results</h2>
@@ -223,6 +251,50 @@
     </table>
   </div>
   <p id="resultCount" style="margin-top: 10px; color: #666; font-size: 12px;"></p>
+</div>
+</div>
+
+<div id="panel-fixes" class="admin-panel">
+<div class="card">
+  <div class="admin-header">
+    <h2>🛠️ Quản lý dữ liệu Theo dõi Fix</h2>
+    <p>Thêm / sửa / xóa trực tiếp các lần fix đã ghi nhận. Tìm kiếm theo owner, test suite, test case, model, hoặc root cause.</p>
+  </div>
+
+  <div class="info-box">
+    <p><strong>Mẹo:</strong> Bấm "➕ Thêm fix mới" để tạo 1 dòng fix tay (VD: bù dữ liệu bị thiếu). Sửa/xóa hoạt động như bảng Cycle Results.</p>
+  </div>
+
+  <div class="search-bar">
+    <input type="text" id="fixSearchInput" placeholder="Tìm kiếm (owner, test suite, test case, model, root cause...)">
+    <button onclick="searchFixes()">🔍 Tìm kiếm</button>
+    <button onclick="loadAllFixes()" style="background: #666;">⟳ Tải lại</button>
+    <button onclick="openAddFixModal()" style="background: #4CAF50;">➕ Thêm fix mới</button>
+  </div>
+
+  <div style="overflow-x: auto;">
+    <table class="results-table" id="fixesTable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Ngày fix</th>
+          <th>Owner</th>
+          <th>Test Suite</th>
+          <th>Test Case</th>
+          <th>Model đã fix</th>
+          <th>Fix sau cycle</th>
+          <th>Root cause</th>
+          <th>Ghi chú</th>
+          <th>Tạo lúc</th>
+          <th>Hành động</th>
+        </tr>
+      </thead>
+      <tbody id="fixesBody">
+      </tbody>
+    </table>
+  </div>
+  <p id="fixCount" style="margin-top: 10px; color: #666; font-size: 12px;"></p>
+</div>
 </div>
 </main>
 
@@ -278,9 +350,58 @@
   </div>
 </div>
 
+<!-- Fix Modal (dùng chung cho Thêm mới + Sửa) -->
+<div id="fixModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2 id="fixModalTitle">Sửa lần fix</h2>
+      <button class="close-btn" onclick="closeFixModal()">✕</button>
+    </div>
+    <form id="fixForm" onsubmit="saveFix(event)">
+      <div class="form-group">
+        <label>Ngày fix:</label>
+        <input type="date" id="fixDate" required>
+      </div>
+      <div class="form-group">
+        <label>Owner:</label>
+        <input type="text" id="fixOwner" required>
+      </div>
+      <div class="form-group">
+        <label>Test Suite:</label>
+        <input type="text" id="fixTestSuite" required>
+      </div>
+      <div class="form-group">
+        <label>Test Case:</label>
+        <input type="text" id="fixTestCase" required>
+      </div>
+      <div class="form-group">
+        <label>Model đã fix:</label>
+        <input type="text" id="fixModelFixed" required>
+      </div>
+      <div class="form-group">
+        <label>Fixed after cycle:</label>
+        <input type="number" id="fixFixedAfterCycle" min="1" required>
+      </div>
+      <div class="form-group">
+        <label>Root cause:</label>
+        <textarea id="fixRootCause"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Ghi chú:</label>
+        <textarea id="fixNote"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-cancel" onclick="closeFixModal()">Hủy</button>
+        <button type="submit" class="btn-primary">💾 Lưu</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
 const ADMIN_KEY = "haianh6729";
 let currentEditId = null;
+let currentFixEditId = null; // null = dang them moi
 
 async function loadAllResults() {
   document.getElementById('searchInput').value = '';
@@ -401,6 +522,152 @@ async function deleteResult(id) {
     alert('❌ Lỗi xóa!');
   }
 }
+
+// ---------------- Tab switching ----------------
+function switchAdminTab(panelId, btn) {
+  document.querySelectorAll('.admin-panel').forEach((p) => p.classList.remove('active'));
+  document.querySelectorAll('.admin-tab-btn').forEach((b) => b.classList.remove('active'));
+  document.getElementById(panelId).classList.add('active');
+  btn.classList.add('active');
+  if (panelId === 'panel-fixes' && !fixesLoadedOnce) { fixesLoadedOnce = true; loadAllFixes(); }
+}
+
+// ---------------- Fixes (Theo dõi Fix) CRUD ----------------
+let fixesLoadedOnce = false;
+
+async function loadAllFixes() {
+  document.getElementById('fixSearchInput').value = '';
+  const response = await fetch(`/api/admin/fixes?key=${ADMIN_KEY}`);
+  const data = await response.json();
+  displayFixes(data);
+}
+
+async function searchFixes() {
+  const search = document.getElementById('fixSearchInput').value.trim();
+  if (!search) {
+    loadAllFixes();
+    return;
+  }
+  const response = await fetch(`/api/admin/fixes?key=${ADMIN_KEY}&search=${encodeURIComponent(search)}`);
+  const data = await response.json();
+  displayFixes(data);
+}
+
+function displayFixes(fixes) {
+  const tbody = document.getElementById('fixesBody');
+  tbody.innerHTML = '';
+
+  fixes.forEach((f) => {
+    const row = tbody.insertRow();
+    row.innerHTML = `
+      <td>${f.id}</td>
+      <td>${f.fix_date || '-'}</td>
+      <td>${f.owner}</td>
+      <td>${f.test_suite}</td>
+      <td>${f.test_case}</td>
+      <td>${f.model_fixed}</td>
+      <td>${f.fixed_after_cycle}</td>
+      <td style="max-width:220px; word-break:break-word;">${f.root_cause || '-'}</td>
+      <td style="max-width:180px; word-break:break-word;">${f.note || '-'}</td>
+      <td>${f.created_at ? f.created_at.split(' ')[0] : '-'}</td>
+      <td>
+        <div class="action-btns">
+          <button class="btn-sm btn-edit" onclick="openEditFixModal(${f.id}, ${JSON.stringify(f).replace(/"/g, '&quot;')})">✏️ Sửa</button>
+          <button class="btn-sm btn-delete" onclick="deleteFix(${f.id})">🗑️ Xóa</button>
+        </div>
+      </td>
+    `;
+  });
+
+  document.getElementById('fixCount').textContent = `Tổng: ${fixes.length} lần fix`;
+}
+
+function openAddFixModal() {
+  currentFixEditId = null;
+  document.getElementById('fixModalTitle').textContent = 'Thêm fix mới';
+  document.getElementById('fixForm').reset();
+  document.getElementById('fixDate').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('fixFixedAfterCycle').value = 1;
+  document.getElementById('fixModal').classList.add('show');
+}
+
+function openEditFixModal(id, fix) {
+  currentFixEditId = id;
+  document.getElementById('fixModalTitle').textContent = 'Sửa lần fix';
+  document.getElementById('fixDate').value = fix.fix_date || '';
+  document.getElementById('fixOwner').value = fix.owner || '';
+  document.getElementById('fixTestSuite').value = fix.test_suite || '';
+  document.getElementById('fixTestCase').value = fix.test_case || '';
+  document.getElementById('fixModelFixed').value = fix.model_fixed || '';
+  document.getElementById('fixFixedAfterCycle').value = fix.fixed_after_cycle;
+  document.getElementById('fixRootCause').value = fix.root_cause || '';
+  document.getElementById('fixNote').value = fix.note || '';
+  document.getElementById('fixModal').classList.add('show');
+}
+
+function closeFixModal() {
+  document.getElementById('fixModal').classList.remove('show');
+  currentFixEditId = null;
+}
+
+async function saveFix(event) {
+  event.preventDefault();
+
+  const data = {
+    fix_date: document.getElementById('fixDate').value,
+    owner: document.getElementById('fixOwner').value.trim(),
+    test_suite: document.getElementById('fixTestSuite').value.trim(),
+    test_case: document.getElementById('fixTestCase').value.trim(),
+    model_fixed: document.getElementById('fixModelFixed').value.trim(),
+    fixed_after_cycle: parseInt(document.getElementById('fixFixedAfterCycle').value, 10),
+    root_cause: document.getElementById('fixRootCause').value.trim(),
+    note: document.getElementById('fixNote').value.trim(),
+  };
+
+  const isEdit = currentFixEditId !== null;
+  const url = isEdit ? `/api/admin/fixes/${currentFixEditId}` : '/api/admin/fixes';
+  const response = await fetch(url, {
+    method: isEdit ? 'PUT' : 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Admin-Key': ADMIN_KEY
+    },
+    body: JSON.stringify(data)
+  });
+
+  if (response.ok) {
+    alert(isEdit ? '✅ Cập nhật thành công!' : '✅ Đã thêm fix mới!');
+    closeFixModal();
+    loadAllFixes();
+  } else {
+    const err = await response.json().catch(() => ({}));
+    alert('❌ Lỗi: ' + (err.error || 'không rõ nguyên nhân'));
+  }
+}
+
+async function deleteFix(id) {
+  if (!confirm('⚠️ Xác nhận xóa lần fix này? Không thể hoàn tác!')) {
+    return;
+  }
+
+  const response = await fetch(`/api/admin/fixes/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'X-Admin-Key': ADMIN_KEY
+    }
+  });
+
+  if (response.ok) {
+    alert('✅ Đã xóa!');
+    loadAllFixes();
+  } else {
+    alert('❌ Lỗi xóa!');
+  }
+}
+
+document.getElementById('fixSearchInput').addEventListener('keypress', function(e) {
+  if (e.key === 'Enter') searchFixes();
+});
 
 // Load results on page load
 document.addEventListener('DOMContentLoaded', loadAllResults);

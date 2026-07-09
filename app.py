@@ -968,6 +968,7 @@ def _status_from_after_rows(after_rows):
 def compute_fix_tracking(db):
     """Làm giàu mỗi dòng fix với trạng thái resolution + thông tin lần chạy sau fix."""
     fixes = db.execute("SELECT * FROM fixes ORDER BY id DESC").fetchall()
+    owner_team = {r["name"]: r["team"] for r in db.execute("SELECT name, team FROM owners").fetchall()}
     out = []
     for f in fixes:
         suite, case = f["test_suite"], f["test_case"]
@@ -991,6 +992,7 @@ def compute_fix_tracking(db):
         n_fail_after = sum(1 for r in after_rows if r["result"] == "Fail")
         out.append({
             "id": f["id"], "fix_date": f["fix_date"], "owner": f["owner"],
+            "team": owner_team.get(f["owner"]) or "",
             "test_suite": suite, "test_case": case, "model_fixed": model_fixed,
             "fixed_after_cycle": after_cycle, "note": f["note"],
             "root_cause": (f["root_cause"] if "root_cause" in f.keys() else "") or "",
@@ -1511,6 +1513,167 @@ def export_csv(table):
     mem = io.BytesIO(output.getvalue().encode("utf-8-sig"))
     return send_file(mem, mimetype="text/csv", as_attachment=True,
                       download_name=f"{table}_export.csv")
+
+
+def _heat_hex(rate):
+    """Mau heatmap theo pass rate 0..1: do (0) -> vang -> xanh la (1), giong heatColor() ben JS
+    (HSL hue 0..120, S=62%, L=86%) nhung tra ve hex RGB de dung lam PatternFill trong Excel."""
+    h = (max(0.0, min(1.0, rate)) * 120) / 360
+    s, l = 0.62, 0.86
+
+    def hue2rgb(p, q, t):
+        if t < 0:
+            t += 1
+        if t > 1:
+            t -= 1
+        if t < 1 / 6:
+            return p + (q - p) * 6 * t
+        if t < 1 / 2:
+            return q
+        if t < 2 / 3:
+            return p + (q - p) * (2 / 3 - t) * 6
+        return p
+
+    q = l * (1 + s) if l < 0.5 else l + s - l * s
+    p = 2 * l - q
+    r = hue2rgb(p, q, h + 1 / 3)
+    g = hue2rgb(p, q, h)
+    b = hue2rgb(p, q, h - 1 / 3)
+    return f"{round(r * 255):02X}{round(g * 255):02X}{round(b * 255):02X}"
+
+
+@app.route("/api/export/excel/suite-model-matrix")
+def export_excel_suite_model_matrix():
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    db = get_db()
+    matrix = compute_suite_model_matrix(db)
+    all_cycles = matrix["cycles"]
+
+    cycles_param = request.args.get("cycles", "").strip()
+    if cycles_param:
+        wanted = {int(c) for c in cycles_param.split(",") if c.strip().isdigit()}
+        sel_cycles = [c for c in all_cycles if c["cycle"] in wanted]
+    else:
+        sel_cycles = all_cycles
+    if not sel_cycles:
+        sel_cycles = all_cycles
+
+    NAVY = "1F4E78"
+    HEADER_FILL = PatternFill("solid", fgColor=NAVY)
+    HEADER_FONT = Font(bold=True, color="FFFFFF", name="Calibri", size=10)
+    TITLE_FONT = Font(bold=True, name="Calibri", size=14, color=NAVY)
+    HINT_FONT = Font(name="Calibri", size=9, italic=True, color="6B7280")
+    OVERALL_FILL = PatternFill("solid", fgColor="EEF3FB")
+    MODEL_FONT = Font(bold=True, color="FFFFFF", name="Calibri", size=9)
+    MODEL_FILL = PatternFill("solid", fgColor="3498DB")
+    NONE_FILL = PatternFill("solid", fgColor="F5F5F5")
+    THIN = Side(style="thin", color="D9D9D9")
+    BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
+    WRAP_CENTER = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Pass_Rate_Matrix"
+    ws.sheet_view.showGridLines = False
+
+    ws["A1"] = "PASS RATE THEO ITEM x MODEL x CYCLE"
+    ws["A1"].font = TITLE_FONT
+    ws["A2"] = f"Xuat luc: {datetime.now().strftime('%Y-%m-%d %H:%M')}  |  Cycle: " + \
+        ", ".join(f"C{c['cycle']}" for c in sel_cycles)
+    ws["A2"].font = HINT_FONT
+    ws["A3"] = "Cong thuc Pass Rate = (Pass + Check + Manual Check) / (Tong so - Skip - NA)"
+    ws["A3"].font = HINT_FONT
+
+    header_row = 5
+    ws.cell(row=header_row, column=1, value="Item (Test suite)")
+    ws.cell(row=header_row, column=2, value="Model")
+    for i, c in enumerate(sel_cycles):
+        col = 3 + i
+        label = f"Cycle {c['cycle']}" + (f"\n{c['cycle_date']}" if c.get("cycle_date") else "")
+        ws.cell(row=header_row, column=col, value=label)
+    style_row_range = range(1, 3 + len(sel_cycles))
+    for col in style_row_range:
+        cell = ws.cell(row=header_row, column=col)
+        cell.fill = HEADER_FILL
+        cell.font = HEADER_FONT
+        cell.alignment = WRAP_CENTER
+        cell.border = BORDER
+
+    def write_cell(row, col, cell_data):
+        c = ws.cell(row=row, column=col)
+        if not cell_data or cell_data.get("pass_rate") is None:
+            c.value = "—"
+            c.fill = NONE_FILL
+        else:
+            rate = cell_data["pass_rate"]
+            c.value = f"{rate * 100:.0f}%\n{cell_data['fail_count']}F / {cell_data['total']}T" + \
+                (f" / {cell_data['na_count']}NA" if cell_data.get("na_count") else "")
+            c.fill = PatternFill("solid", fgColor=_heat_hex(rate))
+        c.alignment = WRAP_CENTER
+        c.border = BORDER
+        c.font = Font(name="Calibri", size=9, bold=True)
+
+    row = header_row + 1
+    ws.cell(row=row, column=1, value="OVERALL - tat ca script")
+    ws.cell(row=row, column=1).font = Font(bold=True, name="Calibri", size=10)
+    ws.cell(row=row, column=1).fill = OVERALL_FILL
+    ws.cell(row=row, column=1).border = BORDER
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=2)
+    ws.cell(row=row, column=2).fill = OVERALL_FILL
+    ws.cell(row=row, column=2).border = BORDER
+    overall_by_cycle = matrix["overall_by_cycle"]
+    for i, c in enumerate(sel_cycles):
+        write_cell(row, 3 + i, overall_by_cycle.get(c["cycle"]))
+    row += 1
+
+    # Gom nhom theo Item giong tren web: merge cot Item cho tat ca model cua item do.
+    groups = {}
+    order = []
+    for r in matrix["rows"]:
+        if r["test_suite"] not in groups:
+            groups[r["test_suite"]] = []
+            order.append(r["test_suite"])
+        groups[r["test_suite"]].append(r)
+
+    for suite in order:
+        items = groups[suite]
+        start_row = row
+        for r in items:
+            ws.cell(row=row, column=2, value=r["model"])
+            ws.cell(row=row, column=2).font = MODEL_FONT
+            ws.cell(row=row, column=2).fill = MODEL_FILL
+            ws.cell(row=row, column=2).alignment = WRAP_CENTER
+            ws.cell(row=row, column=2).border = BORDER
+            for i, c in enumerate(sel_cycles):
+                write_cell(row, 3 + i, r["by_cycle"].get(c["cycle"]))
+            row += 1
+        end_row = row - 1
+        ws.cell(row=start_row, column=1, value=suite)
+        ws.cell(row=start_row, column=1).font = Font(bold=True, name="Calibri", size=10)
+        ws.cell(row=start_row, column=1).alignment = WRAP_CENTER
+        for r_ in range(start_row, end_row + 1):
+            ws.cell(row=r_, column=1).border = BORDER
+        if end_row > start_row:
+            ws.merge_cells(start_row=start_row, start_column=1, end_row=end_row, end_column=1)
+
+    ws.column_dimensions["A"].width = 20
+    ws.column_dimensions["B"].width = 14
+    for i in range(len(sel_cycles)):
+        from openpyxl.utils import get_column_letter
+        ws.column_dimensions[get_column_letter(3 + i)].width = 16
+    ws.freeze_panes = ws.cell(row=header_row + 1, column=3)
+
+    mem = io.BytesIO()
+    wb.save(mem)
+    mem.seek(0)
+    return send_file(
+        mem,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=f"PassRate_ItemModelCycle_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+    )
 
 
 @app.route("/api/export/excel")
@@ -2082,6 +2245,98 @@ def admin_delete_result(result_id):
     db = get_db()
     db.execute("DELETE FROM results WHERE id=?", (result_id,))
     recompute_cycles(db)  # danh so lai cycle theo ngay sau khi xoa (co the mat het 1 ngay)
+    db.commit()
+
+    return jsonify({"status": "deleted"})
+
+
+@app.route("/api/admin/fixes", methods=["GET"])
+def admin_get_fixes():
+    secret_key = request.args.get("key", "")
+    if secret_key != ADMIN_SECRET_KEY:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    db = get_db()
+    limit = int(request.args.get("limit", 1000))
+    search = request.args.get("search", "").strip()
+
+    if search:
+        rows = db.execute(
+            """SELECT * FROM fixes
+               WHERE owner LIKE ? OR test_suite LIKE ? OR test_case LIKE ?
+                  OR model_fixed LIKE ? OR root_cause LIKE ?
+               ORDER BY id DESC LIMIT ?""",
+            (f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%", limit)
+        ).fetchall()
+    else:
+        rows = db.execute(
+            "SELECT * FROM fixes ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/admin/fixes", methods=["POST"])
+def admin_create_fix():
+    secret_key = request.headers.get("X-Admin-Key", "")
+    if secret_key != ADMIN_SECRET_KEY:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    data = request.get_json(force=True)
+    required_fields = ["fix_date", "owner", "test_suite", "test_case", "model_fixed", "fixed_after_cycle"]
+    for f in required_fields:
+        if not str(data.get(f, "")).strip():
+            return jsonify({"error": f"Thiếu trường bắt buộc: {f}"}), 400
+
+    db = get_db()
+    db.execute(
+        """INSERT INTO fixes (fix_date, owner, test_suite, test_case, model_fixed, fixed_after_cycle, note, root_cause)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            data["fix_date"], data["owner"].strip(), data["test_suite"].strip(), data["test_case"].strip(),
+            data["model_fixed"].strip(), int(data["fixed_after_cycle"]),
+            data.get("note", "").strip(), data.get("root_cause", "").strip(),
+        )
+    )
+    db.commit()
+    return jsonify({"status": "created"})
+
+
+@app.route("/api/admin/fixes/<int:fix_id>", methods=["PUT"])
+def admin_update_fix(fix_id):
+    secret_key = request.headers.get("X-Admin-Key", "")
+    if secret_key != ADMIN_SECRET_KEY:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    data = request.get_json(force=True)
+    db = get_db()
+
+    allowed_fields = ["fix_date", "owner", "test_suite", "test_case", "model_fixed", "fixed_after_cycle", "note", "root_cause"]
+    updates = []
+    values = []
+    for field in allowed_fields:
+        if field in data:
+            updates.append(f"{field}=?")
+            values.append(int(data[field]) if field == "fixed_after_cycle" else data[field])
+
+    if not updates:
+        return jsonify({"error": "No fields to update"}), 400
+
+    values.append(fix_id)
+    query = f"UPDATE fixes SET {', '.join(updates)} WHERE id=?"
+    db.execute(query, values)
+    db.commit()
+
+    return jsonify({"status": "updated"})
+
+
+@app.route("/api/admin/fixes/<int:fix_id>", methods=["DELETE"])
+def admin_delete_fix(fix_id):
+    secret_key = request.headers.get("X-Admin-Key", "")
+    if secret_key != ADMIN_SECRET_KEY:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    db = get_db()
+    db.execute("DELETE FROM fixes WHERE id=?", (fix_id,))
     db.commit()
 
     return jsonify({"status": "deleted"})
