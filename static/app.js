@@ -473,6 +473,12 @@ function renderSmOverall() {
     <span style="color:#888; font-size:12px;">(${pass} pass-like / ${denom} tính điểm — loại ${na} NA, tổng ${total} lượt chạy)</span>`;
 }
 
+function exportSmMatrixExcel() {
+  const sel = smSelectedCyclesList();
+  const cycles = sel.map((c) => c.cycle).join(",");
+  window.location.href = "/api/export/excel/suite-model-matrix" + (cycles ? `?cycles=${cycles}` : "");
+}
+
 function renderOwnerTable(owner_stats) {
   const tbody = $("#ownerTable tbody");
   if (!owner_stats.length) {
@@ -1048,7 +1054,8 @@ function renderFixTracking() {
     const matchQ = !q || r.owner.toLowerCase().includes(q) ||
       r.test_case.toLowerCase().includes(q) || r.test_suite.toLowerCase().includes(q) ||
       (r.model_fixed || "").toLowerCase().includes(q) ||
-      (r.root_cause || "").toLowerCase().includes(q);
+      (r.root_cause || "").toLowerCase().includes(q) ||
+      (r.team || "").toLowerCase().includes(q);
     const matchS = !statusFilter || r.status === statusFilter;
     return matchQ && matchS;
   });
@@ -1058,6 +1065,7 @@ function renderFixTracking() {
     <tr>
       <td><span class="tag" style="background:${st.color}">${st.label}</span></td>
       <td>${r.owner}</td>
+      <td>${r.team || '<span style="color:#bbb">—</span>'}</td>
       <td>${r.test_suite}</td>
       <td>${r.test_case}</td>
       <td>${r.model_fixed}</td>
@@ -1069,7 +1077,7 @@ function renderFixTracking() {
       <td>${r.fix_date}</td>
       <td style="max-width:200px; word-break:break-word; font-size:11px; color:#666">${r.note || "—"}</td>
     </tr>`;
-  }).join("") || `<tr><td colspan="12" style="color:#999">Chưa có lần fix nào khớp.</td></tr>`;
+  }).join("") || `<tr><td colspan="13" style="color:#999">Chưa có lần fix nào khớp.</td></tr>`;
 }
 
 function initFixTracking() {
@@ -1203,6 +1211,10 @@ async function handleAssign(suite, testCase, currentOwner) {
   }
 }
 
+function escAttr(s) {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 async function showFailDetails(suite, testCase) {
   try {
     const fails = await api(`/api/script-fail-details/${encodeURIComponent(suite)}/${encodeURIComponent(testCase)}`);
@@ -1221,7 +1233,7 @@ async function showFailDetails(suite, testCase) {
         <td style="border:1px solid #ddd; padding:10px; font-family:monospace; color:#2196F3; font-weight:bold; cursor:pointer; user-select:all;" title="Click to copy" onclick="navigator.clipboard.writeText('${f.test_id}'); this.style.background='#d4edda'; setTimeout(() => this.style.background='', 500);">${f.test_id}</td>
         <td style="border:1px solid #ddd; padding:10px;">${f.model}</td>
         <td style="border:1px solid #ddd; padding:10px;"><span style="color:#fff; background:#e74c3c; padding:4px 8px; border-radius:3px; font-weight:bold;">${f.state}</span></td>
-        <td style="border:1px solid #ddd; padding:10px; max-width:350px; word-break:break-word; font-size:12px; color:#555;">${(f.description || "—").substring(0, 200)}</td>
+        <td style="border:1px solid #ddd; padding:10px; max-width:350px; word-break:break-word; font-size:12px; color:#555; cursor:help;" title="${escAttr(f.description || "")}">${escAttr((f.description || "—").length > 200 ? (f.description || "").slice(0, 200) + "…" : (f.description || "—"))}</td>
       </tr>`;
     }
     html += `</tbody></table>
@@ -1568,6 +1580,7 @@ async function init() {
   initFixTracking();
   initCycleMatrix();
   wireTableFilters();
+  $("#btnExportSmMatrix")?.addEventListener("click", exportSmMatrixExcel);
   await loadReferenceData();
   initPriorityTable();
   await initSettings();
