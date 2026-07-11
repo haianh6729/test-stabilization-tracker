@@ -201,15 +201,15 @@
 
 <!-- ============ NEW SCRIPTS (Script viết mới) ============ -->
 <section id="tab-new-scripts" class="tab-panel">
-  <div class="card narrow">
+  <div class="card">
     <h3>✍️ Ghi nhận script được viết mới</h3>
     <p class="hint">Mỗi thành viên tự điền khi viết xong (hoặc bỏ qua) script cho 1 Test Case. Nhập <b>TC ID</b> → hệ thống tự nhận diện <b>Item</b> và kiểm tra định dạng. <b>Item</b>, <b>Team</b>, <b>Assign Week</b> đều tự điền. Mỗi TC ID chỉ ghi nhận <b>một lần duy nhất</b>.</p>
-    <div class="form-grid">
+    <div class="ns-form-grid">
       <label>TC ID <span style="color:#e74c3c">*</span>
         <input type="text" id="nsTcId" placeholder="VD: Browser_000123" autocomplete="off">
         <span id="nsTcIdHint" class="hint" style="font-weight:normal"></span>
       </label>
-      <label>Item <span class="hint" style="font-weight:normal">(tự nhận diện từ TC ID)</span>
+      <label>Item <span class="hint" style="font-weight:normal">(tự nhận diện)</span>
         <input type="text" id="nsItem" placeholder="—" readonly>
       </label>
       <label>Member (người viết) <span style="color:#e74c3c">*</span>
@@ -219,28 +219,36 @@
       <label>Team <span class="hint" style="font-weight:normal">(tự điền theo Member)</span>
         <input type="text" id="nsTeam" placeholder="—" readonly>
       </label>
-      <label>Status <span style="color:#e74c3c">*</span>
-        <div class="ns-radio-row">
-          <label class="ns-inline"><input type="radio" name="nsStatus" value="DONE" checked> ✅ DONE (đã viết xong)</label>
-          <label class="ns-inline"><input type="radio" name="nsStatus" value="SKIP"> ⏭️ SKIP (bỏ qua)</label>
-        </div>
-      </label>
       <label>Completed date
         <input type="date" id="nsDate">
       </label>
-      <label>Assign Week <span class="hint" style="font-weight:normal">(tự tính theo ngày, sửa được)</span>
+      <label>Assign Week <span class="hint" style="font-weight:normal">(tự tính, sửa được)</span>
         <input type="number" id="nsWeek" min="1" max="53" placeholder="—">
       </label>
       <label>SDF ID <span class="hint" style="font-weight:normal">(tuỳ chọn)</span>
         <input type="text" id="nsSdfId" placeholder="Nhập SDF ID nếu có" autocomplete="off">
       </label>
-      <label class="full" id="nsModelsWrap">Model đã viết script <span class="hint" style="font-weight:normal">(chọn ít nhất 1 khi DONE — dùng chung danh sách model hệ thống)</span>
-        <div id="nsModels" class="ns-model-checks"></div>
-      </label>
+    </div>
+
+    <div class="ns-group">
+      <span class="ns-group-label">Status <span style="color:#e74c3c">*</span></span>
+      <div class="ns-radio-row">
+        <label class="ns-inline"><input type="radio" name="nsStatus" value="DONE"> ✅ DONE (đã viết xong)</label>
+        <label class="ns-inline"><input type="radio" name="nsStatus" value="SKIP"> ⏭️ SKIP (bỏ qua)</label>
+      </div>
+    </div>
+
+    <div class="ns-group" id="nsModelsWrap">
+      <span class="ns-group-label">Model đã viết script <span style="color:#e74c3c">*khi DONE</span> <span class="hint" style="font-weight:normal">(chọn ít nhất 1 — dùng chung danh sách model hệ thống)</span></span>
+      <div id="nsModels" class="ns-model-checks"></div>
+    </div>
+
+    <div class="ns-form-grid">
       <label class="full" id="nsRemarkWrap">Remark <span id="nsRemarkReq" style="color:#e74c3c; display:none">*bắt buộc khi SKIP</span>
         <input type="text" id="nsRemark" placeholder="Lý do SKIP, hoặc ghi chú thêm">
       </label>
     </div>
+
     <div class="form-row">
       <button class="btn-primary" id="btnSubmitNewScript">Ghi nhận script</button>
       <button class="btn-secondary" id="btnClearNewScript">Xoá form</button>
@@ -251,11 +259,11 @@
   <div class="card">
     <h3>📄 Danh sách script đã ghi nhận (<span id="nsCount">0</span>)</h3>
     <p class="hint">Toàn bộ script viết mới đã ghi nhận. Bấm tiêu đề cột để sắp xếp, gõ vào ô lọc dưới mỗi cột để lọc, hoặc dùng nút xuất CSV.</p>
-    <table id="newScriptsTable" class="data-table">
+    <table id="newScriptsTable" class="data-table ns-table">
       <thead>
         <tr>
-          <th>Item</th><th>TC ID</th><th>Member</th><th>Team</th><th>Week</th>
-          <th>Completed date</th><th>Status</th><th>Model đã viết</th><th>SDF ID</th><th>Remark</th>
+          <th style="width:9%">Item</th><th style="width:13%">TC ID</th><th style="width:11%">Member</th><th style="width:9%">Team</th><th style="width:5%">Week</th>
+          <th style="width:10%">Completed date</th><th style="width:7%">Status</th><th style="width:13%">Model đã viết</th><th style="width:8%">SDF ID</th><th>Remark</th>
         </tr>
       </thead>
       <tbody></tbody>

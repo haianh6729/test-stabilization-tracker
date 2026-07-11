@@ -1060,7 +1060,7 @@ function nsIsoWeek(dateStr) {
 
 function nsSelectedStatus() {
   const el = document.querySelector('input[name="nsStatus"]:checked');
-  return el ? el.value : "DONE";
+  return el ? el.value : "";
 }
 
 // Điền Assign Week theo Completed date. force=false: chỉ điền khi ô Week đang trống
@@ -1120,8 +1120,7 @@ function nsUpdateStatusUI() {
 function nsClearForm() {
   ["#nsTcId", "#nsItem", "#nsMember", "#nsTeam", "#nsSdfId", "#nsWeek", "#nsRemark"].forEach((s) => { const el = $(s); if (el) el.value = ""; });
   $$("#nsModels input:checked").forEach((cb) => cb.checked = false);
-  const doneRadio = document.querySelector('input[name="nsStatus"][value="DONE"]');
-  if (doneRadio) doneRadio.checked = true;
+  $$('input[name="nsStatus"]:checked').forEach((r) => r.checked = false);
   nsUpdateStatusUI();
   nsSyncWeekFromDate(true); // ngày vẫn giữ -> điền lại Week
   const hint = $("#nsTcIdHint"); if (hint) hint.innerHTML = "";
@@ -1154,9 +1153,9 @@ function renderNewScriptsTable() {
       <td>${r.assign_week ?? "—"}</td>
       <td>${r.completed_date || "—"}</td>
       <td>${statusTag(r.status)}</td>
-      <td style="font-size:11px">${r.models_written || '<span style="color:#bbb">—</span>'}</td>
-      <td style="font-size:11px">${r.sdf_id || '<span style="color:#bbb">—</span>'}</td>
-      <td style="max-width:220px; word-break:break-word; font-size:11px; color:#555">${r.remark || '<span style="color:#bbb">—</span>'}</td>
+      <td style="font-size:12px">${r.models_written || '<span style="color:#bbb">—</span>'}</td>
+      <td style="font-size:12px">${r.sdf_id || '<span style="color:#bbb">—</span>'}</td>
+      <td class="ns-remark-cell" title="${escAttr(r.remark || "")}">${r.remark || '<span style="color:#bbb">—</span>'}</td>
     </tr>`).join("");
 }
 
@@ -1196,8 +1195,9 @@ function initNewScripts() {
     if ((state.newScripts || []).some((s) => (s.tc_id || "").toLowerCase() === payload.tc_id.toLowerCase())) {
       msg.textContent = "⛔ TC ID này đã được nhập trước đó — không thể nhập trùng."; msg.className = "msg-err"; return;
     }
+    if (!payload.status) { msg.textContent = "Vui lòng chọn Status (DONE hoặc SKIP)."; msg.className = "msg-err"; return; }
+    if (payload.status === "DONE" && !payload.models_written.length) { msg.textContent = "⚠️ Bắt buộc chọn ít nhất 1 model đã viết khi Status = DONE."; msg.className = "msg-err"; return; }
     if (payload.status === "SKIP" && !payload.remark) { msg.textContent = "Bắt buộc nhập Remark khi Status = SKIP."; msg.className = "msg-err"; $("#nsRemark").focus(); return; }
-    if (payload.status === "DONE" && !payload.models_written.length) { msg.textContent = "Chọn ít nhất 1 model đã viết khi Status = DONE."; msg.className = "msg-err"; return; }
     try {
       const res = await api("/api/new-scripts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       msg.textContent = `✅ Đã ghi nhận: ${res.item} / ${res.tc_id} (tuần ${res.assign_week ?? "—"}).`;

@@ -292,6 +292,48 @@ main { padding: 20px; max-width: 1400px; margin: 0 auto; }
   margin: 0;
 }
 
+.ns-form-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px 14px;
+  margin-bottom: 14px;
+}
+.ns-form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.ns-form-grid input[readonly] {
+  background: var(--bg);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+.ns-form-grid label.full { grid-column: 1 / -1; }
+.ns-group {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.ns-group-label {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.ns-table td { vertical-align: top; }
+.ns-table td.ns-remark-cell {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: #555;
+}
+
 input, select, textarea {
   padding: 7px 9px;
   border: 1px solid var(--border);
@@ -324,6 +366,10 @@ textarea {
 
 #previewBox { margin-top: 10px; max-height: 240px; overflow: auto; }
 
+@media (max-width: 1100px) {
+  .ns-form-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
 @media (max-width: 900px) {
-  .chart-grid, .table-grid, .form-grid { grid-template-columns: 1fr; }
+  .chart-grid, .table-grid, .form-grid, .ns-form-grid { grid-template-columns: 1fr; }
 }
