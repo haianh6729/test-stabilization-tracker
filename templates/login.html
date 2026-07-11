@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Đăng nhập — Test Stabilization Tracker</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .auth-card {
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.08); padding: 28px 30px; width: 360px; max-width: 92vw;
+  }
+  .auth-card h1 { font-size: 20px; color: var(--primary); margin: 0 0 4px; }
+  .auth-card .sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+  .auth-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; font-size: 13px; color: var(--muted); }
+  .auth-field input { padding: 9px 11px; border: 1px solid var(--border); border-radius: 7px; font-size: 14px; }
+  .auth-btn {
+    width: 100%; padding: 10px; border: none; border-radius: 7px; background: var(--primary);
+    color: white; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 4px;
+  }
+  .auth-btn:hover { background: var(--primary-light); }
+  .auth-alt { text-align: center; font-size: 13px; margin-top: 16px; color: var(--muted); }
+  .auth-alt a { color: var(--primary-light); font-weight: 600; text-decoration: none; }
+  .auth-msg { font-size: 13px; margin-top: 12px; min-height: 18px; }
+  .auth-msg.err { color: #c0392b; }
+  .auth-msg.ok { color: #1e8449; }
+</style>
+</head>
+<body>
+<form class="auth-card" id="loginForm" autocomplete="off">
+  <h1>🧪 Đăng nhập</h1>
+  <p class="sub">Test Stabilization Tracker</p>
+  <label class="auth-field">Tên tài khoản (Owner)
+    <input type="text" id="username" placeholder="VD: anh.hh" autofocus>
+  </label>
+  <label class="auth-field">Mật khẩu
+    <input type="password" id="password" placeholder="Nhập mật khẩu">
+  </label>
+  <button type="submit" class="auth-btn">Đăng nhập</button>
+  <div class="auth-msg" id="msg"></div>
+  <p class="auth-alt">Chưa có tài khoản? <a href="/register">Đăng ký</a></p>
+</form>
+<script>
+const form = document.getElementById("loginForm");
+const msg = document.getElementById("msg");
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  msg.textContent = ""; msg.className = "auth-msg";
+  const username = document.getElementById("username").value.trim();
+  const password = document.getElementById("password").value;
+  try {
+    const res = await fetch("/api/auth/login", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || ("HTTP " + res.status));
+    window.location = "/";
+  } catch (err) {
+    msg.textContent = err.message; msg.className = "auth-msg err";
+  }
+});
+</script>
+</body>
+</html>

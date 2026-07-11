@@ -1,0 +1,35 @@
+TID-SAMPLE-001	SM-S721	Camera	Browser_SAMPLE_001 - Chup anh ngoai troi	Pass	Auto focus hoạt động tốt
+TID-SAMPLE-002	SM-A175	Camera	Browser_SAMPLE_001 - Chup anh ngoai troi	Pass	Kết quả ổn định
+TID-SAMPLE-003	SM-F966	Camera	Browser_SAMPLE_001 - Chup anh ngoai troi	Fail	Ảnh bị mờ do thiếu sáng
+TID-SAMPLE-004	SM-X526	Camera	Browser_SAMPLE_001 - Chup anh ngoai troi	Pass	Chất lượng hình ảnh cao
+TID-SAMPLE-005	SM-F741	Camera	Browser_SAMPLE_001 - Chup anh ngoai troi	Fail	Ảnh bị nhạt, cân bằng trắng không đúng
+TID-SAMPLE-006	SM-S721	Camera	Browser_SAMPLE_002 - Quay video 4K	Pass	Video mượt không gián đoạn
+TID-SAMPLE-007	SM-A175	Camera	Browser_SAMPLE_002 - Quay video 4K	Fail	Video bị giật khi quay 4K 30fps
+TID-SAMPLE-008	SM-F966	Camera	Browser_SAMPLE_002 - Quay video 4K	Pass	Frame rate ổn định
+TID-SAMPLE-009	SM-X526	Camera	Browser_SAMPLE_002 - Quay video 4K	Pass	Codec H.264 hoạt động bình thường
+TID-SAMPLE-010	SM-F741	Camera	Browser_SAMPLE_002 - Quay video 4K	Fail	Bộ nhớ không đủ khi quay quá 10 phút
+TID-SAMPLE-011	SM-S721	Keyboard	Keyboard_SAMPLE_001 - Nhập ký tự	Pass	Các ký tự nhập đúng
+TID-SAMPLE-012	SM-A175	Keyboard	Keyboard_SAMPLE_001 - Nhập ký tự	Pass	Tốc độ gõ nhanh
+TID-SAMPLE-013	SM-F966	Keyboard	Keyboard_SAMPLE_001 - Nhập ký tự	Pass	Không bị nhân đôi phím
+TID-SAMPLE-014	SM-X526	Keyboard	Keyboard_SAMPLE_001 - Nhập ký tự	Fail	Bị nhân đôi phím khi gõ nhanh
+TID-SAMPLE-015	SM-F741	Keyboard	Keyboard_SAMPLE_001 - Nhập ký tự	Fail	Phím bị kẹt
+TID-SAMPLE-016	SM-S721	Touch	Touch_SAMPLE_001 - Swiping	Pass	Cảm ứng mượt
+TID-SAMPLE-017	SM-A175	Touch	Touch_SAMPLE_001 - Swiping	Pass	Độ nhạy bình thường
+TID-SAMPLE-018	SM-F966	Touch	Touch_SAMPLE_001 - Swiping	Pass	Swipe multi-finger hoạt động
+TID-SAMPLE-019	SM-X526	Touch	Touch_SAMPLE_001 - Swiping	Fail	Cảm ứng bị chậm
+TID-SAMPLE-020	SM-F741	Touch	Touch_SAMPLE_001 - Swiping	Fail	Swipe không phản hồi
+TID-SAMPLE-021	SM-S721	Battery	Battery_SAMPLE_001 - Drain test 1h	Pass	Drain 15% trong 1 giờ
+TID-SAMPLE-022	SM-A175	Battery	Battery_SAMPLE_001 - Drain test 1h	Pass	Drain 16% trong 1 giờ
+TID-SAMPLE-023	SM-F966	Battery	Battery_SAMPLE_001 - Drain test 1h	Fail	Drain 25% trong 1 giờ
+TID-SAMPLE-024	SM-X526	Battery	Battery_SAMPLE_001 - Drain test 1h	Pass	Drain 14% trong 1 giờ
+TID-SAMPLE-025	SM-F741	Battery	Battery_SAMPLE_001 - Drain test 1h	Fail	Drain 28% trong 1 giờ
+TID-SAMPLE-026	SM-S721	Display	Display_SAMPLE_001 - Brightness	Pass	Độ sáng đúng chuẩn
+TID-SAMPLE-027	SM-A175	Display	Display_SAMPLE_001 - Brightness	Pass	Không có dead pixel
+TID-SAMPLE-028	SM-F966	Display	Display_SAMPLE_001 - Brightness	Pass	Màu sắc chuẩn
+TID-SAMPLE-029	SM-X526	Display	Display_SAMPLE_001 - Brightness	Fail	Bị vàng ở cạnh màn hình
+TID-SAMPLE-030	SM-F741	Display	Display_SAMPLE_001 - Brightness	Fail	Màn hình bị sọc
+TID-SAMPLE-031	SM-S721	Connectivity	Connectivity_SAMPLE_001 - Wifi	Pass	Kết nối Wifi 6GHz thành công
+TID-SAMPLE-032	SM-A175	Connectivity	Connectivity_SAMPLE_001 - Wifi	Fail	Mất kết nối sau 5 phút
+TID-SAMPLE-033	SM-F966	Connectivity	Connectivity_SAMPLE_001 - Wifi	Pass	Tốc độ tải tốt
+TID-SAMPLE-034	SM-X526	Connectivity	Connectivity_SAMPLE_001 - Wifi	Pass	Không bị ngắt kết nối
+TID-SAMPLE-035	SM-F741	Connectivity	Connectivity_SAMPLE_001 - Wifi	Fail	Bị cắt kết nối liên tục

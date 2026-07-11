@@ -223,6 +223,10 @@
   }
   .admin-tab-panel { display: none; }
   .admin-tab-panel.active { display: block; }
+  .perm-grid { display: grid; grid-template-columns: repeat(2, auto); gap: 3px 14px; }
+  .perm-lbl { display: flex; align-items: center; gap: 5px; font-size: 12px; white-space: nowrap; cursor: pointer; }
+  .perm-lbl input { width: auto; margin: 0; }
+  .btn-sm:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -240,6 +244,8 @@
   <button class="admin-tab-btn" data-atab="new-scripts">✍️ Script viết mới</button>
   <button class="admin-tab-btn" data-atab="fixes">🛠️ Fix Log</button>
   <button class="admin-tab-btn" data-atab="assignments">👤 Assignments</button>
+  <button class="admin-tab-btn" data-atab="accounts">👥 Tài khoản</button>
+  <button class="admin-tab-btn" data-atab="owners">🧑‍🤝‍🧑 Owner &amp; Team</button>
 </div>
 
 <!-- ============ TAB: CYCLE RESULTS ============ -->
@@ -453,6 +459,76 @@ Keyboard	SKBD_000123	tuyen.bv1"></textarea>
     </div>
     <div id="asgBulkResult" class="bulk-result"></div>
   </div>
+</div>
+</div>
+
+<!-- ============ TAB: ACCOUNTS (Tài khoản & phân quyền) ============ -->
+<div id="atab-accounts" class="admin-tab-panel">
+<div class="card">
+  <div class="admin-header">
+    <h2>👥 Quản lý tài khoản &amp; phân quyền</h2>
+    <p>Đổi loại tài khoản (admin / moderator / user), bật/tắt từng quyền chức năng, reset mật khẩu (về <code>smartlab1@</code>), vô hiệu hoá và xoá tài khoản. Tài khoản chỉ xoá được khi đã ngừng hoạt động.</p>
+  </div>
+
+  <div class="info-box">
+    <p><strong>Lưu ý:</strong> Tài khoản đăng ký mới mặc định là <b>user</b>. Đổi loại tài khoản sẽ đặt lại bộ quyền về mặc định của loại đó; sau đó có thể tick/bỏ từng quyền. Người dùng đang đăng nhập sẽ thấy thay đổi trong vòng ~15 giây.</p>
+  </div>
+
+  <div class="search-bar">
+    <button onclick="usrLoadAll()" style="background: #666;">⟳ Tải lại</button>
+  </div>
+
+  <div style="overflow-x: auto;">
+    <table class="results-table" id="usersTable">
+      <thead>
+        <tr>
+          <th>Tài khoản</th>
+          <th>Loại</th>
+          <th>Quyền chức năng</th>
+          <th>Trạng thái</th>
+          <th>Hành động</th>
+        </tr>
+      </thead>
+      <tbody id="usersBody"></tbody>
+    </table>
+  </div>
+  <p id="userCount" style="margin-top: 10px; color: #666; font-size: 12px;"></p>
+</div>
+</div>
+
+<!-- ============ TAB: OWNER & TEAM ============ -->
+<div id="atab-owners" class="admin-tab-panel">
+<div class="card">
+  <div class="admin-header">
+    <h2>🧑‍🤝‍🧑 Quản lý Owner &amp; Team</h2>
+    <p>Thêm, sửa (đổi tên / đổi team), ngừng hoạt động hoặc xoá hẳn owner. Đổi tên/ngừng/xoá sẽ tự đồng bộ với tài khoản đăng nhập tương ứng.</p>
+  </div>
+
+  <div class="info-box">
+    <p><strong>Lưu ý:</strong> "Xoá hẳn" chỉ được phép khi owner không còn dữ liệu tham chiếu (kết quả / fix / assignment). Nếu còn, hãy dùng "Ngừng hoạt động" để giữ lịch sử.</p>
+  </div>
+
+  <div class="search-bar">
+    <input type="text" id="ownNewName" placeholder="Tên owner mới">
+    <input type="text" id="ownNewTeam" placeholder="Team (tuỳ chọn)">
+    <button onclick="ownAdd()">➕ Thêm owner</button>
+    <button onclick="ownLoadAll()" style="background: #666;">⟳ Tải lại</button>
+  </div>
+
+  <div style="overflow-x: auto;">
+    <table class="results-table" id="ownersTable">
+      <thead>
+        <tr>
+          <th>Owner</th>
+          <th>Team</th>
+          <th>Trạng thái</th>
+          <th>Hành động</th>
+        </tr>
+      </thead>
+      <tbody id="ownersBody"></tbody>
+    </table>
+  </div>
+  <p id="ownerCount" style="margin-top: 10px; color: #666; font-size: 12px;"></p>
 </div>
 </div>
 
@@ -1279,6 +1355,204 @@ async function asgBulkImport() {
 }
 
 // ============================================================
+// TAB: ACCOUNTS (Tài khoản & phân quyền)
+// ============================================================
+const TAB_LABELS = {
+  'dashboard': 'Dashboard', 'input-results': 'Nhập kết quả', 'input-fix': 'Ghi nhận Fix',
+  'new-scripts': 'Script viết mới', 'priority': 'Bảng ưu tiên', 'cycle-compare': 'So sánh Cycle',
+  'fix-tracking': 'Theo dõi Fix', 'settings': 'Cài đặt',
+};
+let _allTabs = [];
+
+async function usrLoadAll() {
+  const response = await fetch(`/api/admin/users?key=${ADMIN_KEY}`);
+  const data = await response.json();
+  _allTabs = data.all_tabs || [];
+  usrDisplay(data.users || []);
+}
+
+function usrDisplay(users) {
+  const tbody = document.getElementById('usersBody');
+  tbody.innerHTML = '';
+  users.forEach((u) => {
+    const uj = JSON.stringify(u.username);
+    const roleSel = ['admin', 'moderator', 'user'].map((r) =>
+      `<option value="${r}" ${u.role === r ? 'selected' : ''}>${r}</option>`).join('');
+    const permChecks = _allTabs.map((t) => {
+      const checked = u.permissions.includes(t) ? 'checked' : '';
+      return `<label class="perm-lbl"><input type="checkbox" class="perm-cb" data-user="${u.username}" value="${t}" ${checked} onchange='usrSavePerms(${uj})'> ${TAB_LABELS[t] || t}</label>`;
+    }).join('');
+    const activeTag = u.active
+      ? '<span style="color:#1e8449;font-weight:600;">● Hoạt động</span>'
+      : '<span style="color:#c0392b;font-weight:600;">● Ngừng</span>';
+    const delDisabled = u.active ? 'disabled title="Vô hiệu hoá trước khi xoá"' : '';
+    const row = tbody.insertRow();
+    row.innerHTML = `
+      <td><b>${u.username}</b></td>
+      <td><select onchange='usrSetRole(${uj}, this.value)'>${roleSel}</select></td>
+      <td><div class="perm-grid">${permChecks}</div></td>
+      <td>${activeTag}</td>
+      <td>
+        <div class="action-btns">
+          <button class="btn-sm" style="background:#e67e22" onclick='usrResetPw(${uj})'>🔑 Reset MK</button>
+          <button class="btn-sm" style="background:${u.active ? '#95a5a6' : '#27ae60'}" onclick='usrToggleActive(${uj}, ${u.active ? 0 : 1})'>${u.active ? '⏸️ Ngừng' : '▶️ Kích hoạt'}</button>
+          <button class="btn-sm btn-delete" onclick='usrDelete(${uj})' ${delDisabled}>🗑️ Xóa</button>
+        </div>
+      </td>`;
+  });
+  document.getElementById('userCount').textContent = `Tổng: ${users.length} tài khoản`;
+}
+
+async function usrPut(username, payload) {
+  const response = await fetch(`/api/admin/users/${encodeURIComponent(username)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'X-Admin-Key': ADMIN_KEY },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    alert('❌ Lỗi: ' + (err.error || 'không rõ lý do'));
+    return false;
+  }
+  return true;
+}
+
+async function usrSetRole(username, role) {
+  if (await usrPut(username, { role })) usrLoadAll();  // đổi role -> reset quyền mặc định -> tải lại
+}
+
+async function usrSavePerms(username) {
+  const perms = Array.from(document.querySelectorAll(`.perm-cb[data-user="${username}"]:checked`)).map((cb) => cb.value);
+  if (await usrPut(username, { permissions: perms })) {
+    document.getElementById('userCount').textContent = `✅ Đã lưu quyền cho ${username}`;
+  }
+}
+
+async function usrToggleActive(username, active) {
+  if (await usrPut(username, { active })) usrLoadAll();
+}
+
+async function usrResetPw(username) {
+  if (!confirm(`Reset mật khẩu của "${username}" về mặc định (smartlab1@)?`)) return;
+  const response = await fetch(`/api/admin/users/${encodeURIComponent(username)}/reset-password`, {
+    method: 'POST', headers: { 'X-Admin-Key': ADMIN_KEY },
+  });
+  const res = await response.json().catch(() => ({}));
+  if (response.ok) alert(`✅ Đã reset mật khẩu "${username}" về: ${res.default_password}`);
+  else alert('❌ Lỗi: ' + (res.error || 'không rõ lý do'));
+}
+
+async function usrDelete(username) {
+  if (!confirm(`⚠️ Xoá hẳn tài khoản "${username}"? Không thể hoàn tác!`)) return;
+  const response = await fetch(`/api/admin/users/${encodeURIComponent(username)}`, {
+    method: 'DELETE', headers: { 'X-Admin-Key': ADMIN_KEY },
+  });
+  if (response.ok) { alert('✅ Đã xoá!'); usrLoadAll(); }
+  else { const err = await response.json().catch(() => ({})); alert('❌ Lỗi: ' + (err.error || 'không rõ lý do')); }
+}
+
+// ============================================================
+// TAB: OWNER & TEAM
+// ============================================================
+async function ownLoadAll() {
+  const response = await fetch(`/api/admin/owners?key=${ADMIN_KEY}`);
+  const rows = await response.json();
+  ownDisplay(rows);
+}
+
+function ownDisplay(rows) {
+  const tbody = document.getElementById('ownersBody');
+  tbody.innerHTML = '';
+  rows.forEach((o) => {
+    const nj = JSON.stringify(o.name);
+    const activeTag = o.active
+      ? '<span style="color:#1e8449;font-weight:600;">● Hoạt động</span>'
+      : '<span style="color:#c0392b;font-weight:600;">● Ngừng</span>';
+    const reOrDeact = o.active
+      ? `<button class="btn-sm" style="background:#95a5a6" onclick='ownDeactivate(${nj})'>⏸️ Ngừng</button>`
+      : `<button class="btn-sm" style="background:#27ae60" onclick='ownReactivate(${nj})'>▶️ Kích hoạt lại</button>`;
+    const row = tbody.insertRow();
+    row.innerHTML = `
+      <td><b>${o.name}</b></td>
+      <td>${o.team || '-'}</td>
+      <td>${activeTag}</td>
+      <td>
+        <div class="action-btns">
+          <button class="btn-sm btn-edit" onclick='ownRename(${nj})'>✏️ Đổi tên</button>
+          <button class="btn-sm" style="background:#8e44ad" onclick='ownSetTeam(${nj}, ${JSON.stringify(o.team || '')})'>👥 Đổi team</button>
+          ${reOrDeact}
+          <button class="btn-sm btn-delete" onclick='ownHardDelete(${nj})'>🗑️ Xoá hẳn</button>
+        </div>
+      </td>`;
+  });
+  document.getElementById('ownerCount').textContent = `Tổng: ${rows.length} owner`;
+}
+
+async function ownAdd() {
+  const name = document.getElementById('ownNewName').value.trim();
+  const team = document.getElementById('ownNewTeam').value.trim();
+  if (!name) { alert('Nhập tên owner.'); return; }
+  const response = await fetch(`/api/admin/owners`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Admin-Key': ADMIN_KEY },
+    body: JSON.stringify({ name, team }),
+  });
+  if (response.ok) {
+    document.getElementById('ownNewName').value = '';
+    document.getElementById('ownNewTeam').value = '';
+    ownLoadAll();
+  } else { const err = await response.json().catch(() => ({})); alert('❌ Lỗi: ' + (err.error || 'không rõ lý do')); }
+}
+
+async function ownRename(name) {
+  const newName = prompt(`Đổi tên owner "${name}" thành:`, name);
+  if (newName === null || !newName.trim() || newName.trim() === name) return;
+  const response = await fetch(`/api/admin/owners/${encodeURIComponent(name)}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Admin-Key': ADMIN_KEY },
+    body: JSON.stringify({ new_name: newName.trim() }),
+  });
+  if (response.ok) ownLoadAll();
+  else { const err = await response.json().catch(() => ({})); alert('❌ Lỗi: ' + (err.error || 'không rõ lý do')); }
+}
+
+async function ownSetTeam(name, currentTeam) {
+  const team = prompt(`Đổi team của "${name}" thành:`, currentTeam || '');
+  if (team === null) return;
+  const response = await fetch(`/api/admin/owners/${encodeURIComponent(name)}/team`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Admin-Key': ADMIN_KEY },
+    body: JSON.stringify({ team: team.trim() }),
+  });
+  if (response.ok) ownLoadAll();
+  else alert('❌ Lỗi đổi team.');
+}
+
+async function ownDeactivate(name) {
+  if (!confirm(`Ngừng hoạt động owner "${name}"? Tài khoản đăng nhập tương ứng (nếu có) cũng bị vô hiệu hoá. Lịch sử fix vẫn giữ nguyên.`)) return;
+  const response = await fetch(`/api/admin/owners/${encodeURIComponent(name)}`, {
+    method: 'DELETE', headers: { 'X-Admin-Key': ADMIN_KEY },
+  });
+  if (response.ok) ownLoadAll();
+  else alert('❌ Lỗi.');
+}
+
+async function ownReactivate(name) {
+  const response = await fetch(`/api/admin/owners/${encodeURIComponent(name)}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Admin-Key': ADMIN_KEY },
+    body: JSON.stringify({ reactivate: true }),
+  });
+  if (response.ok) ownLoadAll();
+  else alert('❌ Lỗi.');
+}
+
+async function ownHardDelete(name) {
+  if (!confirm(`⚠️ Xoá HẲN owner "${name}"? Chỉ được phép khi không còn dữ liệu tham chiếu. Không thể hoàn tác!`)) return;
+  const response = await fetch(`/api/admin/owners/${encodeURIComponent(name)}?hard=1`, {
+    method: 'DELETE', headers: { 'X-Admin-Key': ADMIN_KEY },
+  });
+  if (response.ok) { alert('✅ Đã xoá hẳn!'); ownLoadAll(); }
+  else { const err = await response.json().catch(() => ({})); alert('❌ Lỗi: ' + (err.error || 'không rõ lý do')); }
+}
+
+// ============================================================
 // Init: load dữ liệu tab đang active khi mở trang; các tab khác load lười khi click vào.
 // ============================================================
 let _loadedTabs = new Set();
@@ -1291,6 +1565,8 @@ document.querySelectorAll('.admin-tab-btn').forEach((btn) => {
     if (t === 'new-scripts') nsLoadAll();
     if (t === 'fixes') loadAllFixes();
     if (t === 'assignments') asgLoadAll();
+    if (t === 'accounts') usrLoadAll();
+    if (t === 'owners') ownLoadAll();
   });
 });
 document.addEventListener('DOMContentLoaded', () => {

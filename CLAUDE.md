@@ -4,60 +4,121 @@ File này hướng dẫn Claude Code (claude.ai/code) khi làm việc với code
 
 ## Tổng quan dự án
 
-Đây là ứng dụng web nội bộ chạy trong mạng LAN, dùng cho team QA để theo dõi "test stabilization" — tức là theo dõi các test tự động bị fail/flaky qua từng "cycle" (đợt chạy test), gán người fix, xác nhận fix có thực sự hiệu quả không, và xuất báo cáo/dashboard. Chi tiết nghiệp vụ đầy đủ (quy trình nhập kết quả, ghi nhận fix, bảng ưu tiên, handover...) nằm trong [README.md](README.md) — README viết bằng tiếng Việt và là nguồn tham khảo chính cho nghiệp vụ.
+Ứng dụng web nội bộ chạy trong mạng LAN, dùng cho team QA để theo dõi "test stabilization" — tức là theo dõi các test tự động bị fail/flaky qua từng "cycle" (đợt chạy test), gán người fix, xác nhận fix có thực sự hiệu quả không, và xuất báo cáo/dashboard. Chi tiết nghiệp vụ đầy đủ nằm trong [README.md](README.md) — README viết tiếng Việt, là nguồn tham khảo chính.
+
+**Cập nhật gần đây (2026-07-11)**: Thêm hệ thống tài khoản + phân quyền per-tab (login, roles, admin panel).
 
 Dự án hiện **chưa khởi tạo git**.
 
 ## Kiến trúc & stack
 
-- Backend: Python + Flask (`Flask>=3.0`), dùng thẳng module `sqlite3` (không ORM).
-- Frontend: HTML/CSS/JS thuần, không build step, không npm. Chart.js được vendor sẵn tại `static/chart.min.js` (không load qua CDN dù README ghi vậy).
-- Xuất Excel: `openpyxl`.
-- Toàn bộ dependency nằm trong `requirements.txt` (chỉ 2 package).
+- **Backend**: Python + Flask (`Flask>=3.0`), module `sqlite3` (không ORM)
+- **Frontend**: HTML/CSS/JS thuần, không build step/npm. Chart.js vendor ở `static/chart.min.js`
+- **Export**: `openpyxl` (Excel)
+- **Dependencies**: 2 package chính ở `requirements.txt` (Flask + openpyxl)
 
-### Gần như toàn bộ logic nằm trong 1 file duy nhất: `app.py` (~2100 dòng)
+### Code layout: `app.py` (~3300 dòng, monolithic)
 
-Thứ tự trong file, từ trên xuống:
-1. Config/constants (đầu file) — bao gồm 2 secret hardcode, xem mục Gotcha bên dưới.
-2. DB helpers + `init_db()` — tạo schema và chạy **migration inline** mỗi lần khởi động (xem Gotcha).
-3. Logic nghiệp vụ thuần (không phải route) — `classify_result`, `derive_test_suite`, `compute_root_cause_pareto`, `compute_cycle_trend`, `extract_date_from_test_id` (parse `YYMMDD` từ đầu Test ID để suy ra cycle), v.v.
-4. ~40 route `/api/*` — models, owners, test_suites, results, fixes, priority, fix-tracking, assignments, handover, dashboard, export (csv/excel)...
-5. Route `/admin/<secret_key>` — trang debug cho phép CRUD thẳng vào bảng `results`, đi vòng qua validate thông thường.
-6. `if __name__ == "__main__":` — gọi `init_db()` rồi `app.run(host="0.0.0.0", port=5000, threaded=True)`.
+1. **Constants** (line 1–50): secrets, default password, role/perm config, model list
+2. **DB helpers** (line 50–330): `get_db()`, `get_users_db()`, `init_db()`, `init_users_db()` (+ auto-backfill owner accounts)
+3. **Auth functions** (line 330–440): `ensure_account_for_owner()`, decorators `@require_login`/`@require_perm()`, helpers `perms_to_list()`, `owner_is_active()`, `current_user()`, `perm_error()`
+4. **Business logic** (line 440–980): `classify_result`, `derive_test_suite`, `compute_root_cause_pareto`, `compute_cycle_trend`, `extract_date_from_test_id`, owner helpers `owner_op_add/rename/deactivate/hard_delete`
+5. **Routes** (line 980–3200):
+   - Auth: `/login`, `/register`, `/api/auth/*`
+   - Main app: `/` (tab UI), `/api/dashboard`, `/api/results`, `/api/fixes`, `/api/assignments`, `/api/lists/*` (models, owners, test_suites, settings), `/api/priority`, `/api/fix-tracking`, `/api/cycle-matrix`, `/api/new-scripts`, `/api/handover`, export routes
+   - Admin: `/api/admin/*` (users CRUD, owners CRUD, results/fixes/scripts/assignments bulk)
+6. **Main**: `if __name__: init_db(); init_users_db(); app.run(...)`
 
 ### Frontend
 
-- `templates/index.html` — UI dạng tab đơn trang (dashboard, nhập kết quả, ghi nhận fix, bảng ưu tiên, so sánh cycle, theo dõi fix, cài đặt).
-- `templates/admin.html` — trang admin/debug, được bảo vệ bằng `ADMIN_SECRET_KEY` trong URL (không phải auth thật).
-- `static/app.js` — toàn bộ logic frontend: wrapper `api()` để fetch, hệ thống bảng sort/filter dùng chung (các hàm `tt*`), parser cho dữ liệu paste dạng tab-delimited (`parsePaste`, `tokenizeDelimited`), dashboard tự refresh theo polling ~15s.
-- `static/style.css`, `static/chart.min.js`.
+- **`templates/login.html`**, **`templates/register.html`**: form auth (mới)
+- **`templates/index.html`**: UI tab chính (8 tabs). Topbar có user box + Đổi MK modal + Đăng xuất button
+- **`templates/admin.html`**: 6 tabs admin (Results, Scripts, Fixes, Assignments, Accounts, Owner & Team)
+- **`static/app.js`**: init auth, polling `/api/me`, permission sync, tab handlers, API wrapper, form parser
+- **`static/style.css`**: toàn bộ styling (topbar, tabs, cards, tables, modals)
+- **`static/chart.min.js`**: Chart.js (dashboard, cycle-compare)
 
 ### Dữ liệu
 
-- `tracker.db` — **file SQLite chứa dữ liệu thật đang dùng, không phải file mẫu/fixture**. Không xoá, không ghi đè, không tạo lại tuỳ tiện. Muốn backup chỉ cần copy file này.
-- `test_data/*.txt`, `test-script.txt` — dữ liệu mẫu dạng tab-delimited để paste thử vào tab "Nhập kết quả" khi test tay.
+- **`tracker.db`** — **live production data**, không xoá/reset. Schema: results, fixes, assignments, owners, models, test_suites, priority, settings, new_scripts
+- **`users.db`** — **live production data** (mới 2026-07-11), schema: users (username, password_hash, role, permissions, active, created_at). Auto-tạo khi start
+- **`test_data/`** — sample tab-delimited files để paste test (không dùng production)
+
+## Chi tiết chi thành từng aspect
+
+Xem các file rule riêng biệt:
+
+- **[`.claude/rules/auth-system.md`](.claude/rules/auth-system.md)** — Login, roles (admin/moderator/user), permissions per-tab, enforcement, auto-create account, session, admin page
+- **[`.claude/rules/database-schema.md`](.claude/rules/database-schema.md)** — tracker.db schema, users.db schema, migration pattern (inline, idempotent)
+- **[`.claude/rules/deployment.md`](.claude/rules/deployment.md)** — Secrets (hardcode), .gitignore, run command, update guidelines
+- **[`.claude/rules/ui-structure.md`](.claude/rules/ui-structure.md)** — Pages (/login, /register, /, /admin), tabs, topbar, modals, startup flow, polling
 
 ## Lệnh chạy / dev
 
-```
+```bash
 pip install -r requirements.txt
-python app.py        # chạy tại 0.0.0.0:5000
+python app.py        # 0.0.0.0:5000
+# Database (tracker.db, users.db) tạo tự động lần đầu
 ```
 
-- **Không có test tự động, không có linter/formatter, không có build step nào cả.**
-- Cách "test" hiện tại là chạy server rồi paste thủ công một file trong `test_data/` vào tab "Nhập kết quả" trên UI, hoặc gọi trực tiếp các endpoint `/api/*` bằng `curl`.
+**Startup flow**:
+1. `init_db()` → create/migrate tracker.db (business data)
+2. `init_users_db()` → create/migrate users.db, seed anh.hh (admin), **backfill accounts cho 42+ active owners**
+3. Flask listen 0.0.0.0:5000
 
-## Các điểm cần lưu ý (quan trọng)
+**Test**:
+- Không có unit test, linter, formatter, build step
+- Test tay: qua UI (paste sample từ `test_data/`, hoặc login + use), hoặc curl endpoint `/api/*` + `/admin/*`
+- Login test user: bất kỳ active owner, password = `abc123` (default)
 
-- **Secret hardcode trong `app.py`**: `SUBMIT_PASSWORD` và `ADMIN_SECRET_KEY` được viết thẳng dạng plaintext trong code, không qua biến môi trường hay file config. Đây là điểm yếu bảo mật đã biết (README cũng nói rõ app không có cơ chế đăng nhập/authentication). Không tự ý di chuyển/expose thêm các secret này, và không tự "sửa" theo hướng thêm hệ thống env/config nếu người dùng chưa yêu cầu.
-- **Migration chạy inline mỗi lần start**: `init_db()` vừa tạo schema vừa chạy các bước migrate (ALTER TABLE có try/except, backfill cột, recompute cycle, dedupe fix trùng...) mỗi lần app khởi động — đây là hệ thống migration tự chế, không dùng Alembic hay tool tương tự. Khi cần đổi schema, hãy thêm một bước migration mới idempotent vào đây, **không sửa trực tiếp/phá vỡ câu `CREATE TABLE`** đã có.
-- **`tracker.db` là dữ liệu sống**: chứa lịch sử thật, không phải fixture — xử lý cẩn thận, không xoá/ghi đè tuỳ tiện.
-- **Chưa có `.gitignore`**: nếu sau này khởi tạo git, cần loại `__pycache__/` và cân nhắc kỹ với `tracker.db` (hỏi người dùng trước khi quyết định commit hay ignore).
-- **Tiếng Việt là chủ đích**: text hiển thị UI và một số comment cố tình dùng tiếng Việt — không tự "sửa lỗi chính tả" hay dịch sang tiếng Anh. Tên biến/hàm/route giữ tiếng Anh như hiện trạng.
-- **Route `/admin/<secret_key>`** là một đường CRUD song song, bỏ qua validate thông thường — cần lưu ý khi đụng vào logic auth hoặc toàn vẹn dữ liệu.
-- **Không có test suite** — cách xác minh thay đổi duy nhất hiện nay là test tay qua UI (paste file mẫu) hoặc gọi API bằng curl.
+**Develop**:
+- Thay code → restart server (auto-migrate DB)
+- Thêm route → apply `@require_login`, `@require_perm("tab")` nếu cần gate
+- Thêm schema → migration idempotent vào `init_db()` / `init_users_db()`
 
-## Quy ước code quan sát được (không có tool enforce)
+## Các điểm cần lưu ý
 
-- Python: snake_case, thụt lề 4 space, SQL viết dạng triple-quoted string với `?` parameterization (không ORM/query builder).
-- JS: ES6+ (`async`/`await`, arrow function), không dùng module system, tất cả nằm trong 1 file global `app.js`.
+### Secrets (Xem chi tiết: [`.claude/rules/deployment.md`](.claude/rules/deployment.md))
+
+- **Hardcode**: `SUBMIT_PASSWORD`, `ADMIN_SECRET_KEY`, `DEFAULT_RESET_PASSWORD`, Flask `secret_key` — tất cả plaintext trong `app.py`
+- **Không "sửa"** theo hướng env vars trừ khi người dùng yêu cầu (đây là trạng thái hiện tại, chấp nhận được)
+- **`SUBMIT_PASSWORD` vs `DEFAULT_RESET_PASSWORD`**: khác nhau, không nhầm lẫn
+  - `SUBMIT_PASSWORD = "smartlab1@"`: gate form "Nhập kết quả" (không liên quan tài khoản)
+  - `DEFAULT_RESET_PASSWORD = "abc123"`: seed admin, reset PW, auto-create owner account
+
+### Database (Xem chi tiết: [`.claude/rules/database-schema.md`](.claude/rules/database-schema.md))
+
+- **Hai file DB riêng biệt**: `tracker.db` (data), `users.db` (accounts). **Cả hai là live data** — không xoá/reset tuỳ tiện
+- **Migration idempotent**: thêm bước mới vào `init_db()` / `init_users_db()`, **KHÔNG sửa CREATE TABLE** (tránh phá schema cũ)
+- **SQL parameterization**: toàn bộ dùng `?`, không string interpolation → prevent injection
+
+### Auth & Permissions
+
+- **3 roles**: admin, moderator, user. Per-account custom permissions (CSV). Khi đổi role → reset perms về mặc định
+- **Enforcement 2-layer**: frontend (hide tab), backend (decorator + 403). Reads không gate (hỗ trợ polling)
+- **Auto-create**: owner mới → account tự sinh (role=user, perms mặc định, pw=abc123). Không ghi đè tài khoản có sẵn
+- **Cascade**: rename/deactivate/delete owner → sync username/account ở users.db
+- **Startup**: Luôn seed/force anh.hh = admin, backfill owner accounts
+
+### Frontend (Xem chi tiết: [`.claude/rules/ui-structure.md`](.claude/rules/ui-structure.md))
+
+- **8 tabs**: dashboard, input-results, input-fix, new-scripts, priority, cycle-compare, fix-tracking, settings. Hiển thị theo permission
+- **Polling 15s**: re-fetch `/api/me`, re-sync permissions nếu admin đổi
+- **Tiếng Việt là intent**: không "sửa chính tả" hay dịch sang Anh. Comment + variable = English, UI text = tiếng Việt
+
+### Trạng thái hiện tại (2026-07-11)
+
+- ✅ Login system (session-based)
+- ✅ Per-tab permissions + enforcement
+- ✅ Admin user/owner management
+- ✅ Auto-create accounts cho owner
+- ✅ Default password = `abc123`
+- ❌ Không có test suite (test tay qua UI/curl)
+- ❌ Chưa git init
+
+## Quy ước code
+
+- **Python**: snake_case, 4-space indent, SQL triple-quoted với `?` parameterization
+- **JS**: ES6+ (async/await, arrow function), monolithic `app.js`, không module system
+- **HTML**: không framework (vanilla form/input/button)
+- **SQL**: `sqlite3.Row` factory → truy cập `row["col"]`

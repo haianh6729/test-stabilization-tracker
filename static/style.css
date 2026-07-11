@@ -39,6 +39,16 @@ body {
 .conn-ok { color: #a6e3a1; }
 .conn-bad { color: #ffb4a2; }
 
+.user-box { display: flex; align-items: center; gap: 10px; }
+.user-name { font-weight: 600; color: #fff; }
+.user-link { color: #ffe08a; text-decoration: none; font-weight: 600; }
+.user-link:hover { text-decoration: underline; }
+.user-btn {
+  background: rgba(255,255,255,0.16); border: none; color: #fff; padding: 5px 10px;
+  border-radius: 5px; cursor: pointer; font-size: 12px;
+}
+.user-btn:hover { background: rgba(255,255,255,0.3); }
+
 #tabs { display: flex; gap: 6px; flex-wrap: wrap; }
 .tab-btn {
   background: rgba(255,255,255,0.12);

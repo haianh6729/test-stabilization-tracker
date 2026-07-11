@@ -8,18 +8,43 @@ import sqlite3
 import io
 import csv
 import re
+import functools
 from datetime import datetime, date
-from flask import Flask, request, jsonify, render_template, send_file, g
+from flask import Flask, request, jsonify, render_template, send_file, g, session, redirect
+from werkzeug.security import generate_password_hash, check_password_hash
 
 DB_PATH = "tracker.db"
+USERS_DB_PATH = "users.db"  # DB rieng cho tai khoan - tach khoi tracker.db (du lieu song)
 DEFAULT_MODELS = ["S721", "A175", "F966", "X526", "F741"]
 PASS_STATES = {"pass", "check", "na", "manual check"}  # MANUAL CHECK tương tự CHECK = Pass
 SKIP_STATES = {"running"}  # test chua chay xong, khong dua vao thong ke Pass/Fail
 # TIMEOUT = Fail (không có trong PASS_STATES → quy vào Fail)
 # Mat khau bat buoc de duoc GUI du lieu vao he thong (tab Nhap ket qua).
 SUBMIT_PASSWORD = "smartlab1@"
+# Mat khau mac dinh khi admin reset tai khoan (hoac tao sap dat khi them owner moi)
+DEFAULT_RESET_PASSWORD = "abc123"
+
+# ------------------------------------------------------------------
+# Phan quyen theo tung tab chuc nang (key = data-tab trong index.html)
+# ------------------------------------------------------------------
+ALL_TABS = [
+    "dashboard", "input-results", "input-fix", "new-scripts",
+    "priority", "cycle-compare", "fix-tracking", "settings",
+]
+# Quyen mac dinh cho user thuong: moi tab TRU Nhap ket qua & Cai dat.
+USER_DEFAULT_TABS = [
+    "dashboard", "input-fix", "new-scripts", "priority", "cycle-compare", "fix-tracking",
+]
+ROLE_DEFAULT_PERMS = {
+    "admin": list(ALL_TABS),
+    "moderator": list(ALL_TABS),     # moi tab ke ca Cai dat; khac admin o cho khong quan tri tai khoan
+    "user": list(USER_DEFAULT_TABS),
+}
+BOOTSTRAP_ADMIN = "anh.hh"  # tai khoan admin khoi tao mac dinh
 
 app = Flask(__name__)
+# Session cookie (dang nhap). Hardcode cung mo hinh secret hien co (LAN noi bo).
+app.secret_key = "smartlab-tracker-session-2026-haianh6729"
 
 
 # ------------------------------------------------------------------
@@ -39,6 +64,17 @@ def close_db(exception=None):
     db = g.pop("db", None)
     if db is not None:
         db.close()
+    udb = g.pop("users_db", None)
+    if udb is not None:
+        udb.close()
+
+
+def get_users_db():
+    """Ket noi toi users.db (DB rieng cho tai khoan). Tach khoi tracker.db."""
+    if "users_db" not in g:
+        g.users_db = sqlite3.connect(USERS_DB_PATH)
+        g.users_db.row_factory = sqlite3.Row
+    return g.users_db
 
 
 ADMIN_SECRET_KEY = "haianh6729"
@@ -224,6 +260,134 @@ def init_db():
 
     conn.commit()
     conn.close()
+
+
+def ensure_account_for_owner(udb, name):
+    """Neu owner chua co tai khoan trong users.db, tao sap dat: role=user,
+    quyen = mac dinh cua user, mat khau = DEFAULT_RESET_PASSWORD. Neu co roi -> bo qua
+    (khong ghi de tai khoan da ton tai)."""
+    if udb.execute("SELECT 1 FROM users WHERE username=?", (name,)).fetchone():
+        return  # Co roi
+    udb.execute(
+        "INSERT INTO users (username, password_hash, role, permissions, active) VALUES (?, ?, ?, ?, 1)",
+        (name, generate_password_hash(DEFAULT_RESET_PASSWORD), "user",
+         ",".join(ROLE_DEFAULT_PERMS["user"]))
+    )
+
+
+def init_users_db():
+    """Tao users.db (DB rieng) + seed tai khoan admin khoi tao (anh.hh). Idempotent."""
+    conn = sqlite3.connect(USERS_DB_PATH)
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'user',
+            permissions TEXT,               -- CSV cac tab duoc phep
+            active INTEGER DEFAULT 1,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+        """
+    )
+    # Migration idempotent (upgrade-safe cho users.db cu neu them cot ve sau)
+    for stmt in (
+        "ALTER TABLE users ADD COLUMN permissions TEXT",
+        "ALTER TABLE users ADD COLUMN active INTEGER DEFAULT 1",
+    ):
+        try:
+            conn.execute(stmt)
+        except Exception:
+            pass
+    # Seed/ep anh.hh la admin (mat khau mac dinh neu chua ton tai).
+    row = conn.execute("SELECT username FROM users WHERE username=?", (BOOTSTRAP_ADMIN,)).fetchone()
+    if not row:
+        conn.execute(
+            "INSERT INTO users (username, password_hash, role, permissions, active) VALUES (?,?,?,?,1)",
+            (BOOTSTRAP_ADMIN, generate_password_hash(DEFAULT_RESET_PASSWORD),
+             "admin", ",".join(ROLE_DEFAULT_PERMS["admin"])),
+        )
+    else:
+        # Luon dam bao anh.hh giu role admin + du quyen.
+        conn.execute(
+            "UPDATE users SET role='admin', permissions=?, active=1 WHERE username=?",
+            (",".join(ROLE_DEFAULT_PERMS["admin"]), BOOTSTRAP_ADMIN),
+        )
+    conn.commit()
+    # Backfill: tao tai khoan cho tat ca owner active chua co
+    db = sqlite3.connect(DB_PATH)
+    db.row_factory = sqlite3.Row
+    for owner in db.execute("SELECT name FROM owners WHERE active=1").fetchall():
+        ensure_account_for_owner(conn, owner["name"])
+    db.close()
+    conn.commit()
+    conn.close()
+
+
+# ------------------------------------------------------------------
+# Auth helpers + decorators
+# ------------------------------------------------------------------
+def perms_to_list(csv_str):
+    return [p for p in (csv_str or "").split(",") if p]
+
+
+def owner_is_active(name):
+    """True neu owner ton tai va con active trong tracker.db (owner nghi -> khoa dang nhap)."""
+    db = get_db()
+    row = db.execute("SELECT active FROM owners WHERE name=?", (name,)).fetchone()
+    return bool(row) and (row["active"] == 1)
+
+
+def current_user():
+    """Tra ve dict tai khoan dang dang nhap (con hop le) hoac None."""
+    name = session.get("user")
+    if not name:
+        return None
+    udb = get_users_db()
+    row = udb.execute(
+        "SELECT username, role, permissions, active FROM users WHERE username=?", (name,)
+    ).fetchone()
+    if not row or row["active"] != 1:
+        return None
+    if not owner_is_active(name):
+        return None
+    return {
+        "username": row["username"],
+        "role": row["role"],
+        "permissions": perms_to_list(row["permissions"]),
+    }
+
+
+def require_login(fn):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        if current_user() is None:
+            return jsonify({"error": "Chưa đăng nhập"}), 401
+        return fn(*args, **kwargs)
+    return wrapper
+
+
+def require_perm(tab):
+    """Chan API ghi: phai dang nhap VA co quyen dung tab tuong ung."""
+    def deco(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            err = perm_error(tab)
+            if err:
+                return err
+            return fn(*args, **kwargs)
+        return wrapper
+    return deco
+
+
+def perm_error(tab):
+    """Dung cho handler GET+POST chung: chi chan nhanh ghi. Tra ve response loi hoac None."""
+    u = current_user()
+    if u is None:
+        return jsonify({"error": "Chưa đăng nhập"}), 401
+    if tab not in u["permissions"]:
+        return jsonify({"error": f"Bạn không có quyền dùng chức năng này ({tab})."}), 403
+    return None
 
 
 def classify_result(state):
@@ -601,7 +765,98 @@ def get_models_list(db):
 # ------------------------------------------------------------------
 @app.route("/")
 def index():
+    if current_user() is None:
+        return redirect("/login")
     return render_template("index.html")
+
+
+@app.route("/login")
+def login_page():
+    if current_user() is not None:
+        return redirect("/")
+    return render_template("login.html")
+
+
+@app.route("/register")
+def register_page():
+    return render_template("register.html")
+
+
+# ------------------------------------------------------------------
+# Auth API (dang ky / dang nhap / dang xuat / doi mat khau / thong tin tai khoan)
+# ------------------------------------------------------------------
+@app.route("/api/auth/register", methods=["POST"])
+def api_register():
+    data = request.get_json(force=True)
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""   # chap nhan moi ky tu
+    if not username or not password:
+        return jsonify({"error": "Vui lòng nhập tên tài khoản và mật khẩu."}), 400
+    # Ten dang ky phai trung danh sach owner (con active) trong tracker.db.
+    if not owner_is_active(username):
+        return jsonify({"error": "Tên này không có trong danh sách Owner (hoặc đã ngừng hoạt động) — không thể đăng ký."}), 400
+    udb = get_users_db()
+    if udb.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone():
+        return jsonify({"error": "Tài khoản này đã được đăng ký."}), 400
+    udb.execute(
+        "INSERT INTO users (username, password_hash, role, permissions, active) VALUES (?,?,?,?,1)",
+        (username, generate_password_hash(password), "user", ",".join(ROLE_DEFAULT_PERMS["user"])),
+    )
+    udb.commit()
+    return jsonify({"status": "ok", "username": username})
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def api_login():
+    data = request.get_json(force=True)
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""
+    udb = get_users_db()
+    row = udb.execute(
+        "SELECT username, password_hash, active FROM users WHERE username=?", (username,)
+    ).fetchone()
+    if not row or not check_password_hash(row["password_hash"], password):
+        return jsonify({"error": "Sai tên tài khoản hoặc mật khẩu."}), 401
+    if row["active"] != 1:
+        return jsonify({"error": "Tài khoản đã bị vô hiệu hoá."}), 403
+    if not owner_is_active(username):
+        return jsonify({"error": "Owner tương ứng đã ngừng hoạt động — không thể đăng nhập."}), 403
+    session["user"] = username
+    session.permanent = True
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+def api_logout():
+    session.pop("user", None)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/me")
+def api_me():
+    u = current_user()
+    if u is None:
+        return jsonify({"error": "Chưa đăng nhập"}), 401
+    return jsonify(u)
+
+
+@app.route("/api/auth/change-password", methods=["POST"])
+@require_login
+def api_change_password():
+    data = request.get_json(force=True)
+    current_pw = data.get("current") or ""
+    new_pw = data.get("new") or ""     # chap nhan moi ky tu
+    if not new_pw:
+        return jsonify({"error": "Mật khẩu mới không được rỗng."}), 400
+    name = session.get("user")
+    udb = get_users_db()
+    row = udb.execute("SELECT password_hash FROM users WHERE username=?", (name,)).fetchone()
+    if not row or not check_password_hash(row["password_hash"], current_pw):
+        return jsonify({"error": "Mật khẩu hiện tại không đúng."}), 400
+    udb.execute("UPDATE users SET password_hash=? WHERE username=?",
+                (generate_password_hash(new_pw), name))
+    udb.commit()
+    return jsonify({"status": "ok"})
 
 
 # ------------------------------------------------------------------
@@ -652,6 +907,7 @@ def api_lists():
 
 
 @app.route("/api/lists/test_suites", methods=["POST"])
+@require_perm("settings")
 def add_test_suite():
     data = request.get_json(force=True)
     name = (data.get("name") or "").strip()
@@ -664,6 +920,7 @@ def add_test_suite():
 
 
 @app.route("/api/lists/test_suites/<path:old_name>", methods=["PUT", "DELETE"])
+@require_perm("settings")
 def edit_test_suite(old_name):
     db = get_db()
     if request.method == "DELETE":
@@ -687,6 +944,7 @@ def edit_test_suite(old_name):
 
 
 @app.route("/api/lists/models", methods=["POST"])
+@require_perm("settings")
 def add_model():
     data = request.get_json(force=True)
     name = (data.get("name") or "").strip()
@@ -700,6 +958,7 @@ def add_model():
 
 
 @app.route("/api/lists/models/<path:old_name>", methods=["PUT", "DELETE"])
+@require_perm("settings")
 def edit_model(old_name):
     db = get_db()
     if request.method == "DELETE":
@@ -723,48 +982,35 @@ def edit_model(old_name):
     return jsonify({"status": "renamed (thay the model cu bang model moi, giu nguyen lich su ket qua)"})
 
 
-@app.route("/api/lists/owners", methods=["POST"])
-def add_owner():
-    data = request.get_json(force=True)
-    name = (data.get("name") or "").strip()
-    team = (data.get("team") or "").strip()
+# ------------------------------------------------------------------
+# Owner operations - helper dung chung cho ca route Cai dat (session-gated)
+# va route quan tri (ADMIN_KEY-gated). Bao gom dong bo owner <-> tai khoan (users.db).
+# ------------------------------------------------------------------
+def owner_op_add(db, name, team):
     if not name:
-        return jsonify({"error": "Ten khong duoc rong"}), 400
-    db = get_db()
+        return {"error": "Ten khong duoc rong"}, 400
     db.execute("INSERT OR IGNORE INTO owners (name, active, team) VALUES (?, 1, ?)", (name, team))
     if team:
         db.execute("UPDATE owners SET team=? WHERE name=?", (team, name))
     db.commit()
-    return jsonify({"status": "ok"})
+    # Tao tai khoan mat dinh cho owner moi (neu chua co)
+    udb = get_users_db()
+    ensure_account_for_owner(udb, name)
+    udb.commit()
+    return {"status": "ok"}, 200
 
 
-@app.route("/api/lists/owners/<path:name>/team", methods=["PUT"])
-def set_owner_team(name):
-    """Gan/cap nhat Team cho 1 owner trong Cai dat. Team la nhom nho (thuong dat theo
-    ten team-lead). Import ket qua moi (co cot Team) cung tu dong cap nhat truong nay."""
-    data = request.get_json(force=True)
-    team = (data.get("team") or "").strip()
-    db = get_db()
+def owner_op_set_team(db, name, team):
     db.execute("INSERT OR IGNORE INTO owners (name, active) VALUES (?, 1)", (name,))
     db.execute("UPDATE owners SET team=? WHERE name=?", (team, name))
     db.commit()
-    return jsonify({"status": "ok", "team": team})
+    return {"status": "ok", "team": team}, 200
 
 
-@app.route("/api/lists/owners/<path:old_name>", methods=["PUT", "DELETE"])
-def edit_owner(old_name):
-    db = get_db()
-    if request.method == "DELETE":
-        # Soft-delete (deactivate) to preserve fix history attribution & stats, thay vi xoa han.
-        db.execute("UPDATE owners SET active=0 WHERE name=?", (old_name,))
-        db.commit()
-        return jsonify({"status": "deactivated"})
-    data = request.get_json(force=True)
-    new_name = (data.get("new_name") or "").strip()
+def owner_op_rename(db, old_name, new_name):
     if not new_name:
-        return jsonify({"error": "Ten moi khong duoc rong"}), 400
-    # "Rename" = SAME nguoi, chi doi ten hien thi (VD sua chinh ta) -> cascade toan bo, ke ca assignment dang mo.
-    # Neu la truong hop nhan su nghi/thay nguoi khac tiep quan, dung "Ngung hoat dong" + "Chuyen giao" thay vi Rename.
+        return {"error": "Ten moi khong duoc rong"}, 400
+    # "Rename" = SAME nguoi, chi doi ten hien thi -> cascade toan bo, ke ca assignment dang mo.
     old_row = db.execute("SELECT team, active FROM owners WHERE name=?", (old_name,)).fetchone()
     old_team = old_row["team"] if old_row else None
     old_active = old_row["active"] if old_row else 1
@@ -773,7 +1019,68 @@ def edit_owner(old_name):
     db.execute("UPDATE fixes SET owner=? WHERE owner=?", (new_name, old_name))
     db.execute("UPDATE assignments SET owner=? WHERE owner=?", (new_name, old_name))
     db.commit()
-    return jsonify({"status": "renamed", "note": "Toan bo lich su fix va script dang phu trach cua ten cu da chuyen sang ten moi."})
+    # Dong bo: doi ten tai khoan tuong ung (neu co) de username khong lech voi owner.
+    udb = get_users_db()
+    if udb.execute("SELECT 1 FROM users WHERE username=?", (old_name,)).fetchone():
+        if not udb.execute("SELECT 1 FROM users WHERE username=?", (new_name,)).fetchone():
+            udb.execute("UPDATE users SET username=? WHERE username=?", (new_name, old_name))
+            udb.commit()
+    return {"status": "renamed", "note": "Lich su fix + script dang phu trach + tai khoan da chuyen sang ten moi."}, 200
+
+
+def owner_op_deactivate(db, name):
+    # Soft-delete (deactivate) de giu lich su fix; dong bo vo hieu hoa tai khoan.
+    db.execute("UPDATE owners SET active=0 WHERE name=?", (name,))
+    db.commit()
+    udb = get_users_db()
+    udb.execute("UPDATE users SET active=0 WHERE username=?", (name,))
+    udb.commit()
+    return {"status": "deactivated"}, 200
+
+
+def owner_op_hard_delete(db, name):
+    # Xoa han - CHI khi owner khong con tham chieu o results/fixes/assignments.
+    refs = 0
+    for tbl, col in (("results", "author"), ("fixes", "owner"), ("assignments", "owner")):
+        refs += db.execute(f"SELECT COUNT(*) c FROM {tbl} WHERE {col}=?", (name,)).fetchone()["c"]
+    if refs:
+        return {"error": f"Khong the xoa han: owner con {refs} tham chieu (ket qua/fix/assignment). Dung 'Ngung hoat dong' thay the."}, 400
+    db.execute("DELETE FROM owners WHERE name=?", (name,))
+    db.commit()
+    udb = get_users_db()
+    udb.execute("DELETE FROM users WHERE username=?", (name,))
+    udb.commit()
+    return {"status": "deleted"}, 200
+
+
+@app.route("/api/lists/owners", methods=["POST"])
+@require_perm("settings")
+def add_owner():
+    data = request.get_json(force=True)
+    body, code = owner_op_add(get_db(), (data.get("name") or "").strip(), (data.get("team") or "").strip())
+    return jsonify(body), code
+
+
+@app.route("/api/lists/owners/<path:name>/team", methods=["PUT"])
+@require_perm("settings")
+def set_owner_team(name):
+    """Gan/cap nhat Team cho 1 owner trong Cai dat. Team la nhom nho (thuong dat theo
+    ten team-lead). Import ket qua moi (co cot Team) cung tu dong cap nhat truong nay."""
+    data = request.get_json(force=True)
+    body, code = owner_op_set_team(get_db(), name, (data.get("team") or "").strip())
+    return jsonify(body), code
+
+
+@app.route("/api/lists/owners/<path:old_name>", methods=["PUT", "DELETE"])
+@require_perm("settings")
+def edit_owner(old_name):
+    db = get_db()
+    if request.method == "DELETE":
+        body, code = owner_op_deactivate(db, old_name)
+        return jsonify(body), code
+    data = request.get_json(force=True)
+    body, code = owner_op_rename(db, old_name, (data.get("new_name") or "").strip())
+    return jsonify(body), code
 
 
 # ------------------------------------------------------------------
@@ -783,6 +1090,9 @@ def edit_owner(old_name):
 def api_settings():
     db = get_db()
     if request.method == "POST":
+        err = perm_error("settings")
+        if err:
+            return err
         data = request.get_json(force=True)
         for k, v in data.items():
             if k == "_owner":
@@ -898,6 +1208,9 @@ def api_new_scripts():
         ).fetchall()
         return jsonify([dict(r) for r in rows])
 
+    err = perm_error("new-scripts")
+    if err:
+        return err
     data = request.get_json(force=True)
     row, error = validate_new_script_row(db, data)
     if error:
@@ -911,6 +1224,7 @@ def api_new_scripts():
 # Results (History_Log equivalent)
 # ------------------------------------------------------------------
 @app.route("/api/results", methods=["POST"])
+@require_perm("input-results")
 def api_add_results():
     """
     Accepts either:
@@ -1032,6 +1346,7 @@ def api_get_results():
 # Fixes (Daily_Fix_Log equivalent)
 # ------------------------------------------------------------------
 @app.route("/api/fixes", methods=["POST"])
+@require_perm("input-fix")
 def api_add_fix():
     row = request.get_json(force=True)
     # root_cause (nguyen nhan goc cua loi) la BAT BUOC - moi lan ghi nhan fix deu phai neu ro.
@@ -1452,6 +1767,7 @@ def api_get_assignments():
 
 
 @app.route("/api/assignments", methods=["POST"])
+@require_perm("priority")
 def api_set_assignment():
     """Body: {test_suite, test_case, owner}. Sets/changes who is currently responsible.
     Does NOT touch any existing fixes rows — past fix history stays with whoever actually did it."""
@@ -1474,6 +1790,7 @@ def api_set_assignment():
 
 
 @app.route("/api/handover", methods=["POST"])
+@require_perm("settings")
 def api_handover():
     """Body: {from_owner, to_owner, only_open (bool, default True)}.
     Reassigns CURRENT script ownership from from_owner to to_owner in bulk —
@@ -2801,8 +3118,150 @@ def admin_bulk_assignments():
     return jsonify({"upserted": upserted, "errors": errors})
 
 
+# ------------------------------------------------------------------
+# Admin: Quan ly tai khoan (users.db) - bao ve bang ADMIN_SECRET_KEY nhu route admin khac.
+# ------------------------------------------------------------------
+def _admin_key_ok_get():
+    return request.args.get("key", "") == ADMIN_SECRET_KEY
+
+
+def _admin_key_ok_mut():
+    return request.headers.get("X-Admin-Key", "") == ADMIN_SECRET_KEY
+
+
+@app.route("/api/admin/users", methods=["GET"])
+def admin_get_users():
+    if not _admin_key_ok_get():
+        return jsonify({"error": "Unauthorized"}), 403
+    udb = get_users_db()
+    rows = udb.execute(
+        "SELECT username, role, permissions, active, created_at FROM users ORDER BY username"
+    ).fetchall()
+    out = []
+    for r in rows:
+        out.append({
+            "username": r["username"],
+            "role": r["role"],
+            "permissions": perms_to_list(r["permissions"]),
+            "active": r["active"],
+            "created_at": r["created_at"],
+        })
+    return jsonify({"users": out, "all_tabs": ALL_TABS})
+
+
+@app.route("/api/admin/users/<path:username>", methods=["PUT"])
+def admin_update_user(username):
+    if not _admin_key_ok_mut():
+        return jsonify({"error": "Unauthorized"}), 403
+    data = request.get_json(force=True)
+    udb = get_users_db()
+    if not udb.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone():
+        return jsonify({"error": "Tài khoản không tồn tại."}), 404
+    # Doi role -> dat lai permissions ve mac dinh cua role do (tru khi client gui kem permissions).
+    if "role" in data:
+        role = data["role"]
+        if role not in ROLE_DEFAULT_PERMS:
+            return jsonify({"error": "Role không hợp lệ."}), 400
+        udb.execute("UPDATE users SET role=? WHERE username=?", (role, username))
+        if "permissions" not in data:
+            udb.execute("UPDATE users SET permissions=? WHERE username=?",
+                        (",".join(ROLE_DEFAULT_PERMS[role]), username))
+    if "permissions" in data:
+        perms = [p for p in data["permissions"] if p in ALL_TABS]
+        udb.execute("UPDATE users SET permissions=? WHERE username=?",
+                    (",".join(perms), username))
+    if "active" in data:
+        udb.execute("UPDATE users SET active=? WHERE username=?",
+                    (1 if data["active"] else 0, username))
+    udb.commit()
+    return jsonify({"status": "updated"})
+
+
+@app.route("/api/admin/users/<path:username>/reset-password", methods=["POST"])
+def admin_reset_password(username):
+    if not _admin_key_ok_mut():
+        return jsonify({"error": "Unauthorized"}), 403
+    udb = get_users_db()
+    if not udb.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone():
+        return jsonify({"error": "Tài khoản không tồn tại."}), 404
+    udb.execute("UPDATE users SET password_hash=? WHERE username=?",
+                (generate_password_hash(DEFAULT_RESET_PASSWORD), username))
+    udb.commit()
+    return jsonify({"status": "reset", "default_password": DEFAULT_RESET_PASSWORD})
+
+
+@app.route("/api/admin/users/<path:username>", methods=["DELETE"])
+def admin_delete_user(username):
+    if not _admin_key_ok_mut():
+        return jsonify({"error": "Unauthorized"}), 403
+    if username == BOOTSTRAP_ADMIN:
+        return jsonify({"error": "Không thể xoá tài khoản admin khởi tạo."}), 400
+    udb = get_users_db()
+    row = udb.execute("SELECT active FROM users WHERE username=?", (username,)).fetchone()
+    if not row:
+        return jsonify({"error": "Tài khoản không tồn tại."}), 404
+    if row["active"] == 1:
+        return jsonify({"error": "Chỉ xoá được tài khoản đã ngừng hoạt động. Hãy vô hiệu hoá trước."}), 400
+    udb.execute("DELETE FROM users WHERE username=?", (username,))
+    udb.commit()
+    return jsonify({"status": "deleted"})
+
+
+# ------------------------------------------------------------------
+# Admin: Quan ly Owner & Team - ADMIN_KEY-gated, dung chung helper owner_op_*.
+# ------------------------------------------------------------------
+@app.route("/api/admin/owners", methods=["GET"])
+def admin_get_owners():
+    if not _admin_key_ok_get():
+        return jsonify({"error": "Unauthorized"}), 403
+    db = get_db()
+    rows = db.execute("SELECT name, active, team FROM owners ORDER BY name").fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/admin/owners", methods=["POST"])
+def admin_add_owner():
+    if not _admin_key_ok_mut():
+        return jsonify({"error": "Unauthorized"}), 403
+    data = request.get_json(force=True)
+    body, code = owner_op_add(get_db(), (data.get("name") or "").strip(), (data.get("team") or "").strip())
+    return jsonify(body), code
+
+
+@app.route("/api/admin/owners/<path:name>/team", methods=["PUT"])
+def admin_set_owner_team(name):
+    if not _admin_key_ok_mut():
+        return jsonify({"error": "Unauthorized"}), 403
+    data = request.get_json(force=True)
+    body, code = owner_op_set_team(get_db(), name, (data.get("team") or "").strip())
+    return jsonify(body), code
+
+
+@app.route("/api/admin/owners/<path:old_name>", methods=["PUT", "DELETE"])
+def admin_edit_owner(old_name):
+    if not _admin_key_ok_mut():
+        return jsonify({"error": "Unauthorized"}), 403
+    db = get_db()
+    if request.method == "DELETE":
+        # ?hard=1 -> xoa han (chi khi khong con tham chieu); mac dinh deactivate (giu lich su).
+        if request.args.get("hard") == "1":
+            body, code = owner_op_hard_delete(db, old_name)
+        else:
+            body, code = owner_op_deactivate(db, old_name)
+        return jsonify(body), code
+    data = request.get_json(force=True)
+    # PUT: rename hoac reactivate (active=1).
+    if data.get("reactivate"):
+        db.execute("UPDATE owners SET active=1 WHERE name=?", (old_name,))
+        db.commit()
+        return jsonify({"status": "reactivated"})
+    body, code = owner_op_rename(db, old_name, (data.get("new_name") or "").strip())
+    return jsonify(body), code
+
+
 if __name__ == "__main__":
     init_db()
+    init_users_db()
     print("=" * 60)
     print(" Test Stabilization Tracker dang chay!")
     print(" May nay:        http://localhost:5000")

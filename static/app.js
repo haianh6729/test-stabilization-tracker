@@ -15,6 +15,7 @@ const state = {
   priorityColumnFilters: {},
   charts: {},
   currentUser: localStorage.getItem("tracker_user") || "",
+  me: null,   // {username, role, permissions} - phien dang nhap hien tai
 };
 
 const TREND_BADGE = {
@@ -57,6 +58,77 @@ function initTabs() {
       if (btn.dataset.tab === "input-fix") { loadFailingScripts(); }
       if (btn.dataset.tab === "new-scripts") { loadNewScripts(); }
     });
+  });
+}
+
+// ---------------- Auth / phân quyền ----------------
+// Lấy thông tin phiên đăng nhập. Trả về null nếu chưa đăng nhập (401).
+async function fetchMe() {
+  try {
+    const res = await fetch("/api/me");
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    return null;
+  }
+}
+
+// Ẩn/hiện các tab theo quyền của user hiện tại. Nếu tab đang active bị ẩn thì
+// chuyển sang tab đầu tiên được phép.
+function applyPermissions() {
+  const perms = (state.me && state.me.permissions) || [];
+  let activeStillVisible = false;
+  let firstVisibleBtn = null;
+  $$(".tab-btn").forEach((btn) => {
+    const tab = btn.dataset.tab;
+    const allowed = perms.includes(tab);
+    btn.style.display = allowed ? "" : "none";
+    const panel = $("#tab-" + tab);
+    if (!allowed && panel) panel.classList.remove("active");
+    if (allowed && !firstVisibleBtn) firstVisibleBtn = btn;
+    if (allowed && btn.classList.contains("active")) activeStillVisible = true;
+  });
+  if (!activeStillVisible && firstVisibleBtn) {
+    $$(".tab-btn").forEach((b) => b.classList.remove("active"));
+    $$(".tab-panel").forEach((p) => p.classList.remove("active"));
+    firstVisibleBtn.classList.add("active");
+    const panel = $("#tab-" + firstVisibleBtn.dataset.tab);
+    if (panel) panel.classList.add("active");
+  }
+  // Topbar: tên user + link quản trị (chỉ admin).
+  const userBox = $("#userBox");
+  if (userBox && state.me) {
+    userBox.style.display = "";
+    $("#userName").textContent = `👤 ${state.me.username} (${state.me.role})`;
+    $("#adminLink").style.display = state.me.role === "admin" ? "" : "none";
+  }
+}
+
+function initAuthUI() {
+  $("#btnLogout")?.addEventListener("click", async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location = "/login";
+  });
+  $("#btnChangePw")?.addEventListener("click", () => {
+    $("#cpCurrent").value = ""; $("#cpNew").value = "";
+    $("#cpMsg").textContent = "";
+    $("#changePwModal").style.display = "flex";
+  });
+  $("#btnDoChangePw")?.addEventListener("click", async () => {
+    const msg = $("#cpMsg");
+    const current = $("#cpCurrent").value;
+    const newPw = $("#cpNew").value;
+    if (!newPw) { msg.textContent = "Nhập mật khẩu mới."; msg.className = "msg-err"; return; }
+    try {
+      await api("/api/auth/change-password", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ current, new: newPw }),
+      });
+      msg.textContent = "✅ Đã đổi mật khẩu."; msg.className = "msg-ok";
+      setTimeout(() => { $("#changePwModal").style.display = "none"; }, 900);
+    } catch (e) {
+      msg.textContent = e.message; msg.className = "msg-err";
+    }
   });
 }
 
@@ -1763,7 +1835,13 @@ async function initSettings() {
 
 // ---------------- Init ----------------
 async function init() {
+  // Kiểm tra đăng nhập trước tiên. Chưa đăng nhập -> về trang login.
+  state.me = await fetchMe();
+  if (!state.me) { window.location = "/login"; return; }
+  state.currentUser = state.me.username;
+
   initTabs();
+  initAuthUI();
   initInputResults();
   initInputFix();
   initFixTracking();
@@ -1781,8 +1859,17 @@ async function init() {
   renderPriorityTable();
   await refreshDashboard();
   initTableTools();  // sort + filter mỗi cột + xuất Excel cho mọi bảng data-table
+  applyPermissions();  // ẩn tab không có quyền + hiển thị topbar user (sau khi tab đã init)
 
   setInterval(async () => {
+    // Đồng bộ phân quyền: admin đổi role/quyền hoặc vô hiệu hoá -> phản ánh sau ≤15s.
+    const me = await fetchMe();
+    if (!me) { window.location = "/login"; return; }  // bị vô hiệu hoá/xoá -> đá về login
+    const changed = JSON.stringify(me) !== JSON.stringify(state.me);
+    state.me = me;
+    state.currentUser = me.username;
+    if (changed) applyPermissions();
+
     // Tab "Ghi nhận Fix" đang mở -> chỉ lấy dữ liệu mới ở nền, không rebuild
     // dropdown/field đang thao tác dở (tránh làm gián đoạn form đang điền).
     const inputFixActive = isInputFixTabActive();

@@ -1,0 +1,10 @@
+Browser_TEST001	anh.hh	DONE	2026-07-11	28	SM-S721	SM-A175	SM-F966	Script cơ bản cho camera
+Browser_TEST002	duyhung.tr	DONE	2026-07-10	27	SM-X526	SM-F741	Kiểm tra zoom quang học
+Keyboard_TEST001	tuyen.bv1	SKIP	2026-07-11	28		Chưa phân bổ được resource
+Touch_TEST001	long.tt	DONE	2026-07-09	27	SM-S721	SM-A175	Script touch event cơ bản
+Battery_TEST001	linh.np	SKIP	2026-07-11	28		Chờ thiết bị mới về
+Battery_TEST002	linh.np	DONE	2026-07-08	27	SM-X526	Script test battery drain 30 phút
+Display_TEST001	nam.nv	DONE	2026-07-11	28	SM-S721	SM-X526	SM-F966	Kiểm tra màu sắc HDR
+Display_TEST002	nam.nv	SKIP	2026-07-10	27		Độ phân giải cao chưa có device
+Connectivity_TEST001	chi.tt	DONE	2026-07-09	27	SM-A175	SM-F741	Test Wifi 6E
+Audio_TEST001	viet.nk	DONE	2026-07-11	28	SM-S721	SM-A175	SM-X526	AM thanh nổi stereo
