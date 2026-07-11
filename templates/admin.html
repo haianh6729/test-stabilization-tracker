@@ -349,40 +349,43 @@ SM-00-045	tuyen.bv1	SKIP	2026-06-08			TC trùng, không cần viết"></textarea
 <div id="atab-fixes" class="admin-tab-panel">
 <div class="card">
   <div class="admin-header fx">
-    <h2>🛠️ Quản lý dữ liệu Fix Log (Daily_Fix_Log)</h2>
-    <p>Xem, sửa, xoá từng dòng, hoặc nhập hàng loạt lịch sử ghi nhận fix.</p>
+    <h2>🛠️ Quản lý dữ liệu Theo dõi Fix</h2>
+    <p>Thêm / sửa / xóa trực tiếp các lần fix đã ghi nhận. Tìm kiếm theo owner, test suite, test case, model, hoặc root cause.</p>
   </div>
 
   <div class="info-box">
-    <p><strong>Mẹo:</strong> Tìm theo Owner, Test suite, Test case, hoặc Model fixed rồi bấm "Tìm kiếm".</p>
+    <p><strong>Mẹo:</strong> Bấm "➕ Thêm fix mới" để tạo 1 dòng fix tay (VD: bù dữ liệu bị thiếu), hoặc dùng khối "Nhập hàng loạt" bên dưới để nhập nhiều dòng cùng lúc. Sửa/xóa hoạt động như bảng Cycle Results.</p>
   </div>
 
   <div class="search-bar">
-    <input type="text" id="fxSearchInput" placeholder="Tìm kiếm (owner, test suite, test case, model...)">
-    <button onclick="fxSearch()">🔍 Tìm kiếm</button>
-    <button onclick="fxLoadAll()" style="background: #666;">⟳ Tải lại</button>
+    <input type="text" id="fixSearchInput" placeholder="Tìm kiếm (owner, test suite, test case, model, root cause...)">
+    <button onclick="searchFixes()">🔍 Tìm kiếm</button>
+    <button onclick="loadAllFixes()" style="background: #666;">⟳ Tải lại</button>
+    <button onclick="openAddFixModal()" style="background: #4CAF50;">➕ Thêm fix mới</button>
   </div>
 
   <div style="overflow-x: auto;">
-    <table class="results-table" id="fxTable">
+    <table class="results-table" id="fixesTable">
       <thead>
         <tr>
           <th>#</th>
-          <th>Fix date</th>
+          <th>Ngày fix</th>
           <th>Owner</th>
-          <th>Test suite</th>
-          <th>Test case</th>
-          <th>Model fixed</th>
-          <th>Fixed after cycle</th>
+          <th>Test Suite</th>
+          <th>Test Case</th>
+          <th>Model đã fix</th>
+          <th>Fix sau cycle</th>
           <th>Root cause</th>
-          <th>Note</th>
+          <th>Ghi chú</th>
+          <th>Tạo lúc</th>
           <th>Hành động</th>
         </tr>
       </thead>
-      <tbody id="fxBody"></tbody>
+      <tbody id="fixesBody">
+      </tbody>
     </table>
   </div>
-  <p id="fxCount" style="margin-top: 10px; color: #666; font-size: 12px;"></p>
+  <p id="fixCount" style="margin-top: 10px; color: #666; font-size: 12px;"></p>
 
   <div class="bulk-box">
     <h3 style="margin-top:0;">📋 Nhập hàng loạt (dán từ Excel)</h3>
@@ -559,49 +562,49 @@ Keyboard	SKBD_000123	tuyen.bv1"></textarea>
   </div>
 </div>
 
-<!-- Edit Modal: Fix Log -->
-<div id="fxEditModal" class="modal">
+<!-- Fix Modal (dùng chung cho Thêm mới + Sửa, y hệt logic origin/main) -->
+<div id="fixModal" class="modal">
   <div class="modal-content">
     <div class="modal-header">
-      <h2>Sửa dòng Fix Log</h2>
-      <button class="close-btn" onclick="fxCloseEditModal()">✕</button>
+      <h2 id="fixModalTitle">Sửa lần fix</h2>
+      <button class="close-btn" onclick="closeFixModal()">✕</button>
     </div>
-    <form id="fxEditForm" onsubmit="fxSaveEdit(event)">
+    <form id="fixForm" onsubmit="saveFix(event)">
       <div class="form-group">
-        <label>Fix date (YYYY-MM-DD):</label>
-        <input type="text" id="fxEditDate" required>
+        <label>Ngày fix:</label>
+        <input type="date" id="fixDate" required>
       </div>
       <div class="form-group">
         <label>Owner:</label>
-        <input type="text" id="fxEditOwner" required>
+        <input type="text" id="fixOwner" required>
       </div>
       <div class="form-group">
-        <label>Test suite:</label>
-        <input type="text" id="fxEditSuite" required>
+        <label>Test Suite:</label>
+        <input type="text" id="fixTestSuite" required>
       </div>
       <div class="form-group">
-        <label>Test case:</label>
-        <input type="text" id="fxEditCase" required>
+        <label>Test Case:</label>
+        <input type="text" id="fixTestCase" required>
       </div>
       <div class="form-group">
-        <label>Model fixed:</label>
-        <input type="text" id="fxEditModel" required>
+        <label>Model đã fix:</label>
+        <input type="text" id="fixModelFixed" required>
       </div>
       <div class="form-group">
         <label>Fixed after cycle:</label>
-        <input type="number" id="fxEditCycle" min="1" required>
+        <input type="number" id="fixFixedAfterCycle" min="1" required>
       </div>
       <div class="form-group">
-        <label>Root cause: <span style="color:#d32f2f">*bắt buộc</span></label>
-        <textarea id="fxEditRootCause"></textarea>
+        <label>Root cause:</label>
+        <textarea id="fixRootCause"></textarea>
       </div>
       <div class="form-group">
-        <label>Note:</label>
-        <textarea id="fxEditNote"></textarea>
+        <label>Ghi chú:</label>
+        <textarea id="fixNote"></textarea>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn-cancel" onclick="fxCloseEditModal()">Hủy</button>
-        <button type="submit" class="btn-primary">💾 Lưu thay đổi</button>
+        <button type="button" class="btn-cancel" onclick="closeFixModal()">Hủy</button>
+        <button type="submit" class="btn-primary">💾 Lưu</button>
       </div>
     </form>
   </div>
@@ -658,6 +661,7 @@ document.querySelectorAll('.admin-tab-btn').forEach((btn) => {
 // Cycle Results admin
 // ============================================================
 let currentEditId = null;
+let currentFixEditId = null; // null = dang them moi
 
 async function loadAllResults() {
   document.getElementById('searchInput').value = '';
@@ -946,112 +950,133 @@ async function nsBulkImport() {
 }
 
 // ============================================================
-// Fix Log admin
+// Fix Log admin - giữ nguyên logic đã chạy thật trên origin/main
 // ============================================================
-let fxCurrentEditId = null;
-
-async function fxLoadAll() {
-  document.getElementById('fxSearchInput').value = '';
+async function loadAllFixes() {
+  document.getElementById('fixSearchInput').value = '';
   const response = await fetch(`/api/admin/fixes?key=${ADMIN_KEY}`);
   const data = await response.json();
-  fxDisplay(data);
+  displayFixes(data);
 }
 
-async function fxSearch() {
-  const search = document.getElementById('fxSearchInput').value.trim();
-  if (!search) { fxLoadAll(); return; }
+async function searchFixes() {
+  const search = document.getElementById('fixSearchInput').value.trim();
+  if (!search) {
+    loadAllFixes();
+    return;
+  }
   const response = await fetch(`/api/admin/fixes?key=${ADMIN_KEY}&search=${encodeURIComponent(search)}`);
   const data = await response.json();
-  fxDisplay(data);
+  displayFixes(data);
 }
 
-function fxDisplay(rows) {
-  const tbody = document.getElementById('fxBody');
+function displayFixes(fixes) {
+  const tbody = document.getElementById('fixesBody');
   tbody.innerHTML = '';
 
-  rows.forEach((r) => {
+  fixes.forEach((f) => {
     const row = tbody.insertRow();
     row.innerHTML = `
-      <td>${r.id}</td>
-      <td>${r.fix_date}</td>
-      <td>${r.owner}</td>
-      <td>${r.test_suite}</td>
-      <td>${r.test_case}</td>
-      <td>${r.model_fixed}</td>
-      <td>${r.fixed_after_cycle}</td>
-      <td style="max-width:200px; word-break:break-word;">${r.root_cause || '-'}</td>
-      <td style="max-width:160px; word-break:break-word;">${r.note || '-'}</td>
+      <td>${f.id}</td>
+      <td>${f.fix_date || '-'}</td>
+      <td>${f.owner}</td>
+      <td>${f.test_suite}</td>
+      <td>${f.test_case}</td>
+      <td>${f.model_fixed}</td>
+      <td>${f.fixed_after_cycle}</td>
+      <td style="max-width:220px; word-break:break-word;">${f.root_cause || '-'}</td>
+      <td style="max-width:180px; word-break:break-word;">${f.note || '-'}</td>
+      <td>${f.created_at ? f.created_at.split(' ')[0] : '-'}</td>
       <td>
         <div class="action-btns">
-          <button class="btn-sm btn-edit" onclick='fxOpenEditModal(${r.id}, ${JSON.stringify(r).replace(/'/g, "&apos;")})'>✏️ Sửa</button>
-          <button class="btn-sm btn-delete" onclick="fxDeleteRow(${r.id})">🗑️ Xóa</button>
+          <button class="btn-sm btn-edit" onclick="openEditFixModal(${f.id}, ${JSON.stringify(f).replace(/"/g, '&quot;')})">✏️ Sửa</button>
+          <button class="btn-sm btn-delete" onclick="deleteFix(${f.id})">🗑️ Xóa</button>
         </div>
       </td>
     `;
   });
 
-  document.getElementById('fxCount').textContent = `Tổng: ${rows.length} dòng`;
+  document.getElementById('fixCount').textContent = `Tổng: ${fixes.length} lần fix`;
 }
 
-function fxOpenEditModal(id, row) {
-  fxCurrentEditId = id;
-  document.getElementById('fxEditDate').value = row.fix_date;
-  document.getElementById('fxEditOwner').value = row.owner;
-  document.getElementById('fxEditSuite').value = row.test_suite;
-  document.getElementById('fxEditCase').value = row.test_case;
-  document.getElementById('fxEditModel').value = row.model_fixed;
-  document.getElementById('fxEditCycle').value = row.fixed_after_cycle;
-  document.getElementById('fxEditRootCause').value = row.root_cause || '';
-  document.getElementById('fxEditNote').value = row.note || '';
-  document.getElementById('fxEditModal').classList.add('show');
+function openAddFixModal() {
+  currentFixEditId = null;
+  document.getElementById('fixModalTitle').textContent = 'Thêm fix mới';
+  document.getElementById('fixForm').reset();
+  document.getElementById('fixDate').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('fixFixedAfterCycle').value = 1;
+  document.getElementById('fixModal').classList.add('show');
 }
 
-function fxCloseEditModal() {
-  document.getElementById('fxEditModal').classList.remove('show');
-  fxCurrentEditId = null;
+function openEditFixModal(id, fix) {
+  currentFixEditId = id;
+  document.getElementById('fixModalTitle').textContent = 'Sửa lần fix';
+  document.getElementById('fixDate').value = fix.fix_date || '';
+  document.getElementById('fixOwner').value = fix.owner || '';
+  document.getElementById('fixTestSuite').value = fix.test_suite || '';
+  document.getElementById('fixTestCase').value = fix.test_case || '';
+  document.getElementById('fixModelFixed').value = fix.model_fixed || '';
+  document.getElementById('fixFixedAfterCycle').value = fix.fixed_after_cycle;
+  document.getElementById('fixRootCause').value = fix.root_cause || '';
+  document.getElementById('fixNote').value = fix.note || '';
+  document.getElementById('fixModal').classList.add('show');
 }
 
-async function fxSaveEdit(event) {
+function closeFixModal() {
+  document.getElementById('fixModal').classList.remove('show');
+  currentFixEditId = null;
+}
+
+async function saveFix(event) {
   event.preventDefault();
 
   const data = {
-    fix_date: document.getElementById('fxEditDate').value.trim(),
-    owner: document.getElementById('fxEditOwner').value.trim(),
-    test_suite: document.getElementById('fxEditSuite').value.trim(),
-    test_case: document.getElementById('fxEditCase').value.trim(),
-    model_fixed: document.getElementById('fxEditModel').value.trim(),
-    fixed_after_cycle: parseInt(document.getElementById('fxEditCycle').value),
-    root_cause: document.getElementById('fxEditRootCause').value.trim(),
-    note: document.getElementById('fxEditNote').value.trim(),
+    fix_date: document.getElementById('fixDate').value,
+    owner: document.getElementById('fixOwner').value.trim(),
+    test_suite: document.getElementById('fixTestSuite').value.trim(),
+    test_case: document.getElementById('fixTestCase').value.trim(),
+    model_fixed: document.getElementById('fixModelFixed').value.trim(),
+    fixed_after_cycle: parseInt(document.getElementById('fixFixedAfterCycle').value, 10),
+    root_cause: document.getElementById('fixRootCause').value.trim(),
+    note: document.getElementById('fixNote').value.trim(),
   };
 
-  const response = await fetch(`/api/admin/fixes/${fxCurrentEditId}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', 'X-Admin-Key': ADMIN_KEY },
+  const isEdit = currentFixEditId !== null;
+  const url = isEdit ? `/api/admin/fixes/${currentFixEditId}` : '/api/admin/fixes';
+  const response = await fetch(url, {
+    method: isEdit ? 'PUT' : 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Admin-Key': ADMIN_KEY
+    },
     body: JSON.stringify(data)
   });
 
   if (response.ok) {
-    alert('✅ Cập nhật thành công!');
-    fxCloseEditModal();
-    fxLoadAll();
+    alert(isEdit ? '✅ Cập nhật thành công!' : '✅ Đã thêm fix mới!');
+    closeFixModal();
+    loadAllFixes();
   } else {
     const err = await response.json().catch(() => ({}));
-    alert('❌ Lỗi cập nhật: ' + (err.error || 'không rõ lý do'));
+    alert('❌ Lỗi: ' + (err.error || 'không rõ nguyên nhân'));
   }
 }
 
-async function fxDeleteRow(id) {
-  if (!confirm('⚠️ Xác nhận xóa dòng Fix Log này? Không thể hoàn tác!')) return;
+async function deleteFix(id) {
+  if (!confirm('⚠️ Xác nhận xóa lần fix này? Không thể hoàn tác!')) {
+    return;
+  }
 
   const response = await fetch(`/api/admin/fixes/${id}`, {
     method: 'DELETE',
-    headers: { 'X-Admin-Key': ADMIN_KEY }
+    headers: {
+      'X-Admin-Key': ADMIN_KEY
+    }
   });
 
   if (response.ok) {
     alert('✅ Đã xóa!');
-    fxLoadAll();
+    loadAllFixes();
   } else {
     alert('❌ Lỗi xóa!');
   }
@@ -1104,7 +1129,7 @@ async function fxBulkImport() {
     ).join('');
   }
   document.getElementById('fxBulkArea').value = '';
-  fxLoadAll();
+  loadAllFixes();
 }
 
 // ============================================================
@@ -1264,7 +1289,7 @@ document.querySelectorAll('.admin-tab-btn').forEach((btn) => {
     _loadedTabs.add(t);
     if (t === 'results') loadAllResults();
     if (t === 'new-scripts') nsLoadAll();
-    if (t === 'fixes') fxLoadAll();
+    if (t === 'fixes') loadAllFixes();
     if (t === 'assignments') asgLoadAll();
   });
 });
@@ -1280,8 +1305,8 @@ document.getElementById('searchInput').addEventListener('keypress', function(e) 
 document.getElementById('nsSearchInput').addEventListener('keypress', function(e) {
   if (e.key === 'Enter') nsSearch();
 });
-document.getElementById('fxSearchInput').addEventListener('keypress', function(e) {
-  if (e.key === 'Enter') fxSearch();
+document.getElementById('fixSearchInput').addEventListener('keypress', function(e) {
+  if (e.key === 'Enter') searchFixes();
 });
 document.getElementById('asgSearchInput').addEventListener('keypress', function(e) {
   if (e.key === 'Enter') asgSearch();

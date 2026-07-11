@@ -56,6 +56,7 @@
     <h3>🧩 Pass Rate theo Item × Model × Cycle</h3>
     <p class="hint">Pass rate của từng <b>item (test suite)</b> trên <b>từng model</b>, tách theo <b>từng cycle</b>. Chọn các cycle muốn xem trong ô bên dưới — dòng <b>“OVERALL”</b> ở đầu là pass rate gộp của <b>toàn bộ script</b> cho các cycle đang chọn. Ô càng <span style="color:#1e8449">xanh</span> = pass rate càng cao, càng <span style="color:#c0392b">đỏ</span> = càng thấp.</p>
     <div class="form-row" id="smCycleChooser" style="gap:12px; align-items:center;"></div>
+    <button class="btn-tiny rename" id="btnExportSmMatrix" style="margin-bottom:8px;">⬇️ Xuất Excel (.xlsx)</button>
     <div id="smOverallBox" style="margin:6px 0 12px; font-size:14px;"></div>
     <div class="sm-table-wrap">
       <table id="suiteModelTable" class="data-table sm-matrix">
@@ -353,7 +354,7 @@
     <table id="fixTrackingTable" class="data-table">
       <thead>
         <tr>
-          <th>Trạng thái</th><th>Owner</th><th>Test suite</th><th>Test Case</th>
+          <th>Trạng thái</th><th>Owner</th><th>Team</th><th>Test suite</th><th>Test Case</th>
           <th>Model đã fix</th><th>Root cause</th><th>Fix sau cycle</th><th>Cycle chạy lại</th>
           <th>Lần chạy sau</th><th>Số fail sau</th><th>Ngày fix</th><th>Ghi chú</th>
         </tr>
