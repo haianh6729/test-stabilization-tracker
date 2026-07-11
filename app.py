@@ -105,6 +105,25 @@ def init_db():
             PRIMARY KEY (test_suite, test_case)
         );
 
+        -- Ghi nhan script duoc VIET MOI cho tung Test Case (tab "Script viet moi").
+        -- Item = test_suite chuan (suy tu tien to tc_id), tc_id = test_case -> join duoc
+        -- voi bang results/fixes. tc_id DUY NHAT: moi Test Case chi co 1 ban ghi viet moi.
+        CREATE TABLE IF NOT EXISTS new_scripts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item TEXT NOT NULL,
+            tc_id TEXT NOT NULL UNIQUE,
+            member TEXT,
+            team TEXT,
+            assign_week INTEGER,
+            completed_date TEXT,
+            status TEXT NOT NULL,          -- DONE / SKIP
+            models_written TEXT,           -- CSV ten model tu bang models
+            sdf_id TEXT,
+            remark TEXT,
+            created_by TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
         CREATE INDEX IF NOT EXISTS idx_results_lookup ON results(test_suite, test_case, model, cycle);
         CREATE INDEX IF NOT EXISTS idx_results_cycle ON results(cycle);
         CREATE INDEX IF NOT EXISTS idx_fixes_owner ON fixes(owner);
@@ -544,6 +563,34 @@ def derive_test_suite(test_case_name, raw_test_suite):
     return base
 
 
+# Item mau + vi du dinh dang TC ID (chi de HIEN THI goi y; validate thuc te dua vao tien to).
+ITEM_TC_EXAMPLES = {
+    "Internet": "Browser_000001",
+    "Keyboard": "SKBD_000001",
+    "Now-brief": "NowBrief_000001",
+    "Reminder": "Reminder_000001",
+    "SamsungMember": "SM-00-002",
+    "Wallpaper": "Wallpaper_000001",
+    "Weather": "Weather_000001",
+}
+
+# TC ID cua SamsungMember dung dau gach ngang (VD "SM-00-002") thay vi gach duoi nhu
+# cac Item khac -> rieng tien to "sm" CHI chap nhan dau "-".
+_TC_ID_PREFIX_SEPARATORS = {"sm": ("-",)}
+
+
+def item_from_tc_id(tc_id):
+    """Suy Item (ten test_suite chuan) tu TC ID theo dung tien to trong TC_SUITE_RULES.
+    Tra ve None neu khong khop tien to nao (dung de validate 'sai dinh dang')."""
+    lower = str(tc_id or "").strip().lower()
+    for prefixes, suite in TC_SUITE_RULES:
+        for p in prefixes:
+            seps = _TC_ID_PREFIX_SEPARATORS.get(p, ("_",))
+            if any(lower.startswith(p + sep) for sep in seps):
+                return suite
+    return None
+
+
 def get_models_list(db):
     rows = db.execute("SELECT name FROM models ORDER BY sort_order, name").fetchall()
     return [r["name"] for r in rows]
@@ -748,6 +795,116 @@ def api_settings():
         db.commit()
     rows = db.execute("SELECT key, value FROM settings").fetchall()
     return jsonify({r["key"]: r["value"] for r in rows})
+
+
+# ------------------------------------------------------------------
+# New scripts (Script viet moi) - ghi nhan script duoc viet moi cho tung Test Case
+# ------------------------------------------------------------------
+@app.route("/api/new-scripts/items")
+def api_new_script_items():
+    """Danh sach Item co dinh + tien to TC ID + dau noi + vi du dinh dang, dung tu
+    TC_SUITE_RULES / _TC_ID_PREFIX_SEPARATORS. Frontend dung de tu suy Item, validate
+    dinh dang va hien goi y (mot nguon su that, JS khong tu hardcode lai)."""
+    out = []
+    for prefixes, suite in TC_SUITE_RULES:
+        out.append({
+            "item": suite,
+            "prefixes": list(prefixes),
+            "separators": {p: list(_TC_ID_PREFIX_SEPARATORS.get(p, ("_",))) for p in prefixes},
+            "example": ITEM_TC_EXAMPLES.get(suite, prefixes[0] + "_000001"),
+        })
+    return jsonify(out)
+
+
+def validate_new_script_row(db, data):
+    """Validate + chuan hoa 1 dong new_scripts tu dict tho. Tra ve (row_dict, None) neu
+    hop le, hoac (None, error_message) neu khong. Dung chung cho POST don le va bulk
+    import (mot nguon su that, tranh lech logic giua 2 duong nhap)."""
+    raw_tc = str(data.get("tc_id") or "").strip()
+    if not raw_tc:
+        return None, "Vui lòng nhập TC ID."
+    tc_id = extract_test_case_name(raw_tc)
+    item = item_from_tc_id(tc_id)
+    if not item:
+        examples = ", ".join(ITEM_TC_EXAMPLES.values())
+        return None, f"TC ID '{tc_id}' không đúng định dạng — không nhận diện được Item. Ví dụ hợp lệ: {examples}."
+
+    if db.execute("SELECT 1 FROM new_scripts WHERE tc_id=? LIMIT 1", (tc_id,)).fetchone():
+        return None, f"TC ID '{tc_id}' đã được nhập trước đó — mỗi Test Case chỉ ghi nhận 1 lần."
+
+    status = str(data.get("status") or "").strip().upper()
+    if status not in ("DONE", "SKIP"):
+        return None, "Status phải là DONE hoặc SKIP."
+
+    remark = str(data.get("remark") or "").strip()
+    if status == "SKIP" and not remark:
+        return None, "Bắt buộc nhập Remark (lý do) khi Status = SKIP."
+
+    models_written = data.get("models_written") or []
+    if isinstance(models_written, str):
+        models_written = re.split(r"[,/]", models_written)
+    models_written = [str(m).strip() for m in models_written if str(m).strip()]
+    if status == "DONE" and not models_written:
+        return None, "Chọn ít nhất 1 model đã viết script khi Status = DONE."
+    models_csv = ", ".join(models_written)
+
+    member = str(data.get("member") or "").strip()
+    team = str(data.get("team") or "").strip()
+    if member and not team:
+        row = db.execute("SELECT team FROM owners WHERE name=?", (member,)).fetchone()
+        team = row["team"] if row and row["team"] else ""
+
+    completed_date = str(data.get("completed_date") or "").strip()
+    assign_week = data.get("assign_week")
+    try:
+        assign_week = int(assign_week) if assign_week not in (None, "") else None
+    except (ValueError, TypeError):
+        assign_week = None
+    if assign_week is None and completed_date:
+        try:
+            assign_week = date.fromisoformat(completed_date[:10]).isocalendar()[1]
+        except ValueError:
+            assign_week = None
+
+    sdf_id = str(data.get("sdf_id") or "").strip()
+    created_by = str(data.get("created_by") or "").strip() or member
+
+    return {
+        "item": item, "tc_id": tc_id, "member": member, "team": team,
+        "assign_week": assign_week, "completed_date": completed_date, "status": status,
+        "models_written": models_csv, "sdf_id": sdf_id, "remark": remark, "created_by": created_by,
+    }, None
+
+
+def insert_new_script_row(db, row):
+    db.execute(
+        "INSERT INTO new_scripts (item, tc_id, member, team, assign_week, completed_date, status, models_written, sdf_id, remark, created_by) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        (row["item"], row["tc_id"], row["member"], row["team"], row["assign_week"], row["completed_date"],
+         row["status"], row["models_written"], row["sdf_id"], row["remark"], row["created_by"]),
+    )
+    if row["member"]:
+        db.execute("INSERT OR IGNORE INTO owners (name, active) VALUES (?, 1)", (row["member"],))
+        if row["team"]:
+            db.execute("UPDATE owners SET team=? WHERE name=?", (row["team"], row["member"]))
+
+
+@app.route("/api/new-scripts", methods=["GET", "POST"])
+def api_new_scripts():
+    db = get_db()
+    if request.method == "GET":
+        rows = db.execute(
+            "SELECT * FROM new_scripts ORDER BY completed_date DESC, id DESC"
+        ).fetchall()
+        return jsonify([dict(r) for r in rows])
+
+    data = request.get_json(force=True)
+    row, error = validate_new_script_row(db, data)
+    if error:
+        return jsonify({"error": error}), 400
+    insert_new_script_row(db, row)
+    db.commit()
+    return jsonify({"status": "ok", "item": row["item"], "tc_id": row["tc_id"], "assign_week": row["assign_week"], "team": row["team"]})
 
 
 # ------------------------------------------------------------------
@@ -2085,6 +2242,368 @@ def admin_delete_result(result_id):
     db.commit()
 
     return jsonify({"status": "deleted"})
+
+
+# ------------------------------------------------------------------
+# Admin: quan ly du lieu new_scripts (Script viet moi) - xem/sua/xoa tung dong +
+# nhap hang loat (bulk). Cung mo hinh bao ve bang ADMIN_SECRET_KEY nhu Cycle Results.
+# ------------------------------------------------------------------
+@app.route("/api/admin/new-scripts", methods=["GET"])
+def admin_get_new_scripts():
+    secret_key = request.args.get("key", "")
+    if secret_key != ADMIN_SECRET_KEY:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    db = get_db()
+    limit = int(request.args.get("limit", 2000))
+    search = request.args.get("search", "").strip()
+
+    if search:
+        rows = db.execute(
+            """SELECT * FROM new_scripts
+               WHERE tc_id LIKE ? OR item LIKE ? OR member LIKE ? OR team LIKE ?
+               ORDER BY id DESC LIMIT ?""",
+            (f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%", limit)
+        ).fetchall()
+    else:
+        rows = db.execute("SELECT * FROM new_scripts ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/admin/new-scripts/<int:sid>", methods=["PUT"])
+def admin_update_new_script(sid):
+    secret_key = request.headers.get("X-Admin-Key", "")
+    if secret_key != ADMIN_SECRET_KEY:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    data = request.get_json(force=True)
+    db = get_db()
+
+    # Sua TC ID thi tinh lai Item theo tien to moi (giu dung nguyen tac TC ID -> Item).
+    updates = []
+    values = []
+    if "tc_id" in data:
+        tc_id = extract_test_case_name(str(data["tc_id"] or "").strip())
+        item = item_from_tc_id(tc_id)
+        if not item:
+            examples = ", ".join(ITEM_TC_EXAMPLES.values())
+            return jsonify({"error": f"TC ID '{tc_id}' không đúng định dạng. Ví dụ hợp lệ: {examples}."}), 400
+        dup = db.execute("SELECT 1 FROM new_scripts WHERE tc_id=? AND id!=? LIMIT 1", (tc_id, sid)).fetchone()
+        if dup:
+            return jsonify({"error": f"TC ID '{tc_id}' đã tồn tại ở dòng khác."}), 400
+        updates += ["tc_id=?", "item=?"]
+        values += [tc_id, item]
+
+    for field in ("member", "team", "completed_date", "status", "models_written", "sdf_id", "remark"):
+        if field in data:
+            val = data[field]
+            if field == "status":
+                val = str(val or "").strip().upper()
+                if val not in ("DONE", "SKIP"):
+                    return jsonify({"error": "Status phải là DONE hoặc SKIP."}), 400
+            elif field == "models_written" and isinstance(val, list):
+                val = ", ".join(str(m).strip() for m in val if str(m).strip())
+            updates.append(f"{field}=?")
+            values.append(val)
+
+    if "assign_week" in data:
+        try:
+            wk = int(data["assign_week"]) if data["assign_week"] not in (None, "") else None
+        except (ValueError, TypeError):
+            wk = None
+        updates.append("assign_week=?")
+        values.append(wk)
+
+    if not updates:
+        return jsonify({"error": "No fields to update"}), 400
+
+    values.append(sid)
+    db.execute(f"UPDATE new_scripts SET {', '.join(updates)} WHERE id=?", values)
+    db.commit()
+    return jsonify({"status": "updated"})
+
+
+@app.route("/api/admin/new-scripts/<int:sid>", methods=["DELETE"])
+def admin_delete_new_script(sid):
+    secret_key = request.headers.get("X-Admin-Key", "")
+    if secret_key != ADMIN_SECRET_KEY:
+        return jsonify({"error": "Unauthorized"}), 403
+    db = get_db()
+    db.execute("DELETE FROM new_scripts WHERE id=?", (sid,))
+    db.commit()
+    return jsonify({"status": "deleted"})
+
+
+@app.route("/api/admin/new-scripts/bulk", methods=["POST"])
+def admin_bulk_new_scripts():
+    """Nhap hang loat: nhan { rows: [ {tc_id, member, status, completed_date,
+    models_written, sdf_id, remark}, ... ] }. Moi dong duoc validate/chuan hoa qua
+    dung ham validate_new_script_row() nhu form nhap don le -> khong lech quy tac."""
+    secret_key = request.headers.get("X-Admin-Key", "")
+    if secret_key != ADMIN_SECRET_KEY:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    payload = request.get_json(force=True)
+    rows_in = payload.get("rows", [])
+    if not rows_in:
+        return jsonify({"error": "Không có dòng dữ liệu nào."}), 400
+
+    db = get_db()
+    inserted = 0
+    errors = []
+    for i, raw in enumerate(rows_in):
+        row, error = validate_new_script_row(db, raw)
+        if error:
+            errors.append({"row_index": i, "tc_id": raw.get("tc_id", ""), "error": error})
+            continue
+        insert_new_script_row(db, row)
+        inserted += 1
+    db.commit()
+    return jsonify({"inserted": inserted, "errors": errors})
+
+
+# ------------------------------------------------------------------
+# Admin: quan ly bang fixes (Daily_Fix_Log) - xem/sua/xoa tung dong + nhap hang loat.
+# ------------------------------------------------------------------
+def validate_fix_row(db, data):
+    """Validate + chuan hoa 1 dong fixes tu dict tho. Tra ve (row_dict, None) hoac
+    (None, error_message). Dung chung cho sua tung dong (PUT) va bulk import."""
+    owner = str(data.get("owner") or "").strip()
+    test_suite = str(data.get("test_suite") or "").strip()
+    test_case = str(data.get("test_case") or "").strip()
+    model_fixed = str(data.get("model_fixed") or "").strip()
+    root_cause = str(data.get("root_cause") or "").strip()
+    fix_date = str(data.get("fix_date") or "").strip()
+    fixed_after_cycle = data.get("fixed_after_cycle")
+
+    if not owner:
+        return None, "Thiếu Owner."
+    if not test_suite or not test_case:
+        return None, "Thiếu Test suite/Test case."
+    if not model_fixed:
+        return None, "Thiếu Model fixed."
+    if not root_cause:
+        return None, "Root cause là bắt buộc, không được để trống."
+    if not fix_date:
+        return None, "Thiếu Fix date."
+    try:
+        fixed_after_cycle = int(fixed_after_cycle)
+    except (ValueError, TypeError):
+        return None, "Fixed after cycle phải là số nguyên."
+
+    return {
+        "fix_date": fix_date, "owner": owner, "test_suite": test_suite, "test_case": test_case,
+        "model_fixed": model_fixed, "fixed_after_cycle": fixed_after_cycle,
+        "note": str(data.get("note") or "").strip(), "root_cause": root_cause,
+    }, None
+
+
+@app.route("/api/admin/fixes", methods=["GET"])
+def admin_get_fixes():
+    secret_key = request.args.get("key", "")
+    if secret_key != ADMIN_SECRET_KEY:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    db = get_db()
+    limit = int(request.args.get("limit", 2000))
+    search = request.args.get("search", "").strip()
+    if search:
+        rows = db.execute(
+            """SELECT * FROM fixes
+               WHERE owner LIKE ? OR test_suite LIKE ? OR test_case LIKE ? OR model_fixed LIKE ?
+               ORDER BY id DESC LIMIT ?""",
+            (f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%", limit)
+        ).fetchall()
+    else:
+        rows = db.execute("SELECT * FROM fixes ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/admin/fixes/<int:fid>", methods=["PUT"])
+def admin_update_fix(fid):
+    secret_key = request.headers.get("X-Admin-Key", "")
+    if secret_key != ADMIN_SECRET_KEY:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    data = request.get_json(force=True)
+    db = get_db()
+    allowed_fields = ["fix_date", "owner", "test_suite", "test_case", "model_fixed", "fixed_after_cycle", "note", "root_cause"]
+    updates = []
+    values = []
+    for field in allowed_fields:
+        if field in data:
+            val = data[field]
+            if field == "fixed_after_cycle":
+                try:
+                    val = int(val)
+                except (ValueError, TypeError):
+                    return jsonify({"error": "Fixed after cycle phải là số nguyên."}), 400
+            elif field == "root_cause" and not str(val or "").strip():
+                return jsonify({"error": "Root cause là bắt buộc, không được để trống."}), 400
+            updates.append(f"{field}=?")
+            values.append(val)
+
+    if not updates:
+        return jsonify({"error": "No fields to update"}), 400
+
+    values.append(fid)
+    db.execute(f"UPDATE fixes SET {', '.join(updates)} WHERE id=?", values)
+    db.commit()
+    return jsonify({"status": "updated"})
+
+
+@app.route("/api/admin/fixes/<int:fid>", methods=["DELETE"])
+def admin_delete_fix(fid):
+    secret_key = request.headers.get("X-Admin-Key", "")
+    if secret_key != ADMIN_SECRET_KEY:
+        return jsonify({"error": "Unauthorized"}), 403
+    db = get_db()
+    db.execute("DELETE FROM fixes WHERE id=?", (fid,))
+    db.commit()
+    return jsonify({"status": "deleted"})
+
+
+@app.route("/api/admin/fixes/bulk", methods=["POST"])
+def admin_bulk_fixes():
+    """Nhap hang loat Fix Log. Cung logic chong trung nhu /api/fixes (POST don le):
+    (owner, test_suite, test_case, model_fixed, fixed_after_cycle) trung -> cap nhat
+    thay vi tao dong moi, tranh nhan doi trong Theo doi Fix."""
+    secret_key = request.headers.get("X-Admin-Key", "")
+    if secret_key != ADMIN_SECRET_KEY:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    payload = request.get_json(force=True)
+    rows_in = payload.get("rows", [])
+    if not rows_in:
+        return jsonify({"error": "Không có dòng dữ liệu nào."}), 400
+
+    db = get_db()
+    inserted = 0
+    updated = 0
+    errors = []
+    for i, raw in enumerate(rows_in):
+        row, error = validate_fix_row(db, raw)
+        if error:
+            errors.append({"row_index": i, "test_case": raw.get("test_case", ""), "error": error})
+            continue
+        db.execute("INSERT OR IGNORE INTO owners (name, active) VALUES (?, 1)", (row["owner"],))
+        existing = db.execute(
+            "SELECT id FROM fixes WHERE owner=? AND test_suite=? AND test_case=? AND model_fixed=? AND fixed_after_cycle=?",
+            (row["owner"], row["test_suite"], row["test_case"], row["model_fixed"], row["fixed_after_cycle"]),
+        ).fetchone()
+        if existing:
+            db.execute(
+                "UPDATE fixes SET fix_date=?, note=?, root_cause=? WHERE id=?",
+                (row["fix_date"], row["note"], row["root_cause"], existing["id"]),
+            )
+            updated += 1
+        else:
+            db.execute(
+                "INSERT INTO fixes (fix_date, owner, test_suite, test_case, model_fixed, fixed_after_cycle, note, root_cause) "
+                "VALUES (?,?,?,?,?,?,?,?)",
+                (row["fix_date"], row["owner"], row["test_suite"], row["test_case"], row["model_fixed"],
+                 row["fixed_after_cycle"], row["note"], row["root_cause"]),
+            )
+            inserted += 1
+    db.commit()
+    return jsonify({"inserted": inserted, "updated": updated, "errors": errors})
+
+
+# ------------------------------------------------------------------
+# Admin: quan ly bang assignments (dang phu trach) - khoa chinh la (test_suite, test_case),
+# khong co cot id rieng.
+# ------------------------------------------------------------------
+@app.route("/api/admin/assignments", methods=["GET"])
+def admin_get_assignments():
+    secret_key = request.args.get("key", "")
+    if secret_key != ADMIN_SECRET_KEY:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    db = get_db()
+    search = request.args.get("search", "").strip()
+    if search:
+        rows = db.execute(
+            """SELECT rowid, test_suite, test_case, owner, assigned_date FROM assignments
+               WHERE test_suite LIKE ? OR test_case LIKE ? OR owner LIKE ?
+               ORDER BY assigned_date DESC""",
+            (f"%{search}%", f"%{search}%", f"%{search}%")
+        ).fetchall()
+    else:
+        rows = db.execute(
+            "SELECT rowid, test_suite, test_case, owner, assigned_date FROM assignments ORDER BY assigned_date DESC"
+        ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/admin/assignments/<int:rowid>", methods=["PUT"])
+def admin_update_assignment(rowid):
+    secret_key = request.headers.get("X-Admin-Key", "")
+    if secret_key != ADMIN_SECRET_KEY:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    data = request.get_json(force=True)
+    db = get_db()
+    row = db.execute("SELECT test_suite, test_case FROM assignments WHERE rowid=?", (rowid,)).fetchone()
+    if not row:
+        return jsonify({"error": "Không tìm thấy assignment."}), 404
+
+    owner = str(data.get("owner") or "").strip()
+    assigned_date = str(data.get("assigned_date") or "").strip()
+    if owner:
+        db.execute("INSERT OR IGNORE INTO owners (name, active) VALUES (?, 1)", (owner,))
+    db.execute(
+        "UPDATE assignments SET owner=?, assigned_date=? WHERE rowid=?",
+        (owner, assigned_date, rowid),
+    )
+    db.commit()
+    return jsonify({"status": "updated"})
+
+
+@app.route("/api/admin/assignments/<int:rowid>", methods=["DELETE"])
+def admin_delete_assignment(rowid):
+    secret_key = request.headers.get("X-Admin-Key", "")
+    if secret_key != ADMIN_SECRET_KEY:
+        return jsonify({"error": "Unauthorized"}), 403
+    db = get_db()
+    db.execute("DELETE FROM assignments WHERE rowid=?", (rowid,))
+    db.commit()
+    return jsonify({"status": "deleted"})
+
+
+@app.route("/api/admin/assignments/bulk", methods=["POST"])
+def admin_bulk_assignments():
+    """Nhap hang loat assignment. Khoa (test_suite, test_case) -> trung thi UPDATE
+    (upsert), giong dung hanh vi cua POST /api/assignments don le."""
+    secret_key = request.headers.get("X-Admin-Key", "")
+    if secret_key != ADMIN_SECRET_KEY:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    payload = request.get_json(force=True)
+    rows_in = payload.get("rows", [])
+    if not rows_in:
+        return jsonify({"error": "Không có dòng dữ liệu nào."}), 400
+
+    db = get_db()
+    upserted = 0
+    errors = []
+    for i, raw in enumerate(rows_in):
+        test_suite = str(raw.get("test_suite") or "").strip()
+        test_case = str(raw.get("test_case") or "").strip()
+        owner = str(raw.get("owner") or "").strip()
+        assigned_date = str(raw.get("assigned_date") or "").strip() or date.today().isoformat()
+        if not test_suite or not test_case:
+            errors.append({"row_index": i, "test_case": test_case, "error": "Thiếu Test suite/Test case."})
+            continue
+        if owner:
+            db.execute("INSERT OR IGNORE INTO owners (name, active) VALUES (?, 1)", (owner,))
+        db.execute(
+            "INSERT INTO assignments (test_suite, test_case, owner, assigned_date) VALUES (?,?,?,?) "
+            "ON CONFLICT(test_suite, test_case) DO UPDATE SET owner=excluded.owner, assigned_date=excluded.assigned_date",
+            (test_suite, test_case, owner, assigned_date),
+        )
+        upserted += 1
+    db.commit()
+    return jsonify({"upserted": upserted, "errors": errors})
 
 
 if __name__ == "__main__":

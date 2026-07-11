@@ -9,6 +9,8 @@ const state = {
   failingScripts: [],
   fixTracking: [],
   cycleMatrix: { cycles: [], scripts: [] },
+  newScripts: [],
+  newScriptItems: [],
   prioritySort: { key: "rank", dir: 1 },
   priorityColumnFilters: {},
   charts: {},
@@ -53,6 +55,7 @@ function initTabs() {
       if (btn.dataset.tab === "cycle-compare") { loadCycleMatrix(); }
       if (btn.dataset.tab === "fix-tracking") { loadFixTracking(); }
       if (btn.dataset.tab === "input-fix") { loadFailingScripts(); }
+      if (btn.dataset.tab === "new-scripts") { loadNewScripts(); }
     });
   });
 }
@@ -85,6 +88,10 @@ async function loadReferenceData() {
   const today = new Date().toISOString().slice(0, 10);
   if (!$("#fDate").value) $("#fDate").value = today;
   if ($("#rDate") && !$("#rDate").value) $("#rDate").value = today;
+  if ($("#nsDate") && !$("#nsDate").value) $("#nsDate").value = today;
+  nsSyncWeekFromDate(false); // điền Week theo ngày mặc định (không đè giá trị đã sửa tay)
+
+  renderNewScriptForm(); // đồng bộ Member/model checkbox của tab Script viết mới
 }
 
 // ---------------- Dashboard ----------------
@@ -711,7 +718,7 @@ function ttSetup(table) {
 // định mọi dòng phẳng, cùng số cột). Cần lọc/sắp xếp chi tiết thì dùng tab "So sánh Cycle".
 const ENHANCED_TABLE_IDS = [
   "passRateTable", "ownerTable", "suiteTable",
-  "cycleMatrixTable", "fixTrackingTable",
+  "cycleMatrixTable", "fixTrackingTable", "newScriptsTable",
   "suiteListTable", "modelListTable", "ownerListTable",
 ];
 
@@ -991,6 +998,188 @@ function initInputFix() {
       await loadFailingScripts();
       await loadFixTracking();
       await refreshDashboard();
+    } catch (e) {
+      msg.textContent = "Lỗi: " + e.message;
+      msg.className = "msg-err";
+    }
+  });
+}
+
+// ---------------- New Scripts (Script viết mới) ----------------
+// Suy Item từ TC ID theo đúng tiền tố server trả về (một nguồn sự thật với backend).
+function nsDeriveItem(tcId) {
+  const lower = String(tcId || "").trim().toLowerCase();
+  if (!lower) return null;
+  for (const r of state.newScriptItems) {
+    for (const p of r.prefixes) {
+      const seps = (r.separators && r.separators[p]) || ["_"];
+      if (seps.some((sep) => lower.startsWith(p + sep))) return r.item;
+    }
+  }
+  return null;
+}
+
+function nsIsoWeek(dateStr) {
+  // Tuần ISO của 1 ngày (khớp date.isocalendar()[1] phía Python).
+  const d = new Date(dateStr + "T00:00:00");
+  if (isNaN(d)) return null;
+  const target = new Date(d.valueOf());
+  const dayNr = (d.getDay() + 6) % 7; // Mon=0..Sun=6
+  target.setDate(target.getDate() - dayNr + 3); // đến thứ Năm cùng tuần
+  const firstThursday = new Date(target.getFullYear(), 0, 4);
+  const firstDayNr = (firstThursday.getDay() + 6) % 7;
+  firstThursday.setDate(firstThursday.getDate() - firstDayNr + 3);
+  return 1 + Math.round((target - firstThursday) / (7 * 24 * 3600 * 1000));
+}
+
+function nsSelectedStatus() {
+  const el = document.querySelector('input[name="nsStatus"]:checked');
+  return el ? el.value : "DONE";
+}
+
+// Điền Assign Week theo Completed date. force=false: chỉ điền khi ô Week đang trống
+// (giữ giá trị người dùng đã sửa tay); force=true: luôn tính lại (khi đổi ngày / xoá form).
+function nsSyncWeekFromDate(force) {
+  const dEl = $("#nsDate"), wEl = $("#nsWeek");
+  if (!dEl || !wEl) return;
+  if (!force && wEl.value) return;
+  const wk = dEl.value ? nsIsoWeek(dEl.value) : null;
+  if (wk) wEl.value = wk;
+}
+
+// Đổ danh sách Member (datalist) + checkbox model theo dữ liệu tham chiếu hiện tại.
+function renderNewScriptForm() {
+  const memberList = $("#nsMemberList");
+  if (memberList) {
+    memberList.innerHTML = (state.owners || []).map((o) => `<option value="${o.name}">`).join("");
+  }
+  const box = $("#nsModels");
+  if (box) {
+    const checked = new Set($$("#nsModels input:checked").map((cb) => cb.value)); // giữ lựa chọn khi refresh
+    box.innerHTML = (state.models || []).map((m) => `
+      <label class="ns-inline"><input type="checkbox" class="ns-model-cb" value="${m}" ${checked.has(m) ? "checked" : ""}> ${m}</label>`).join("")
+      || `<span class="hint">Chưa có model nào trong hệ thống. Thêm ở tab Cài đặt.</span>`;
+  }
+}
+
+function nsUpdateTcIdFeedback() {
+  const raw = ($("#nsTcId")?.value || "").trim();
+  const hint = $("#nsTcIdHint");
+  const itemInput = $("#nsItem");
+  if (!raw) { if (hint) hint.innerHTML = ""; if (itemInput) itemInput.value = ""; return; }
+  const item = nsDeriveItem(raw);
+  if (itemInput) itemInput.value = item || "";
+  if (!hint) return;
+  if (!item) {
+    hint.innerHTML = `<span style="color:#e74c3c">⚠ Không nhận diện được Item — sai định dạng TC ID.</span>`;
+    return;
+  }
+  // Cảnh báo trùng ngay (đối chiếu danh sách đã tải).
+  const dup = (state.newScripts || []).some((s) => (s.tc_id || "").toLowerCase() === raw.toLowerCase());
+  if (dup) {
+    hint.innerHTML = `<span style="color:#e74c3c">⛔ TC ID này đã được nhập trước đó — không thể nhập trùng.</span>`;
+  } else {
+    hint.innerHTML = `<span style="color:#1e8449">✓ Item: <b>${item}</b></span>`;
+  }
+}
+
+function nsUpdateStatusUI() {
+  const isSkip = nsSelectedStatus() === "SKIP";
+  const req = $("#nsRemarkReq");
+  if (req) req.style.display = isSkip ? "" : "none";
+  const modelsWrap = $("#nsModelsWrap");
+  if (modelsWrap) modelsWrap.style.opacity = isSkip ? "0.5" : "1";
+}
+
+function nsClearForm() {
+  ["#nsTcId", "#nsItem", "#nsMember", "#nsTeam", "#nsSdfId", "#nsWeek", "#nsRemark"].forEach((s) => { const el = $(s); if (el) el.value = ""; });
+  $$("#nsModels input:checked").forEach((cb) => cb.checked = false);
+  const doneRadio = document.querySelector('input[name="nsStatus"][value="DONE"]');
+  if (doneRadio) doneRadio.checked = true;
+  nsUpdateStatusUI();
+  nsSyncWeekFromDate(true); // ngày vẫn giữ -> điền lại Week
+  const hint = $("#nsTcIdHint"); if (hint) hint.innerHTML = "";
+}
+
+async function loadNewScripts() {
+  state.newScripts = await api("/api/new-scripts");
+  renderNewScriptsTable();
+  nsUpdateTcIdFeedback(); // cập nhật lại cảnh báo trùng theo dữ liệu mới
+}
+
+function renderNewScriptsTable() {
+  const rows = state.newScripts || [];
+  const cnt = $("#nsCount"); if (cnt) cnt.textContent = rows.length;
+  const tbody = $("#newScriptsTable tbody");
+  if (!tbody) return;
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="10" style="color:#999">Chưa ghi nhận script viết mới nào.</td></tr>`;
+    return;
+  }
+  const statusTag = (s) => s === "DONE"
+    ? `<span class="tag" style="background:#2ecc71">DONE</span>`
+    : `<span class="tag" style="background:#95a5a6">SKIP</span>`;
+  tbody.innerHTML = rows.map((r) => `
+    <tr>
+      <td>${r.item || ""}</td>
+      <td><b>${r.tc_id || ""}</b></td>
+      <td>${r.member || '<span style="color:#bbb">—</span>'}</td>
+      <td>${r.team ? `<span class="tag" style="background:#8e44ad">${r.team}</span>` : '<span style="color:#bbb">—</span>'}</td>
+      <td>${r.assign_week ?? "—"}</td>
+      <td>${r.completed_date || "—"}</td>
+      <td>${statusTag(r.status)}</td>
+      <td style="font-size:11px">${r.models_written || '<span style="color:#bbb">—</span>'}</td>
+      <td style="font-size:11px">${r.sdf_id || '<span style="color:#bbb">—</span>'}</td>
+      <td style="max-width:220px; word-break:break-word; font-size:11px; color:#555">${r.remark || '<span style="color:#bbb">—</span>'}</td>
+    </tr>`).join("");
+}
+
+function initNewScripts() {
+  const tcId = $("#nsTcId");
+  tcId?.addEventListener("input", nsUpdateTcIdFeedback);
+
+  $("#nsMember")?.addEventListener("input", () => {
+    const name = ($("#nsMember").value || "").trim();
+    const owner = (state.owners || []).find((o) => o.name === name);
+    $("#nsTeam").value = owner && owner.team ? owner.team : "";
+  });
+
+  $("#nsDate")?.addEventListener("change", () => nsSyncWeekFromDate(true));
+
+  $$('input[name="nsStatus"]').forEach((r) => r.addEventListener("change", nsUpdateStatusUI));
+  nsUpdateStatusUI();
+
+  $("#btnClearNewScript")?.addEventListener("click", nsClearForm);
+
+  $("#btnSubmitNewScript")?.addEventListener("click", async () => {
+    const msg = $("#nsMsg");
+    const payload = {
+      tc_id: ($("#nsTcId").value || "").trim(),
+      member: ($("#nsMember").value || "").trim(),
+      team: ($("#nsTeam").value || "").trim(),
+      status: nsSelectedStatus(),
+      models_written: $$("#nsModels input:checked").map((cb) => cb.value),
+      completed_date: $("#nsDate").value || "",
+      assign_week: ($("#nsWeek").value || "").trim(),
+      sdf_id: ($("#nsSdfId").value || "").trim(),
+      remark: ($("#nsRemark").value || "").trim(),
+    };
+    // Kiểm tra nhanh phía client trước khi gửi (server vẫn validate lại).
+    if (!payload.tc_id) { msg.textContent = "Vui lòng nhập TC ID."; msg.className = "msg-err"; return; }
+    if (!nsDeriveItem(payload.tc_id)) { msg.textContent = "TC ID sai định dạng — không nhận diện được Item."; msg.className = "msg-err"; return; }
+    if ((state.newScripts || []).some((s) => (s.tc_id || "").toLowerCase() === payload.tc_id.toLowerCase())) {
+      msg.textContent = "⛔ TC ID này đã được nhập trước đó — không thể nhập trùng."; msg.className = "msg-err"; return;
+    }
+    if (payload.status === "SKIP" && !payload.remark) { msg.textContent = "Bắt buộc nhập Remark khi Status = SKIP."; msg.className = "msg-err"; $("#nsRemark").focus(); return; }
+    if (payload.status === "DONE" && !payload.models_written.length) { msg.textContent = "Chọn ít nhất 1 model đã viết khi Status = DONE."; msg.className = "msg-err"; return; }
+    try {
+      const res = await api("/api/new-scripts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      msg.textContent = `✅ Đã ghi nhận: ${res.item} / ${res.tc_id} (tuần ${res.assign_week ?? "—"}).`;
+      msg.className = "msg-ok";
+      nsClearForm();
+      await loadReferenceData(); // member mới có thể vừa được thêm vào owners
+      renderNewScriptForm();
+      await loadNewScripts();
     } catch (e) {
       msg.textContent = "Lỗi: " + e.message;
       msg.className = "msg-err";
@@ -1547,6 +1736,8 @@ async function init() {
   initInputFix();
   initFixTracking();
   initCycleMatrix();
+  state.newScriptItems = await api("/api/new-scripts/items").catch(() => []);
+  initNewScripts();
   wireTableFilters();
   await loadReferenceData();
   initPriorityTable();
@@ -1566,6 +1757,7 @@ async function init() {
     if ($("#tab-priority").classList.contains("active")) { renderPriorityTableHead(); renderPriorityTable(); }
     if ($("#tab-cycle-compare").classList.contains("active")) { await loadCycleMatrix(); }
     if ($("#tab-fix-tracking").classList.contains("active")) { await loadFixTracking(); }
+    if ($("#tab-new-scripts").classList.contains("active")) { await loadNewScripts(); }
   }, 15000);
 }
 

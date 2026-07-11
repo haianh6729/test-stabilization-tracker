@@ -275,6 +275,23 @@ main { padding: 20px; max-width: 1400px; margin: 0 auto; }
 }
 .form-grid label.full { grid-column: 1 / -1; }
 
+/* ---- Tab "Script viết mới": radio Status + checkbox model ---- */
+.ns-radio-row { display: flex; flex-wrap: wrap; gap: 8px 18px; padding-top: 4px; }
+.ns-model-checks { display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 6px 0; }
+.form-grid label.ns-inline, .ns-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  color: #333;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ns-inline input[type="checkbox"], .ns-inline input[type="radio"] {
+  width: auto;
+  padding: 0;
+  margin: 0;
+}
+
 input, select, textarea {
   padding: 7px 9px;
   border: 1px solid var(--border);

@@ -13,6 +13,9 @@
     margin: -15px -15px 15px -15px;
     border-radius: 4px 4px 0 0;
   }
+  .admin-header.ns { background: #6a1b9a; }
+  .admin-header.fx { background: #00695c; }
+  .admin-header.asg { background: #e65100; }
   .search-bar {
     margin-bottom: 20px;
     display: flex;
@@ -173,6 +176,53 @@
     margin: 0;
     font-size: 13px;
   }
+
+  .bulk-box {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 2px solid #f0f0f0;
+  }
+  .bulk-box textarea {
+    width: 100%;
+    box-sizing: border-box;
+    font-family: "Consolas", monospace;
+    font-size: 12px;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    min-height: 120px;
+  }
+  .bulk-result {
+    margin-top: 10px;
+    font-size: 12px;
+  }
+  .bulk-result .err-row { color: #d32f2f; }
+
+  /* Admin tabs */
+  .admin-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 15px;
+    border-bottom: 2px solid var(--border, #ddd);
+  }
+  .admin-tab-btn {
+    padding: 10px 18px;
+    background: #eceff1;
+    border: none;
+    border-radius: 6px 6px 0 0;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: #555;
+  }
+  .admin-tab-btn:hover { background: #e0e4e7; }
+  .admin-tab-btn.active {
+    background: white;
+    color: #111;
+    box-shadow: inset 0 -2px 0 #2196F3;
+  }
+  .admin-tab-panel { display: none; }
+  .admin-tab-panel.active { display: block; }
 </style>
 </head>
 <body>
@@ -184,6 +234,16 @@
 </header>
 
 <main>
+
+<div class="admin-tabs">
+  <button class="admin-tab-btn active" data-atab="results">⚙️ Cycle Results</button>
+  <button class="admin-tab-btn" data-atab="new-scripts">✍️ Script viết mới</button>
+  <button class="admin-tab-btn" data-atab="fixes">🛠️ Fix Log</button>
+  <button class="admin-tab-btn" data-atab="assignments">👤 Assignments</button>
+</div>
+
+<!-- ============ TAB: CYCLE RESULTS ============ -->
+<div id="atab-results" class="admin-tab-panel active">
 <div class="card">
   <div class="admin-header">
     <h2>⚙️ Quản lý dữ liệu Cycle Results</h2>
@@ -224,9 +284,178 @@
   </div>
   <p id="resultCount" style="margin-top: 10px; color: #666; font-size: 12px;"></p>
 </div>
+</div>
+
+<!-- ============ TAB: NEW SCRIPTS ============ -->
+<div id="atab-new-scripts" class="admin-tab-panel">
+<div class="card">
+  <div class="admin-header ns">
+    <h2>✍️ Quản lý dữ liệu Script viết mới</h2>
+    <p>Xem, sửa, xoá từng dòng, hoặc nhập hàng loạt (dán từ Excel) cho bảng "Script viết mới".</p>
+  </div>
+
+  <div class="info-box">
+    <p><strong>Mẹo:</strong> Tìm theo TC ID, Item, Member, hoặc Team rồi bấm "Tìm kiếm".</p>
+  </div>
+
+  <div class="search-bar">
+    <input type="text" id="nsSearchInput" placeholder="Tìm kiếm (TC ID, Item, Member, Team...)">
+    <button onclick="nsSearch()">🔍 Tìm kiếm</button>
+    <button onclick="nsLoadAll()" style="background: #666;">⟳ Tải lại</button>
+  </div>
+
+  <div style="overflow-x: auto;">
+    <table class="results-table" id="nsTable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Item</th>
+          <th>TC ID</th>
+          <th>Member</th>
+          <th>Team</th>
+          <th>Week</th>
+          <th>Completed date</th>
+          <th>Status</th>
+          <th>Model đã viết</th>
+          <th>SDF ID</th>
+          <th>Remark</th>
+          <th>Hành động</th>
+        </tr>
+      </thead>
+      <tbody id="nsBody"></tbody>
+    </table>
+  </div>
+  <p id="nsCount" style="margin-top: 10px; color: #666; font-size: 12px;"></p>
+
+  <div class="bulk-box">
+    <h3 style="margin-top:0;">📋 Nhập hàng loạt (dán từ Excel)</h3>
+    <p class="hint" style="margin-bottom:8px;">
+      Dán nhiều dòng, các cột phân cách bằng <b>Tab</b> (copy thẳng từ Excel), theo đúng thứ tự:<br>
+      <code>TC ID&nbsp;&nbsp;Member&nbsp;&nbsp;Status(DONE/SKIP)&nbsp;&nbsp;Completed date(YYYY-MM-DD)&nbsp;&nbsp;Model đã viết (phân cách bằng dấu phẩy hoặc /)&nbsp;&nbsp;SDF ID&nbsp;&nbsp;Remark</code><br>
+      Dòng nào lỗi (TC ID sai định dạng, trùng, SKIP thiếu Remark...) sẽ bị bỏ qua và báo rõ lý do — các dòng hợp lệ khác vẫn được nhập.
+    </p>
+    <textarea id="nsBulkArea" placeholder="Browser_000006	duyhung.tr	DONE	2026-06-08	S721	260608-01
+SM-00-045	tuyen.bv1	SKIP	2026-06-08			TC trùng, không cần viết"></textarea>
+    <div style="margin-top:10px; display:flex; gap:10px; align-items:center;">
+      <button class="btn-primary" onclick="nsBulkImport()">⬆️ Nhập hàng loạt</button>
+      <span id="nsBulkMsg"></span>
+    </div>
+    <div id="nsBulkResult" class="bulk-result"></div>
+  </div>
+</div>
+</div>
+
+<!-- ============ TAB: FIX LOG ============ -->
+<div id="atab-fixes" class="admin-tab-panel">
+<div class="card">
+  <div class="admin-header fx">
+    <h2>🛠️ Quản lý dữ liệu Fix Log (Daily_Fix_Log)</h2>
+    <p>Xem, sửa, xoá từng dòng, hoặc nhập hàng loạt lịch sử ghi nhận fix.</p>
+  </div>
+
+  <div class="info-box">
+    <p><strong>Mẹo:</strong> Tìm theo Owner, Test suite, Test case, hoặc Model fixed rồi bấm "Tìm kiếm".</p>
+  </div>
+
+  <div class="search-bar">
+    <input type="text" id="fxSearchInput" placeholder="Tìm kiếm (owner, test suite, test case, model...)">
+    <button onclick="fxSearch()">🔍 Tìm kiếm</button>
+    <button onclick="fxLoadAll()" style="background: #666;">⟳ Tải lại</button>
+  </div>
+
+  <div style="overflow-x: auto;">
+    <table class="results-table" id="fxTable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Fix date</th>
+          <th>Owner</th>
+          <th>Test suite</th>
+          <th>Test case</th>
+          <th>Model fixed</th>
+          <th>Fixed after cycle</th>
+          <th>Root cause</th>
+          <th>Note</th>
+          <th>Hành động</th>
+        </tr>
+      </thead>
+      <tbody id="fxBody"></tbody>
+    </table>
+  </div>
+  <p id="fxCount" style="margin-top: 10px; color: #666; font-size: 12px;"></p>
+
+  <div class="bulk-box">
+    <h3 style="margin-top:0;">📋 Nhập hàng loạt (dán từ Excel)</h3>
+    <p class="hint" style="margin-bottom:8px;">
+      Dán nhiều dòng, các cột phân cách bằng <b>Tab</b>, theo đúng thứ tự:<br>
+      <code>Fix date(YYYY-MM-DD)&nbsp;&nbsp;Owner&nbsp;&nbsp;Test suite&nbsp;&nbsp;Test case&nbsp;&nbsp;Model fixed&nbsp;&nbsp;Fixed after cycle&nbsp;&nbsp;Root cause&nbsp;&nbsp;Note</code><br>
+      Trùng (owner + test suite + test case + model fixed + fixed after cycle) sẽ <b>cập nhật</b> dòng cũ thay vì tạo dòng mới, giống ghi nhận fix bình thường.
+    </p>
+    <textarea id="fxBulkArea" placeholder="2026-06-08	duyhung.tr	Internet	Browser_000006	SM-S721B	5	locator bi doi id	da fix va verify"></textarea>
+    <div style="margin-top:10px; display:flex; gap:10px; align-items:center;">
+      <button class="btn-primary" onclick="fxBulkImport()">⬆️ Nhập hàng loạt</button>
+      <span id="fxBulkMsg"></span>
+    </div>
+    <div id="fxBulkResult" class="bulk-result"></div>
+  </div>
+</div>
+</div>
+
+<!-- ============ TAB: ASSIGNMENTS ============ -->
+<div id="atab-assignments" class="admin-tab-panel">
+<div class="card">
+  <div class="admin-header asg">
+    <h2>👤 Quản lý dữ liệu Assignments (đang phụ trách)</h2>
+    <p>Xem, sửa, xoá từng dòng, hoặc nhập hàng loạt danh sách người đang phụ trách từng script.</p>
+  </div>
+
+  <div class="info-box">
+    <p><strong>Mẹo:</strong> Tìm theo Test suite, Test case, hoặc Owner rồi bấm "Tìm kiếm". Sửa/xoá ở đây chỉ đổi <b>người đang phụ trách hiện tại</b>, không ảnh hưởng lịch sử Fix Log.</p>
+  </div>
+
+  <div class="search-bar">
+    <input type="text" id="asgSearchInput" placeholder="Tìm kiếm (test suite, test case, owner...)">
+    <button onclick="asgSearch()">🔍 Tìm kiếm</button>
+    <button onclick="asgLoadAll()" style="background: #666;">⟳ Tải lại</button>
+  </div>
+
+  <div style="overflow-x: auto;">
+    <table class="results-table" id="asgTable">
+      <thead>
+        <tr>
+          <th>Test suite</th>
+          <th>Test case</th>
+          <th>Owner</th>
+          <th>Assigned date</th>
+          <th>Hành động</th>
+        </tr>
+      </thead>
+      <tbody id="asgBody"></tbody>
+    </table>
+  </div>
+  <p id="asgCount" style="margin-top: 10px; color: #666; font-size: 12px;"></p>
+
+  <div class="bulk-box">
+    <h3 style="margin-top:0;">📋 Nhập hàng loạt (dán từ Excel)</h3>
+    <p class="hint" style="margin-bottom:8px;">
+      Dán nhiều dòng, các cột phân cách bằng <b>Tab</b>, theo đúng thứ tự:<br>
+      <code>Test suite&nbsp;&nbsp;Test case&nbsp;&nbsp;Owner&nbsp;&nbsp;Assigned date(YYYY-MM-DD, để trống = hôm nay)</code><br>
+      Trùng (test suite + test case) sẽ <b>ghi đè</b> người phụ trách hiện tại (upsert).
+    </p>
+    <textarea id="asgBulkArea" placeholder="Internet	Browser_000006	duyhung.tr	2026-06-08
+Keyboard	SKBD_000123	tuyen.bv1"></textarea>
+    <div style="margin-top:10px; display:flex; gap:10px; align-items:center;">
+      <button class="btn-primary" onclick="asgBulkImport()">⬆️ Nhập hàng loạt</button>
+      <span id="asgBulkMsg"></span>
+    </div>
+    <div id="asgBulkResult" class="bulk-result"></div>
+  </div>
+</div>
+</div>
+
 </main>
 
-<!-- Edit Modal -->
+<!-- Edit Modal: Results -->
 <div id="editModal" class="modal">
   <div class="modal-content">
     <div class="modal-header">
@@ -278,8 +507,156 @@
   </div>
 </div>
 
+<!-- Edit Modal: New Scripts -->
+<div id="nsEditModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>Sửa Script viết mới</h2>
+      <button class="close-btn" onclick="nsCloseEditModal()">✕</button>
+    </div>
+    <form id="nsEditForm" onsubmit="nsSaveEdit(event)">
+      <div class="form-group">
+        <label>TC ID: <span class="hint" style="font-weight:normal">(Item tự suy lại theo tiền tố)</span></label>
+        <input type="text" id="nsEditTcId" required>
+      </div>
+      <div class="form-group">
+        <label>Member:</label>
+        <input type="text" id="nsEditMember">
+      </div>
+      <div class="form-group">
+        <label>Team:</label>
+        <input type="text" id="nsEditTeam">
+      </div>
+      <div class="form-group">
+        <label>Status (DONE/SKIP):</label>
+        <input type="text" id="nsEditStatus" required>
+      </div>
+      <div class="form-group">
+        <label>Completed date (YYYY-MM-DD):</label>
+        <input type="text" id="nsEditCompletedDate">
+      </div>
+      <div class="form-group">
+        <label>Assign Week:</label>
+        <input type="number" id="nsEditWeek" min="1" max="53">
+      </div>
+      <div class="form-group">
+        <label>Model đã viết (phân cách bằng dấu phẩy):</label>
+        <input type="text" id="nsEditModels">
+      </div>
+      <div class="form-group">
+        <label>SDF ID:</label>
+        <input type="text" id="nsEditSdfId">
+      </div>
+      <div class="form-group">
+        <label>Remark:</label>
+        <textarea id="nsEditRemark"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-cancel" onclick="nsCloseEditModal()">Hủy</button>
+        <button type="submit" class="btn-primary">💾 Lưu thay đổi</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Edit Modal: Fix Log -->
+<div id="fxEditModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>Sửa dòng Fix Log</h2>
+      <button class="close-btn" onclick="fxCloseEditModal()">✕</button>
+    </div>
+    <form id="fxEditForm" onsubmit="fxSaveEdit(event)">
+      <div class="form-group">
+        <label>Fix date (YYYY-MM-DD):</label>
+        <input type="text" id="fxEditDate" required>
+      </div>
+      <div class="form-group">
+        <label>Owner:</label>
+        <input type="text" id="fxEditOwner" required>
+      </div>
+      <div class="form-group">
+        <label>Test suite:</label>
+        <input type="text" id="fxEditSuite" required>
+      </div>
+      <div class="form-group">
+        <label>Test case:</label>
+        <input type="text" id="fxEditCase" required>
+      </div>
+      <div class="form-group">
+        <label>Model fixed:</label>
+        <input type="text" id="fxEditModel" required>
+      </div>
+      <div class="form-group">
+        <label>Fixed after cycle:</label>
+        <input type="number" id="fxEditCycle" min="1" required>
+      </div>
+      <div class="form-group">
+        <label>Root cause: <span style="color:#d32f2f">*bắt buộc</span></label>
+        <textarea id="fxEditRootCause"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Note:</label>
+        <textarea id="fxEditNote"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-cancel" onclick="fxCloseEditModal()">Hủy</button>
+        <button type="submit" class="btn-primary">💾 Lưu thay đổi</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Edit Modal: Assignments -->
+<div id="asgEditModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>Sửa Assignment</h2>
+      <button class="close-btn" onclick="asgCloseEditModal()">✕</button>
+    </div>
+    <form id="asgEditForm" onsubmit="asgSaveEdit(event)">
+      <div class="form-group">
+        <label>Test suite:</label>
+        <input type="text" id="asgEditSuite" readonly style="background:#f5f5f5;">
+      </div>
+      <div class="form-group">
+        <label>Test case:</label>
+        <input type="text" id="asgEditCase" readonly style="background:#f5f5f5;">
+      </div>
+      <div class="form-group">
+        <label>Owner:</label>
+        <input type="text" id="asgEditOwner">
+      </div>
+      <div class="form-group">
+        <label>Assigned date (YYYY-MM-DD):</label>
+        <input type="text" id="asgEditDate">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-cancel" onclick="asgCloseEditModal()">Hủy</button>
+        <button type="submit" class="btn-primary">💾 Lưu thay đổi</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
 const ADMIN_KEY = "haianh6729";
+
+// ============================================================
+// Admin tabs
+// ============================================================
+document.querySelectorAll('.admin-tab-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.admin-tab-btn').forEach((b) => b.classList.remove('active'));
+    document.querySelectorAll('.admin-tab-panel').forEach((p) => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('atab-' + btn.dataset.atab).classList.add('active');
+  });
+});
+
+// ============================================================
+// Cycle Results admin
+// ============================================================
 let currentEditId = null;
 
 async function loadAllResults() {
@@ -402,12 +779,512 @@ async function deleteResult(id) {
   }
 }
 
-// Load results on page load
-document.addEventListener('DOMContentLoaded', loadAllResults);
+// ============================================================
+// New Scripts (Script viết mới) admin
+// ============================================================
+let nsCurrentEditId = null;
+
+async function nsLoadAll() {
+  document.getElementById('nsSearchInput').value = '';
+  const response = await fetch(`/api/admin/new-scripts?key=${ADMIN_KEY}`);
+  const data = await response.json();
+  nsDisplay(data);
+}
+
+async function nsSearch() {
+  const search = document.getElementById('nsSearchInput').value.trim();
+  if (!search) { nsLoadAll(); return; }
+  const response = await fetch(`/api/admin/new-scripts?key=${ADMIN_KEY}&search=${encodeURIComponent(search)}`);
+  const data = await response.json();
+  nsDisplay(data);
+}
+
+function nsDisplay(rows) {
+  const tbody = document.getElementById('nsBody');
+  tbody.innerHTML = '';
+
+  rows.forEach((r) => {
+    const row = tbody.insertRow();
+    row.innerHTML = `
+      <td>${r.id}</td>
+      <td>${r.item}</td>
+      <td><strong>${r.tc_id}</strong></td>
+      <td>${r.member || '-'}</td>
+      <td>${r.team || '-'}</td>
+      <td>${r.assign_week ?? '-'}</td>
+      <td>${r.completed_date || '-'}</td>
+      <td><span style="color: ${r.status === 'DONE' ? 'green' : '#888'}; font-weight: bold;">${r.status}</span></td>
+      <td>${r.models_written || '-'}</td>
+      <td>${r.sdf_id || '-'}</td>
+      <td>${r.remark || '-'}</td>
+      <td>
+        <div class="action-btns">
+          <button class="btn-sm btn-edit" onclick='nsOpenEditModal(${r.id}, ${JSON.stringify(r).replace(/'/g, "&apos;")})'>✏️ Sửa</button>
+          <button class="btn-sm btn-delete" onclick="nsDeleteRow(${r.id})">🗑️ Xóa</button>
+        </div>
+      </td>
+    `;
+  });
+
+  document.getElementById('nsCount').textContent = `Tổng: ${rows.length} dòng`;
+}
+
+function nsOpenEditModal(id, row) {
+  nsCurrentEditId = id;
+  document.getElementById('nsEditTcId').value = row.tc_id;
+  document.getElementById('nsEditMember').value = row.member || '';
+  document.getElementById('nsEditTeam').value = row.team || '';
+  document.getElementById('nsEditStatus').value = row.status;
+  document.getElementById('nsEditCompletedDate').value = row.completed_date || '';
+  document.getElementById('nsEditWeek').value = row.assign_week || '';
+  document.getElementById('nsEditModels').value = row.models_written || '';
+  document.getElementById('nsEditSdfId').value = row.sdf_id || '';
+  document.getElementById('nsEditRemark').value = row.remark || '';
+  document.getElementById('nsEditModal').classList.add('show');
+}
+
+function nsCloseEditModal() {
+  document.getElementById('nsEditModal').classList.remove('show');
+  nsCurrentEditId = null;
+}
+
+async function nsSaveEdit(event) {
+  event.preventDefault();
+
+  const data = {
+    tc_id: document.getElementById('nsEditTcId').value.trim(),
+    member: document.getElementById('nsEditMember').value.trim(),
+    team: document.getElementById('nsEditTeam').value.trim(),
+    status: document.getElementById('nsEditStatus').value.trim(),
+    completed_date: document.getElementById('nsEditCompletedDate').value.trim(),
+    assign_week: document.getElementById('nsEditWeek').value.trim(),
+    models_written: document.getElementById('nsEditModels').value.trim(),
+    sdf_id: document.getElementById('nsEditSdfId').value.trim(),
+    remark: document.getElementById('nsEditRemark').value.trim(),
+  };
+
+  const response = await fetch(`/api/admin/new-scripts/${nsCurrentEditId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'X-Admin-Key': ADMIN_KEY },
+    body: JSON.stringify(data)
+  });
+
+  if (response.ok) {
+    alert('✅ Cập nhật thành công!');
+    nsCloseEditModal();
+    nsLoadAll();
+  } else {
+    const err = await response.json().catch(() => ({}));
+    alert('❌ Lỗi cập nhật: ' + (err.error || 'không rõ lý do'));
+  }
+}
+
+async function nsDeleteRow(id) {
+  if (!confirm('⚠️ Xác nhận xóa dòng script này? Không thể hoàn tác!')) return;
+
+  const response = await fetch(`/api/admin/new-scripts/${id}`, {
+    method: 'DELETE',
+    headers: { 'X-Admin-Key': ADMIN_KEY }
+  });
+
+  if (response.ok) {
+    alert('✅ Đã xóa!');
+    nsLoadAll();
+  } else {
+    alert('❌ Lỗi xóa!');
+  }
+}
+
+// Parse dán tab-delimited: TC ID, Member, Status, Completed date, Model (phẩy hoặc /), SDF ID, Remark
+function nsParseBulk(text) {
+  const rows = [];
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const parts = line.split('\t').map((p) => p.trim());
+    if (!parts[0]) continue;
+    if (/^tc\s*id$/i.test(parts[0])) continue; // dòng header
+    const [tc_id, member, status, completed_date, models, sdf_id, remark] = parts;
+    rows.push({
+      tc_id, member: member || '', status: (status || '').toUpperCase(),
+      completed_date: completed_date || '', models_written: models || '',
+      sdf_id: sdf_id || '', remark: remark || '',
+    });
+  }
+  return rows;
+}
+
+async function nsBulkImport() {
+  const text = document.getElementById('nsBulkArea').value;
+  const rows = nsParseBulk(text);
+  const msg = document.getElementById('nsBulkMsg');
+  const resultBox = document.getElementById('nsBulkResult');
+  resultBox.innerHTML = '';
+  if (!rows.length) {
+    msg.textContent = 'Không nhận diện được dòng dữ liệu nào.';
+    return;
+  }
+  msg.textContent = `Đang nhập ${rows.length} dòng...`;
+
+  const response = await fetch('/api/admin/new-scripts/bulk', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Admin-Key': ADMIN_KEY },
+    body: JSON.stringify({ rows })
+  });
+  const res = await response.json();
+  if (!response.ok) {
+    msg.textContent = '❌ Lỗi: ' + (res.error || 'không rõ lý do');
+    return;
+  }
+  msg.textContent = `✅ Đã nhập ${res.inserted}/${rows.length} dòng.` + (res.errors.length ? ` (${res.errors.length} dòng lỗi bên dưới)` : '');
+  if (res.errors.length) {
+    resultBox.innerHTML = res.errors.map((e) =>
+      `<div class="err-row">Dòng ${e.row_index + 1} (${e.tc_id || '?'}): ${e.error}</div>`
+    ).join('');
+  }
+  document.getElementById('nsBulkArea').value = '';
+  nsLoadAll();
+}
+
+// ============================================================
+// Fix Log admin
+// ============================================================
+let fxCurrentEditId = null;
+
+async function fxLoadAll() {
+  document.getElementById('fxSearchInput').value = '';
+  const response = await fetch(`/api/admin/fixes?key=${ADMIN_KEY}`);
+  const data = await response.json();
+  fxDisplay(data);
+}
+
+async function fxSearch() {
+  const search = document.getElementById('fxSearchInput').value.trim();
+  if (!search) { fxLoadAll(); return; }
+  const response = await fetch(`/api/admin/fixes?key=${ADMIN_KEY}&search=${encodeURIComponent(search)}`);
+  const data = await response.json();
+  fxDisplay(data);
+}
+
+function fxDisplay(rows) {
+  const tbody = document.getElementById('fxBody');
+  tbody.innerHTML = '';
+
+  rows.forEach((r) => {
+    const row = tbody.insertRow();
+    row.innerHTML = `
+      <td>${r.id}</td>
+      <td>${r.fix_date}</td>
+      <td>${r.owner}</td>
+      <td>${r.test_suite}</td>
+      <td>${r.test_case}</td>
+      <td>${r.model_fixed}</td>
+      <td>${r.fixed_after_cycle}</td>
+      <td style="max-width:200px; word-break:break-word;">${r.root_cause || '-'}</td>
+      <td style="max-width:160px; word-break:break-word;">${r.note || '-'}</td>
+      <td>
+        <div class="action-btns">
+          <button class="btn-sm btn-edit" onclick='fxOpenEditModal(${r.id}, ${JSON.stringify(r).replace(/'/g, "&apos;")})'>✏️ Sửa</button>
+          <button class="btn-sm btn-delete" onclick="fxDeleteRow(${r.id})">🗑️ Xóa</button>
+        </div>
+      </td>
+    `;
+  });
+
+  document.getElementById('fxCount').textContent = `Tổng: ${rows.length} dòng`;
+}
+
+function fxOpenEditModal(id, row) {
+  fxCurrentEditId = id;
+  document.getElementById('fxEditDate').value = row.fix_date;
+  document.getElementById('fxEditOwner').value = row.owner;
+  document.getElementById('fxEditSuite').value = row.test_suite;
+  document.getElementById('fxEditCase').value = row.test_case;
+  document.getElementById('fxEditModel').value = row.model_fixed;
+  document.getElementById('fxEditCycle').value = row.fixed_after_cycle;
+  document.getElementById('fxEditRootCause').value = row.root_cause || '';
+  document.getElementById('fxEditNote').value = row.note || '';
+  document.getElementById('fxEditModal').classList.add('show');
+}
+
+function fxCloseEditModal() {
+  document.getElementById('fxEditModal').classList.remove('show');
+  fxCurrentEditId = null;
+}
+
+async function fxSaveEdit(event) {
+  event.preventDefault();
+
+  const data = {
+    fix_date: document.getElementById('fxEditDate').value.trim(),
+    owner: document.getElementById('fxEditOwner').value.trim(),
+    test_suite: document.getElementById('fxEditSuite').value.trim(),
+    test_case: document.getElementById('fxEditCase').value.trim(),
+    model_fixed: document.getElementById('fxEditModel').value.trim(),
+    fixed_after_cycle: parseInt(document.getElementById('fxEditCycle').value),
+    root_cause: document.getElementById('fxEditRootCause').value.trim(),
+    note: document.getElementById('fxEditNote').value.trim(),
+  };
+
+  const response = await fetch(`/api/admin/fixes/${fxCurrentEditId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'X-Admin-Key': ADMIN_KEY },
+    body: JSON.stringify(data)
+  });
+
+  if (response.ok) {
+    alert('✅ Cập nhật thành công!');
+    fxCloseEditModal();
+    fxLoadAll();
+  } else {
+    const err = await response.json().catch(() => ({}));
+    alert('❌ Lỗi cập nhật: ' + (err.error || 'không rõ lý do'));
+  }
+}
+
+async function fxDeleteRow(id) {
+  if (!confirm('⚠️ Xác nhận xóa dòng Fix Log này? Không thể hoàn tác!')) return;
+
+  const response = await fetch(`/api/admin/fixes/${id}`, {
+    method: 'DELETE',
+    headers: { 'X-Admin-Key': ADMIN_KEY }
+  });
+
+  if (response.ok) {
+    alert('✅ Đã xóa!');
+    fxLoadAll();
+  } else {
+    alert('❌ Lỗi xóa!');
+  }
+}
+
+// Parse dán tab-delimited: Fix date, Owner, Test suite, Test case, Model fixed, Fixed after cycle, Root cause, Note
+function fxParseBulk(text) {
+  const rows = [];
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const parts = line.split('\t').map((p) => p.trim());
+    if (!parts[0]) continue;
+    if (/^fix\s*date$/i.test(parts[0])) continue; // dòng header
+    const [fix_date, owner, test_suite, test_case, model_fixed, fixed_after_cycle, root_cause, note] = parts;
+    rows.push({
+      fix_date: fix_date || '', owner: owner || '', test_suite: test_suite || '', test_case: test_case || '',
+      model_fixed: model_fixed || '', fixed_after_cycle: fixed_after_cycle || '',
+      root_cause: root_cause || '', note: note || '',
+    });
+  }
+  return rows;
+}
+
+async function fxBulkImport() {
+  const text = document.getElementById('fxBulkArea').value;
+  const rows = fxParseBulk(text);
+  const msg = document.getElementById('fxBulkMsg');
+  const resultBox = document.getElementById('fxBulkResult');
+  resultBox.innerHTML = '';
+  if (!rows.length) {
+    msg.textContent = 'Không nhận diện được dòng dữ liệu nào.';
+    return;
+  }
+  msg.textContent = `Đang nhập ${rows.length} dòng...`;
+
+  const response = await fetch('/api/admin/fixes/bulk', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Admin-Key': ADMIN_KEY },
+    body: JSON.stringify({ rows })
+  });
+  const res = await response.json();
+  if (!response.ok) {
+    msg.textContent = '❌ Lỗi: ' + (res.error || 'không rõ lý do');
+    return;
+  }
+  msg.textContent = `✅ Đã nhập mới ${res.inserted}, cập nhật ${res.updated} / ${rows.length} dòng.` + (res.errors.length ? ` (${res.errors.length} dòng lỗi bên dưới)` : '');
+  if (res.errors.length) {
+    resultBox.innerHTML = res.errors.map((e) =>
+      `<div class="err-row">Dòng ${e.row_index + 1} (${e.test_case || '?'}): ${e.error}</div>`
+    ).join('');
+  }
+  document.getElementById('fxBulkArea').value = '';
+  fxLoadAll();
+}
+
+// ============================================================
+// Assignments admin
+// ============================================================
+let asgCurrentEditId = null;
+
+async function asgLoadAll() {
+  document.getElementById('asgSearchInput').value = '';
+  const response = await fetch(`/api/admin/assignments?key=${ADMIN_KEY}`);
+  const data = await response.json();
+  asgDisplay(data);
+}
+
+async function asgSearch() {
+  const search = document.getElementById('asgSearchInput').value.trim();
+  if (!search) { asgLoadAll(); return; }
+  const response = await fetch(`/api/admin/assignments?key=${ADMIN_KEY}&search=${encodeURIComponent(search)}`);
+  const data = await response.json();
+  asgDisplay(data);
+}
+
+function asgDisplay(rows) {
+  const tbody = document.getElementById('asgBody');
+  tbody.innerHTML = '';
+
+  rows.forEach((r) => {
+    const row = tbody.insertRow();
+    row.innerHTML = `
+      <td>${r.test_suite}</td>
+      <td>${r.test_case}</td>
+      <td>${r.owner || '-'}</td>
+      <td>${r.assigned_date || '-'}</td>
+      <td>
+        <div class="action-btns">
+          <button class="btn-sm btn-edit" onclick='asgOpenEditModal(${r.rowid}, ${JSON.stringify(r).replace(/'/g, "&apos;")})'>✏️ Sửa</button>
+          <button class="btn-sm btn-delete" onclick="asgDeleteRow(${r.rowid})">🗑️ Xóa</button>
+        </div>
+      </td>
+    `;
+  });
+
+  document.getElementById('asgCount').textContent = `Tổng: ${rows.length} dòng`;
+}
+
+function asgOpenEditModal(rowid, row) {
+  asgCurrentEditId = rowid;
+  document.getElementById('asgEditSuite').value = row.test_suite;
+  document.getElementById('asgEditCase').value = row.test_case;
+  document.getElementById('asgEditOwner').value = row.owner || '';
+  document.getElementById('asgEditDate').value = row.assigned_date || '';
+  document.getElementById('asgEditModal').classList.add('show');
+}
+
+function asgCloseEditModal() {
+  document.getElementById('asgEditModal').classList.remove('show');
+  asgCurrentEditId = null;
+}
+
+async function asgSaveEdit(event) {
+  event.preventDefault();
+
+  const data = {
+    owner: document.getElementById('asgEditOwner').value.trim(),
+    assigned_date: document.getElementById('asgEditDate').value.trim(),
+  };
+
+  const response = await fetch(`/api/admin/assignments/${asgCurrentEditId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'X-Admin-Key': ADMIN_KEY },
+    body: JSON.stringify(data)
+  });
+
+  if (response.ok) {
+    alert('✅ Cập nhật thành công!');
+    asgCloseEditModal();
+    asgLoadAll();
+  } else {
+    const err = await response.json().catch(() => ({}));
+    alert('❌ Lỗi cập nhật: ' + (err.error || 'không rõ lý do'));
+  }
+}
+
+async function asgDeleteRow(rowid) {
+  if (!confirm('⚠️ Xác nhận xóa assignment này? Script sẽ trở thành "chưa gán". Không thể hoàn tác!')) return;
+
+  const response = await fetch(`/api/admin/assignments/${rowid}`, {
+    method: 'DELETE',
+    headers: { 'X-Admin-Key': ADMIN_KEY }
+  });
+
+  if (response.ok) {
+    alert('✅ Đã xóa!');
+    asgLoadAll();
+  } else {
+    alert('❌ Lỗi xóa!');
+  }
+}
+
+// Parse dán tab-delimited: Test suite, Test case, Owner, Assigned date
+function asgParseBulk(text) {
+  const rows = [];
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const parts = line.split('\t').map((p) => p.trim());
+    if (!parts[0]) continue;
+    if (/^test\s*suite$/i.test(parts[0])) continue; // dòng header
+    const [test_suite, test_case, owner, assigned_date] = parts;
+    rows.push({
+      test_suite: test_suite || '', test_case: test_case || '',
+      owner: owner || '', assigned_date: assigned_date || '',
+    });
+  }
+  return rows;
+}
+
+async function asgBulkImport() {
+  const text = document.getElementById('asgBulkArea').value;
+  const rows = asgParseBulk(text);
+  const msg = document.getElementById('asgBulkMsg');
+  const resultBox = document.getElementById('asgBulkResult');
+  resultBox.innerHTML = '';
+  if (!rows.length) {
+    msg.textContent = 'Không nhận diện được dòng dữ liệu nào.';
+    return;
+  }
+  msg.textContent = `Đang nhập ${rows.length} dòng...`;
+
+  const response = await fetch('/api/admin/assignments/bulk', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Admin-Key': ADMIN_KEY },
+    body: JSON.stringify({ rows })
+  });
+  const res = await response.json();
+  if (!response.ok) {
+    msg.textContent = '❌ Lỗi: ' + (res.error || 'không rõ lý do');
+    return;
+  }
+  msg.textContent = `✅ Đã nhập ${res.upserted}/${rows.length} dòng.` + (res.errors.length ? ` (${res.errors.length} dòng lỗi bên dưới)` : '');
+  if (res.errors.length) {
+    resultBox.innerHTML = res.errors.map((e) =>
+      `<div class="err-row">Dòng ${e.row_index + 1} (${e.test_case || '?'}): ${e.error}</div>`
+    ).join('');
+  }
+  document.getElementById('asgBulkArea').value = '';
+  asgLoadAll();
+}
+
+// ============================================================
+// Init: load dữ liệu tab đang active khi mở trang; các tab khác load lười khi click vào.
+// ============================================================
+let _loadedTabs = new Set();
+document.querySelectorAll('.admin-tab-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const t = btn.dataset.atab;
+    if (_loadedTabs.has(t)) return;
+    _loadedTabs.add(t);
+    if (t === 'results') loadAllResults();
+    if (t === 'new-scripts') nsLoadAll();
+    if (t === 'fixes') fxLoadAll();
+    if (t === 'assignments') asgLoadAll();
+  });
+});
+document.addEventListener('DOMContentLoaded', () => {
+  _loadedTabs.add('results');
+  loadAllResults();
+});
 
 // Allow Enter key to search
 document.getElementById('searchInput').addEventListener('keypress', function(e) {
   if (e.key === 'Enter') searchResults();
+});
+document.getElementById('nsSearchInput').addEventListener('keypress', function(e) {
+  if (e.key === 'Enter') nsSearch();
+});
+document.getElementById('fxSearchInput').addEventListener('keypress', function(e) {
+  if (e.key === 'Enter') fxSearch();
+});
+document.getElementById('asgSearchInput').addEventListener('keypress', function(e) {
+  if (e.key === 'Enter') asgSearch();
 });
 </script>
 </body>
