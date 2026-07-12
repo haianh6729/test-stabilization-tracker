@@ -1363,11 +1363,16 @@ const TAB_LABELS = {
   'fix-tracking': 'Theo dõi Fix', 'settings': 'Cài đặt',
 };
 let _allTabs = [];
+let _extraPerms = [];
+const EXTRA_PERM_LABELS = {
+  'ns-assign': 'Assign (giao việc)', 'ns-edit': 'Sửa Script viết mới',
+};
 
 async function usrLoadAll() {
   const response = await fetch(`/api/admin/users?key=${ADMIN_KEY}`);
   const data = await response.json();
   _allTabs = data.all_tabs || [];
+  _extraPerms = data.extra_perms || [];
   usrDisplay(data.users || []);
 }
 
@@ -1381,6 +1386,9 @@ function usrDisplay(users) {
     const permChecks = _allTabs.map((t) => {
       const checked = u.permissions.includes(t) ? 'checked' : '';
       return `<label class="perm-lbl"><input type="checkbox" class="perm-cb" data-user="${u.username}" value="${t}" ${checked} onchange='usrSavePerms(${uj})'> ${TAB_LABELS[t] || t}</label>`;
+    }).join('') + _extraPerms.map((t) => {
+      const checked = u.permissions.includes(t) ? 'checked' : '';
+      return `<label class="perm-lbl"><input type="checkbox" class="perm-cb" data-user="${u.username}" value="${t}" ${checked} onchange='usrSavePerms(${uj})'> ${EXTRA_PERM_LABELS[t] || t}</label>`;
     }).join('');
     const activeTag = u.active
       ? '<span style="color:#1e8449;font-weight:600;">● Hoạt động</span>'

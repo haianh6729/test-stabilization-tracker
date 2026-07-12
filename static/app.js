@@ -943,21 +943,11 @@ function initInputResults() {
       return;
     }
 
-    // Bắt buộc nhập mật khẩu mới được gửi dữ liệu vào hệ thống.
-    const password = ($("#rPassword")?.value || "").trim();
-    if (!password) {
-      msg.textContent = "🔒 Vui lòng nhập mật khẩu để gửi dữ liệu vào hệ thống.";
-      msg.className = "msg-err";
-      $("#rPassword")?.focus();
-      return;
-    }
-
     // Cycle được server tự suy từ ngày trong Test ID; chỉ gửi kèm ngày chạy thủ công
     // để làm fallback cho các dòng có Test ID không mã hoá ngày.
     const cycle_date = $("#rDate").value;
     const payload = {
       rows: rows.map((r) => ({ ...r, cycle_date })),
-      password: password,
     };
     try {
       const res = await api("/api/results", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -1130,19 +1120,44 @@ function nsIsoWeek(dateStr) {
   return 1 + Math.round((target - firstThursday) / (7 * 24 * 3600 * 1000));
 }
 
-function nsSelectedStatus() {
-  const el = document.querySelector('input[name="nsStatus"]:checked');
+// Cac ham *For(prefix) dung chung giua form tao (prefix "ns") va modal sua (prefix "nsEdit"),
+// tranh copy-paste logic UI/validate giua 2 noi.
+function nsSelectedStatusFor(prefix) {
+  const el = document.querySelector(`input[name="${prefix}Status"]:checked`);
   return el ? el.value : "";
+}
+function nsSelectedStatus() {
+  return nsSelectedStatusFor("ns");
 }
 
 // Điền Assign Week theo Completed date. force=false: chỉ điền khi ô Week đang trống
 // (giữ giá trị người dùng đã sửa tay); force=true: luôn tính lại (khi đổi ngày / xoá form).
-function nsSyncWeekFromDate(force) {
-  const dEl = $("#nsDate"), wEl = $("#nsWeek");
+function nsSyncWeekFromDateFor(prefix, force) {
+  const dEl = $(`#${prefix}Date`), wEl = $(`#${prefix}Week`);
   if (!dEl || !wEl) return;
   if (!force && wEl.value) return;
   const wk = dEl.value ? nsIsoWeek(dEl.value) : null;
   if (wk) wEl.value = wk;
+}
+function nsSyncWeekFromDate(force) {
+  nsSyncWeekFromDateFor("ns", force);
+}
+function nsEditSyncWeekFromDate(force) {
+  nsSyncWeekFromDateFor("nsEdit", force);
+}
+
+// Render checkbox danh sách model vào 1 container (dùng chung cho #nsModels và #nsEditModels).
+// checkedValues: mang gia tri can tick san; neu bo qua, giu nguyen lua chon dang co trong DOM
+// (dung khi refresh form tao ma khong muon mat lua chon nguoi dung dang chon).
+function renderModelCheckboxes(containerSelector, checkedValues) {
+  const box = $(containerSelector);
+  if (!box) return;
+  const checked = checkedValues
+    ? new Set(checkedValues)
+    : new Set($$(`${containerSelector} input:checked`).map((cb) => cb.value));
+  box.innerHTML = (state.models || []).map((m) => `
+    <label class="ns-inline"><input type="checkbox" class="ns-model-cb" value="${m}" ${checked.has(m) ? "checked" : ""}> ${m}</label>`).join("")
+    || `<span class="hint">Chưa có model nào trong hệ thống. Thêm ở tab Cài đặt.</span>`;
 }
 
 // Đổ danh sách Member (datalist) + checkbox model theo dữ liệu tham chiếu hiện tại.
@@ -1151,13 +1166,7 @@ function renderNewScriptForm() {
   if (memberList) {
     memberList.innerHTML = (state.owners || []).map((o) => `<option value="${o.name}">`).join("");
   }
-  const box = $("#nsModels");
-  if (box) {
-    const checked = new Set($$("#nsModels input:checked").map((cb) => cb.value)); // giữ lựa chọn khi refresh
-    box.innerHTML = (state.models || []).map((m) => `
-      <label class="ns-inline"><input type="checkbox" class="ns-model-cb" value="${m}" ${checked.has(m) ? "checked" : ""}> ${m}</label>`).join("")
-      || `<span class="hint">Chưa có model nào trong hệ thống. Thêm ở tab Cài đặt.</span>`;
-  }
+  renderModelCheckboxes("#nsModels");
 }
 
 function nsUpdateTcIdFeedback() {
@@ -1181,12 +1190,51 @@ function nsUpdateTcIdFeedback() {
   }
 }
 
+function nsUpdateStatusUIFor(prefix) {
+  const status = nsSelectedStatusFor(prefix);
+  const req = $(`#${prefix}RemarkReq`);
+  if (req) req.style.display = status === "SKIP" ? "" : "none";
+  const modelsWrap = $(`#${prefix}ModelsWrap`);
+  if (modelsWrap) modelsWrap.style.opacity = status === "DONE" ? "1" : "0.5";
+}
 function nsUpdateStatusUI() {
-  const isSkip = nsSelectedStatus() === "SKIP";
-  const req = $("#nsRemarkReq");
-  if (req) req.style.display = isSkip ? "" : "none";
-  const modelsWrap = $("#nsModelsWrap");
-  if (modelsWrap) modelsWrap.style.opacity = isSkip ? "0.5" : "1";
+  nsUpdateStatusUIFor("ns");
+}
+function nsEditUpdateStatusUI() {
+  nsUpdateStatusUIFor("nsEdit");
+}
+
+function nsIsAdminOrMod() {
+  return !!(state.me && (state.me.role === "admin" || state.me.role === "moderator"));
+}
+
+// Cross-field validate dung chung cho ca form tao va modal sua (DONE => bat buoc models,
+// SKIP => bat buoc remark). Tra ve chuoi loi hoac null neu hop le.
+function nsValidatePayload(payload) {
+  if (!["DONE", "SKIP", "ASSIGNED"].includes(payload.status)) return "Vui lòng chọn Status (DONE, SKIP hoặc ASSIGNED).";
+  if (payload.status === "DONE" && !payload.models_written.length) return "⚠️ Bắt buộc chọn ít nhất 1 model đã viết khi Status = DONE.";
+  if (payload.status === "SKIP" && !payload.remark) return "Bắt buộc nhập Remark khi Status = SKIP.";
+  return null;
+}
+
+// Hien/an cac phan chi danh cho nguoi co quyen assign (Status=Assigned, bulk-assign) hoac
+// quyen sua dong da ghi nhan - goi lai moi khi state.me duoc lam moi (polling) de phan anh
+// dung khi admin doi quyen.
+function nsApplyExtraPerms() {
+  const perms = (state.me && state.me.permissions) || [];
+  const canAssign = perms.includes("ns-assign");
+  const canEdit = perms.includes("ns-edit");
+  const assignedWrap = $("#nsStatusAssignedWrap");
+  if (assignedWrap) assignedWrap.style.display = canAssign ? "" : "none";
+  const bulkCard = $("#nsBulkAssignCard");
+  if (bulkCard) bulkCard.style.display = canAssign ? "" : "none";
+  const editAssignedWrap = $("#nsEditStatusAssignedWrap");
+  if (editAssignedWrap) editAssignedWrap.style.display = canAssign ? "" : "none";
+  state.nsCanEdit = canEdit;
+  if (!canAssign && nsSelectedStatus() === "ASSIGNED") {
+    $$('input[name="nsStatus"]:checked').forEach((r) => r.checked = false);
+    nsUpdateStatusUI();
+  }
 }
 
 function nsClearForm() {
@@ -1210,13 +1258,19 @@ function renderNewScriptsTable() {
   const tbody = $("#newScriptsTable tbody");
   if (!tbody) return;
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="10" style="color:#999">Chưa ghi nhận script viết mới nào.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11" style="color:#999">Chưa ghi nhận script viết mới nào.</td></tr>`;
     return;
   }
-  const statusTag = (s) => s === "DONE"
-    ? `<span class="tag" style="background:#2ecc71">DONE</span>`
-    : `<span class="tag" style="background:#95a5a6">SKIP</span>`;
-  tbody.innerHTML = rows.map((r) => `
+  const statusTag = (s) => {
+    if (s === "DONE") return `<span class="tag" style="background:#2ecc71">DONE</span>`;
+    if (s === "ASSIGNED") return `<span class="tag" style="background:#3498db">ASSIGNED</span>`;
+    return `<span class="tag" style="background:#95a5a6">SKIP</span>`;
+  };
+  const isAdminOrMod = nsIsAdminOrMod();
+  const myUsername = state.me && state.me.username;
+  tbody.innerHTML = rows.map((r) => {
+    const canEditRow = isAdminOrMod || state.nsCanEdit || (myUsername && r.member === myUsername);
+    return `
     <tr>
       <td>${r.item || ""}</td>
       <td><b>${r.tc_id || ""}</b></td>
@@ -1228,7 +1282,9 @@ function renderNewScriptsTable() {
       <td style="font-size:12px">${r.models_written || '<span style="color:#bbb">—</span>'}</td>
       <td style="font-size:12px">${r.sdf_id || '<span style="color:#bbb">—</span>'}</td>
       <td class="ns-remark-cell" title="${escAttr(r.remark || "")}">${r.remark || '<span style="color:#bbb">—</span>'}</td>
-    </tr>`).join("");
+      <td>${canEditRow ? `<button class="btn-tiny rename" data-action="ns-edit" data-id="${r.id}">✏️ Sửa</button>` : ""}</td>
+    </tr>`;
+  }).join("");
 }
 
 function initNewScripts() {
@@ -1245,8 +1301,96 @@ function initNewScripts() {
 
   $$('input[name="nsStatus"]').forEach((r) => r.addEventListener("change", nsUpdateStatusUI));
   nsUpdateStatusUI();
+  nsApplyExtraPerms();
+
+  $("#nsEditDate")?.addEventListener("change", () => nsEditSyncWeekFromDate(true));
+  $$('input[name="nsEditStatus"]').forEach((r) => r.addEventListener("change", nsEditUpdateStatusUI));
 
   $("#btnClearNewScript")?.addEventListener("click", nsClearForm);
+  $("#btnExportNewScripts")?.addEventListener("click", () => {
+    window.location.href = "/api/export/excel/new-scripts";
+  });
+
+  $("#newScriptsTable")?.addEventListener("click", (e) => {
+    const btn = e.target.closest('button[data-action="ns-edit"]');
+    if (!btn) return;
+    const row = (state.newScripts || []).find((s) => String(s.id) === btn.dataset.id);
+    if (!row) return;
+    state.nsEditingId = row.id;
+    $("#nsEditTcId").textContent = row.tc_id || "";
+    $("#nsEditItem").value = row.item || "";
+    $("#nsEditMember").value = row.member || "";
+    $("#nsEditTeam").value = row.team || "";
+    $("#nsEditDate").value = row.completed_date || "";
+    $("#nsEditWeek").value = row.assign_week ?? "";
+    $("#nsEditSdfId").value = row.sdf_id || "";
+    $("#nsEditRemark").value = row.remark || "";
+    $$('input[name="nsEditStatus"]').forEach((r) => { r.checked = r.value === (row.status || "DONE"); });
+    renderModelCheckboxes("#nsEditModels", (row.models_written || "").split(",").map((s) => s.trim()).filter(Boolean));
+    nsEditUpdateStatusUI();
+    // Member (reassign) chi sua duoc boi admin/moderator/ns-edit; self-edit (chi trung
+    // member) chi duoc cap nhat ket qua/trang thai cua chinh minh, khong tu reassign di nguoi khac.
+    const perms = (state.me && state.me.permissions) || [];
+    const canReassign = nsIsAdminOrMod() || perms.includes("ns-edit");
+    $("#nsEditMember").readOnly = !canReassign;
+    $("#nsEditMsg").textContent = "";
+    $("#nsEditModal").style.display = "flex";
+  });
+
+  $("#btnSaveNsEdit")?.addEventListener("click", async () => {
+    const msg = $("#nsEditMsg");
+    const sid = state.nsEditingId;
+    if (!sid) return;
+    const payload = {
+      member: ($("#nsEditMember").value || "").trim(),
+      status: nsSelectedStatusFor("nsEdit"),
+      models_written: $$("#nsEditModels input:checked").map((cb) => cb.value),
+      completed_date: $("#nsEditDate").value || "",
+      assign_week: ($("#nsEditWeek").value || "").trim(),
+      sdf_id: ($("#nsEditSdfId").value || "").trim(),
+      remark: ($("#nsEditRemark").value || "").trim(),
+    };
+    const err = nsValidatePayload(payload);
+    if (err) { msg.textContent = err; msg.className = "msg-err"; return; }
+    try {
+      await api(`/api/new-scripts/${sid}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      $("#nsEditModal").style.display = "none";
+      await loadReferenceData();
+      await loadNewScripts();
+    } catch (e) {
+      msg.textContent = "Lỗi: " + e.message;
+      msg.className = "msg-err";
+    }
+  });
+
+  $("#btnBulkAssign")?.addEventListener("click", async () => {
+    const msg = $("#nsBulkAssignMsg");
+    const errBox = $("#nsBulkAssignErrors");
+    errBox.innerHTML = "";
+    const text = $("#nsBulkAssignArea").value || "";
+    const pairs = [];
+    for (const line of text.split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      const [tc_id, member] = line.split("\t").map((p) => (p || "").trim());
+      if (!tc_id) continue;
+      pairs.push({ tc_id, member: member || "" });
+    }
+    if (!pairs.length) { msg.textContent = "Chưa có dòng nào để assign."; msg.className = "msg-err"; return; }
+    try {
+      const res = await api("/api/new-scripts/bulk-assign", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pairs }) });
+      msg.textContent = `✅ Đã assign ${res.inserted}/${pairs.length} dòng.` + (res.errors.length ? ` (${res.errors.length} dòng lỗi bên dưới)` : "");
+      msg.className = "msg-ok";
+      if (res.errors.length) {
+        errBox.innerHTML = res.errors.map((e) => `<div style="color:#d32f2f">Dòng ${e.row_index + 1} (${e.tc_id || "?"}): ${e.error}</div>`).join("");
+      }
+      $("#nsBulkAssignArea").value = "";
+      await loadReferenceData();
+      await loadNewScripts();
+    } catch (e) {
+      msg.textContent = "Lỗi: " + e.message;
+      msg.className = "msg-err";
+    }
+  });
 
   $("#btnSubmitNewScript")?.addEventListener("click", async () => {
     const msg = $("#nsMsg");
@@ -1267,9 +1411,12 @@ function initNewScripts() {
     if ((state.newScripts || []).some((s) => (s.tc_id || "").toLowerCase() === payload.tc_id.toLowerCase())) {
       msg.textContent = "⛔ TC ID này đã được nhập trước đó — không thể nhập trùng."; msg.className = "msg-err"; return;
     }
-    if (!payload.status) { msg.textContent = "Vui lòng chọn Status (DONE hoặc SKIP)."; msg.className = "msg-err"; return; }
-    if (payload.status === "DONE" && !payload.models_written.length) { msg.textContent = "⚠️ Bắt buộc chọn ít nhất 1 model đã viết khi Status = DONE."; msg.className = "msg-err"; return; }
-    if (payload.status === "SKIP" && !payload.remark) { msg.textContent = "Bắt buộc nhập Remark khi Status = SKIP."; msg.className = "msg-err"; $("#nsRemark").focus(); return; }
+    const err = nsValidatePayload(payload);
+    if (err) {
+      msg.textContent = err; msg.className = "msg-err";
+      if (payload.status === "SKIP" && !payload.remark) $("#nsRemark").focus();
+      return;
+    }
     try {
       const res = await api("/api/new-scripts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       msg.textContent = `✅ Đã ghi nhận: ${res.item} / ${res.tc_id} (tuần ${res.assign_week ?? "—"}).`;
@@ -1868,7 +2015,7 @@ async function init() {
     const changed = JSON.stringify(me) !== JSON.stringify(state.me);
     state.me = me;
     state.currentUser = me.username;
-    if (changed) applyPermissions();
+    if (changed) { applyPermissions(); nsApplyExtraPerms(); }
 
     // Tab "Ghi nhận Fix" đang mở -> chỉ lấy dữ liệu mới ở nền, không rebuild
     // dropdown/field đang thao tác dở (tránh làm gián đoạn form đang điền).

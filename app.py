@@ -19,8 +19,6 @@ DEFAULT_MODELS = ["S721", "A175", "F966", "X526", "F741"]
 PASS_STATES = {"pass", "check", "na", "manual check"}  # MANUAL CHECK tương tự CHECK = Pass
 SKIP_STATES = {"running"}  # test chua chay xong, khong dua vao thong ke Pass/Fail
 # TIMEOUT = Fail (không có trong PASS_STATES → quy vào Fail)
-# Mat khau bat buoc de duoc GUI du lieu vao he thong (tab Nhap ket qua).
-SUBMIT_PASSWORD = "smartlab1@"
 # Mat khau mac dinh khi admin reset tai khoan (hoac tao sap dat khi them owner moi)
 DEFAULT_RESET_PASSWORD = "abc123"
 
@@ -28,16 +26,18 @@ DEFAULT_RESET_PASSWORD = "abc123"
 # Phan quyen theo tung tab chuc nang (key = data-tab trong index.html)
 # ------------------------------------------------------------------
 ALL_TABS = [
-    "dashboard", "input-results", "input-fix", "new-scripts",
+    "dashboard", "new-scripts", "input-results", "input-fix",
     "priority", "cycle-compare", "fix-tracking", "settings",
 ]
 # Quyen mac dinh cho user thuong: moi tab TRU Nhap ket qua & Cai dat.
 USER_DEFAULT_TABS = [
-    "dashboard", "input-fix", "new-scripts", "priority", "cycle-compare", "fix-tracking",
+    "dashboard", "new-scripts", "input-fix", "priority", "cycle-compare", "fix-tracking",
 ]
+NS_EXTRA_PERMS = ["ns-assign", "ns-edit"]  # quyen rieng cho tab new-scripts, khong phai tab
+ALL_PERMS = ALL_TABS + NS_EXTRA_PERMS
 ROLE_DEFAULT_PERMS = {
-    "admin": list(ALL_TABS),
-    "moderator": list(ALL_TABS),     # moi tab ke ca Cai dat; khac admin o cho khong quan tri tai khoan
+    "admin": list(ALL_TABS) + list(NS_EXTRA_PERMS),
+    "moderator": list(ALL_TABS) + list(NS_EXTRA_PERMS),  # moi tab ke ca Cai dat; khac admin o cho khong quan tri tai khoan
     "user": list(USER_DEFAULT_TABS),
 }
 BOOTSTRAP_ADMIN = "anh.hh"  # tai khoan admin khoi tao mac dinh
@@ -152,7 +152,7 @@ def init_db():
             team TEXT,
             assign_week INTEGER,
             completed_date TEXT,
-            status TEXT NOT NULL,          -- DONE / SKIP
+            status TEXT NOT NULL,          -- DONE / SKIP / ASSIGNED
             models_written TEXT,           -- CSV ten model tu bang models
             sdf_id TEXT,
             remark TEXT,
@@ -200,6 +200,47 @@ def init_db():
             conn.execute(stmt)
         except Exception:
             pass  # Column already exists
+
+    # Migration: chuan hoa ten model bi trung do hau to khac nhau (VD 'SM-X526B' vs
+    # 'SM-X526' la cung 1 model) ve 1 dang chuan duy nhat qua normalize_model_name().
+    # Idempotent - chi UPDATE khi gia tri khac ban chuan.
+    for row in conn.execute("SELECT DISTINCT model FROM results").fetchall():
+        canon = normalize_model_name(row["model"])
+        if canon != row["model"]:
+            conn.execute("UPDATE results SET model=? WHERE model=?", (canon, row["model"]))
+
+    for row in conn.execute("SELECT DISTINCT model_fixed FROM fixes").fetchall():
+        canon = normalize_model_name(row["model_fixed"])
+        if canon != row["model_fixed"]:
+            conn.execute("UPDATE fixes SET model_fixed=? WHERE model_fixed=?", (canon, row["model_fixed"]))
+
+    for r in conn.execute(
+        "SELECT id, models_written FROM new_scripts WHERE models_written IS NOT NULL AND models_written != ''"
+    ).fetchall():
+        parts = [p.strip() for p in r["models_written"].split(",") if p.strip()]
+        canon_csv = ", ".join(normalize_model_name(p) for p in parts)
+        if canon_csv != r["models_written"]:
+            conn.execute("UPDATE new_scripts SET models_written=? WHERE id=?", (canon_csv, r["id"]))
+
+    # De-duplicate bang models: gop cac ten bi coi la trung (VD 'SM-X526B' -> 'SM-X526') ve
+    # 1 hang duy nhat, giu sort_order NHO NHAT (uu tien thu tu xuat hien som hon) cua nhom trung.
+    dupe_groups = {}
+    for row in conn.execute("SELECT name, sort_order FROM models").fetchall():
+        dupe_groups.setdefault(normalize_model_name(row["name"]), []).append(row)
+    for canon, members in dupe_groups.items():
+        if len(members) == 1 and members[0]["name"] == canon:
+            continue  # da chuan, khong co gi de gop
+        min_order = min(m["sort_order"] for m in members)
+        for m in members:
+            conn.execute("DELETE FROM models WHERE name=?", (m["name"],))
+        conn.execute("INSERT OR IGNORE INTO models (name, sort_order) VALUES (?, ?)", (canon, min_order))
+
+    # Migration: sua du lieu cu bi loi do derive_test_suite() truoc day hardcode dau "_"
+    # lam ky tu phan tach (khong nhan dien duoc tien to "sm-" dung dau "-") -> cac dong
+    # SamsungMember bi luu nham thanh 'SamsungMember_ui90' (ten file .ts trong cot Test
+    # Suite tho, do fallback parse khi khong khop tien to nao). Da fix root cause trong
+    # derive_test_suite(); backfill nay chi sua lai du lieu cu.
+    conn.execute("UPDATE results SET test_suite='SamsungMember' WHERE test_suite='SamsungMember_ui90'")
 
     # Ket noi du lieu co san: tu dong dien Team cho owner tu cot Team trong ket qua da nhap
     # (lay ban ghi Author=owner moi nhat co Team). Chi dien khi owner CHUA co team -> khong
@@ -313,6 +354,18 @@ def init_users_db():
             "UPDATE users SET role='admin', permissions=?, active=1 WHERE username=?",
             (",".join(ROLE_DEFAULT_PERMS["admin"]), BOOTSTRAP_ADMIN),
         )
+    conn.commit()
+    # Backfill: dam bao moi tai khoan admin/moderator co du quyen ns-assign/ns-edit,
+    # khong ghi de cac permission tuy chinh khac ho dang co (tai khoan tao truoc khi them
+    # 2 quyen nay se khong tu dong co, vi permissions luu cung tai thoi diem tao).
+    for username, permissions in conn.execute(
+        "SELECT username, permissions FROM users WHERE role IN ('admin','moderator')"
+    ).fetchall():
+        current = set(perms_to_list(permissions))
+        missing = set(NS_EXTRA_PERMS) - current
+        if missing:
+            conn.execute("UPDATE users SET permissions=? WHERE username=?",
+                         (",".join(sorted(current | missing)), username))
     conn.commit()
     # Backfill: tao tai khoan cho tat ca owner active chua co
     db = sqlite3.connect(DB_PATH)
@@ -695,6 +748,11 @@ TC_SUITE_RULES = [
     (("nowbrief",), "Now-brief"),
 ]
 
+# TC ID cua SamsungMember dung dau gach ngang (VD "SM-00-002") thay vi gach duoi nhu
+# cac Item khac -> rieng tien to "sm" CHI chap nhan dau "-". Dung chung boi ca
+# derive_test_suite() va item_from_tc_id() (mot nguon su that, tranh lech logic).
+_TC_ID_PREFIX_SEPARATORS = {"sm": ("-",)}
+
 
 def extract_test_case_name(raw):
     """'Internet/.../Browser_000118.py' hoac 'Browser_000118.py' -> 'Browser_000118'"""
@@ -712,7 +770,8 @@ def derive_test_suite(test_case_name, raw_test_suite):
     lower = test_case_name.lower()
     for prefixes, suite in TC_SUITE_RULES:
         for p in prefixes:
-            if lower.startswith(p + "_"):
+            seps = _TC_ID_PREFIX_SEPARATORS.get(p, ("_",))
+            if any(lower.startswith(p + sep) for sep in seps):
                 return suite
 
     raw = str(raw_test_suite or "").strip().replace("\\", "/")
@@ -738,10 +797,6 @@ ITEM_TC_EXAMPLES = {
     "Weather": "Weather_000001",
 }
 
-# TC ID cua SamsungMember dung dau gach ngang (VD "SM-00-002") thay vi gach duoi nhu
-# cac Item khac -> rieng tien to "sm" CHI chap nhan dau "-".
-_TC_ID_PREFIX_SEPARATORS = {"sm": ("-",)}
-
 
 def item_from_tc_id(tc_id):
     """Suy Item (ten test_suite chuan) tu TC ID theo dung tien to trong TC_SUITE_RULES.
@@ -758,6 +813,20 @@ def item_from_tc_id(tc_id):
 def get_models_list(db):
     rows = db.execute("SELECT name FROM models ORDER BY sort_order, name").fetchall()
     return [r["name"] for r in rows]
+
+
+_MODEL_NAME_RE = re.compile(r"^(SM-[A-Za-z]\d+)")
+
+
+def normalize_model_name(raw):
+    """Chuan hoa ten model ve dang goc 'SM-' + 1 chu cai + chuoi so lien tiep, bo moi hau to
+    theo sau (VD 'SM-X526B' -> 'SM-X526', 'SM-A175F' -> 'SM-A175'). No-op (giu nguyen) neu
+    khong khop dinh dang SM-<letter><digits> (VD 'All Models', chuoi rong, ten khac he SM-)."""
+    s = str(raw or "").strip()
+    if not s:
+        return s
+    m = _MODEL_NAME_RE.match(s.upper())
+    return m.group(1) if m else s
 
 
 # ------------------------------------------------------------------
@@ -947,7 +1016,7 @@ def edit_test_suite(old_name):
 @require_perm("settings")
 def add_model():
     data = request.get_json(force=True)
-    name = (data.get("name") or "").strip()
+    name = normalize_model_name((data.get("name") or "").strip())
     if not name:
         return jsonify({"error": "Ten khong duoc rong"}), 400
     db = get_db()
@@ -969,7 +1038,7 @@ def edit_model(old_name):
         db.commit()
         return jsonify({"status": "deleted"})
     data = request.get_json(force=True)
-    new_name = (data.get("new_name") or "").strip()
+    new_name = normalize_model_name((data.get("new_name") or "").strip())
     if not new_name:
         return jsonify({"error": "Ten moi khong duoc rong"}), 400
     row = db.execute("SELECT sort_order FROM models WHERE name=?", (old_name,)).fetchone()
@@ -1126,10 +1195,11 @@ def api_new_script_items():
     return jsonify(out)
 
 
-def validate_new_script_row(db, data):
+def validate_new_script_row(db, data, exclude_id=None):
     """Validate + chuan hoa 1 dong new_scripts tu dict tho. Tra ve (row_dict, None) neu
-    hop le, hoac (None, error_message) neu khong. Dung chung cho POST don le va bulk
-    import (mot nguon su that, tranh lech logic giua 2 duong nhap)."""
+    hop le, hoac (None, error_message) neu khong. Dung chung cho POST don le, bulk import,
+    va sua dong da co (exclude_id = id cua chinh dong do, de bo qua check trung tc_id voi
+    chinh no) - mot nguon su that, tranh lech logic giua cac duong nhap/sua."""
     raw_tc = str(data.get("tc_id") or "").strip()
     if not raw_tc:
         return None, "Vui lòng nhập TC ID."
@@ -1139,12 +1209,14 @@ def validate_new_script_row(db, data):
         examples = ", ".join(ITEM_TC_EXAMPLES.values())
         return None, f"TC ID '{tc_id}' không đúng định dạng — không nhận diện được Item. Ví dụ hợp lệ: {examples}."
 
-    if db.execute("SELECT 1 FROM new_scripts WHERE tc_id=? LIMIT 1", (tc_id,)).fetchone():
+    dup_q = "SELECT 1 FROM new_scripts WHERE tc_id=?" + (" AND id!=?" if exclude_id else "")
+    dup_args = (tc_id, exclude_id) if exclude_id else (tc_id,)
+    if db.execute(dup_q, dup_args).fetchone():
         return None, f"TC ID '{tc_id}' đã được nhập trước đó — mỗi Test Case chỉ ghi nhận 1 lần."
 
     status = str(data.get("status") or "").strip().upper()
-    if status not in ("DONE", "SKIP"):
-        return None, "Status phải là DONE hoặc SKIP."
+    if status not in ("DONE", "SKIP", "ASSIGNED"):
+        return None, "Status phải là DONE, SKIP hoặc ASSIGNED."
 
     remark = str(data.get("remark") or "").strip()
     if status == "SKIP" and not remark:
@@ -1153,7 +1225,7 @@ def validate_new_script_row(db, data):
     models_written = data.get("models_written") or []
     if isinstance(models_written, str):
         models_written = re.split(r"[,/]", models_written)
-    models_written = [str(m).strip() for m in models_written if str(m).strip()]
+    models_written = [normalize_model_name(str(m).strip()) for m in models_written if str(m).strip()]
     if status == "DONE" and not models_written:
         return None, "Chọn ít nhất 1 model đã viết script khi Status = DONE."
     models_csv = ", ".join(models_written)
@@ -1212,12 +1284,102 @@ def api_new_scripts():
     if err:
         return err
     data = request.get_json(force=True)
+    if str(data.get("status", "")).strip().upper() == "ASSIGNED":
+        err = perm_error("ns-assign")
+        if err:
+            return err
     row, error = validate_new_script_row(db, data)
     if error:
         return jsonify({"error": error}), 400
     insert_new_script_row(db, row)
     db.commit()
     return jsonify({"status": "ok", "item": row["item"], "tc_id": row["tc_id"], "assign_week": row["assign_week"], "team": row["team"]})
+
+
+@app.route("/api/new-scripts/<int:sid>", methods=["PUT"])
+@require_login
+def api_update_new_script(sid):
+    """Sua lai 1 dong new_scripts da ghi nhan. 3 cap quyen: (1) admin/moderator hoac tai
+    khoan co quyen 'ns-edit' -> sua duoc moi field ke ca 'member' (vd de 'assign lai' cho
+    nguoi khac); (2) tai khoan co username == member cua chinh dong do (self-edit) -> chi
+    duoc cap nhat ket qua/trang thai cua chinh minh (status/models_written/completed_date/
+    assign_week/sdf_id/remark), KHONG duoc doi member (khong tu reassign di nguoi khac).
+    tc_id/item luon bat bien qua route nay (rieng biet voi route admin PUT X-Admin-Key,
+    cho sua moi field ke ca tc_id)."""
+    u = current_user()
+    db = get_db()
+    row = db.execute("SELECT * FROM new_scripts WHERE id=?", (sid,)).fetchone()
+    if not row:
+        return jsonify({"error": "Không tìm thấy dòng này."}), 404
+
+    is_admin_or_mod = u["role"] in ("admin", "moderator")
+    is_ns_edit = "ns-edit" in u["permissions"]
+    is_self = bool(row["member"]) and row["member"] == u["username"]
+    can_reassign = is_admin_or_mod or is_ns_edit
+    if not (can_reassign or is_self):
+        return jsonify({"error": "Bạn không có quyền sửa dòng này."}), 403
+
+    data = request.get_json(force=True)
+    if "member" in data and not can_reassign:
+        new_member = str(data["member"] or "").strip()
+        if new_member != (row["member"] or ""):
+            return jsonify({"error": "Bạn không có quyền đổi Member (reassign) của dòng này."}), 403
+
+    if str(data.get("status", row["status"])).strip().upper() == "ASSIGNED" and row["status"] != "ASSIGNED":
+        err = perm_error("ns-assign")
+        if err:
+            return err
+
+    merged = dict(row)
+    for field in ("member", "status", "models_written", "completed_date", "assign_week", "sdf_id", "remark"):
+        if field in data:
+            merged[field] = data[field]
+    merged["tc_id"] = row["tc_id"]
+    if "member" in data and str(merged["member"] or "").strip() != (row["member"] or ""):
+        merged["team"] = ""  # buoc validate_new_script_row tu suy lai team theo member moi
+
+    row_out, error = validate_new_script_row(db, merged, exclude_id=sid)
+    if error:
+        return jsonify({"error": error}), 400
+
+    db.execute(
+        "UPDATE new_scripts SET item=?, member=?, team=?, assign_week=?, completed_date=?, "
+        "status=?, models_written=?, sdf_id=?, remark=? WHERE id=?",
+        (row_out["item"], row_out["member"], row_out["team"], row_out["assign_week"],
+         row_out["completed_date"], row_out["status"], row_out["models_written"],
+         row_out["sdf_id"], row_out["remark"], sid),
+    )
+    if row_out["member"] and row_out["member"] != (row["member"] or ""):
+        db.execute("INSERT OR IGNORE INTO owners (name, active) VALUES (?, 1)", (row_out["member"],))
+        if row_out["team"]:
+            db.execute("UPDATE owners SET team=? WHERE name=?", (row_out["team"], row_out["member"]))
+    db.commit()
+    return jsonify({"status": "updated"})
+
+
+@app.route("/api/new-scripts/bulk-assign", methods=["POST"])
+@require_perm("ns-assign")
+def api_bulk_assign_new_scripts():
+    """Assign hang loat: nhan { pairs: [ {tc_id, member}, ... ] }, tao dong new_scripts moi
+    voi status=ASSIGNED cho tung cap. Dung chung validate_new_script_row/insert_new_script_row
+    nen tu dong co check trung TC ID (ke ca trung trong cung batch)."""
+    payload = request.get_json(force=True)
+    pairs = payload.get("pairs", [])
+    if not pairs:
+        return jsonify({"error": "Không có dòng nào."}), 400
+    db = get_db()
+    inserted = 0
+    errors = []
+    for i, p in enumerate(pairs):
+        data = {"tc_id": p.get("tc_id", ""), "member": p.get("member", ""), "status": "ASSIGNED"}
+        row, error = validate_new_script_row(db, data)
+        if error:
+            errors.append({"row_index": i, "tc_id": p.get("tc_id", ""), "error": error})
+            continue
+        insert_new_script_row(db, row)
+        inserted += 1
+    db.commit()
+    return jsonify({"inserted": inserted, "errors": errors})
 
 
 # ------------------------------------------------------------------
@@ -1242,11 +1404,9 @@ def api_add_results():
     ai vua cham vao script nay gan nhat), khong anh huong lich su fix (Daily_Fix_Log).
     """
     payload = request.get_json(force=True)
-    # Bat buoc nhap dung mat khau moi duoc gui du lieu vao he thong.
-    if str(payload.get("password") or "") != SUBMIT_PASSWORD:
-        return jsonify({"error": "Sai mật khẩu — bạn không có quyền gửi dữ liệu vào hệ thống."}), 401
     rows = payload.get("rows", [])
-    created_by = str(payload.get("created_by") or "").strip() or "(password-auth)"
+    u = current_user()
+    created_by = str(payload.get("created_by") or "").strip() or (u["username"] if u else "(unknown)")
     if not rows:
         return jsonify({"error": "No rows provided"}), 400
 
@@ -1258,7 +1418,7 @@ def api_add_results():
     duplicates = []
     for i, row in enumerate(rows):
         try:
-            model = str(row["model"]).strip()
+            model = normalize_model_name(str(row["model"]).strip())
             raw_test_suite = str(row["test_suite"]).strip()
             raw_test_case = str(row["test_case"]).strip()
             state = str(row["state"]).strip()
@@ -1361,7 +1521,7 @@ def api_add_fix():
     owner_name = row["owner"].strip()
     test_suite = row["test_suite"].strip()
     test_case = row["test_case"].strip()
-    model_fixed = row["model_fixed"]
+    model_fixed = normalize_model_name(str(row["model_fixed"] or "").strip())
     fixed_after_cycle = int(row["fixed_after_cycle"])
     note = row.get("note", "")
     db.execute("INSERT OR IGNORE INTO owners (name, active) VALUES (?, 1)", (owner_name,))
@@ -2150,6 +2310,156 @@ def export_excel_suite_model_matrix():
     )
 
 
+def build_new_scripts_workbook(db):
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    models = get_models_list(db)
+    rows = db.execute(
+        "SELECT * FROM new_scripts ORDER BY completed_date DESC, id DESC"
+    ).fetchall()
+
+    TEAM_FILL = PatternFill("solid", fgColor="4472C4")
+    TEAM_FONT = Font(bold=True, color="FFFFFF", name="Calibri", size=11)
+    HEADER_FILL = PatternFill("solid", fgColor="FCD5B5")
+    HEADER_FONT = Font(bold=True, color="000000", name="Calibri", size=10)
+    THIN = Side(style="thin", color="000000")
+    BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
+    CENTER = Alignment(horizontal="center", vertical="center", wrap_text=False)
+    CENTER_WRAP = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    LEFT = Alignment(horizontal="left", vertical="center")
+    LEFT_WRAP = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "(new) UI90 script"
+    ws.sheet_view.showGridLines = False
+
+    ws.column_dimensions["A"].width = 3.3
+    ws.row_dimensions[1].height = 6
+    ws.row_dimensions[3].height = 31.5
+
+    def style_header_cell(cell, fill, font):
+        cell.fill = fill
+        cell.font = font
+        cell.border = BORDER
+
+    fixed_cols = [
+        ("B", "Team", 15),
+        ("C", "Item", 19.3),
+        ("D", "TC ID", 21.4),
+        ("E", "Member", 14.6),
+        ("F", "Assign Week", 19.3),
+        ("G", "Completed date", 16),
+    ]
+    for col, label, width in fixed_cols:
+        ws.column_dimensions[col].width = width
+        ws.merge_cells(f"{col}2:{col}3")
+        top_cell = ws[f"{col}2"]
+        top_cell.value = label
+        top_cell.alignment = CENTER
+        if col == "B":
+            style_header_cell(top_cell, TEAM_FILL, TEAM_FONT)
+        else:
+            style_header_cell(top_cell, HEADER_FILL, HEADER_FONT)
+        style_header_cell(ws[f"{col}3"], HEADER_FILL, HEADER_FONT)
+
+    # Nhom "Local": 1 cot Status + 1 cot cho moi model (dong theo bang models)
+    local_start_col = 8  # H
+    local_span = 1 + len(models)
+    local_end_col = local_start_col + local_span - 1
+    ws.merge_cells(start_row=2, start_column=local_start_col, end_row=2, end_column=local_end_col)
+    for c in range(local_start_col, local_end_col + 1):
+        style_header_cell(ws.cell(row=2, column=c), HEADER_FILL, HEADER_FONT)
+    ws.cell(row=2, column=local_start_col, value="Local").alignment = CENTER
+
+    status_col = local_start_col
+    status_cell = ws.cell(row=3, column=status_col, value="Status\n(DONE/SKIP)")
+    style_header_cell(status_cell, HEADER_FILL, HEADER_FONT)
+    status_cell.alignment = CENTER_WRAP
+    ws.column_dimensions[get_column_letter(status_col)].width = 14
+
+    model_col_map = {}
+    for i, model in enumerate(models):
+        col = local_start_col + 1 + i
+        model_col_map[model] = col
+        mcell = ws.cell(row=3, column=col, value=model)
+        style_header_cell(mcell, HEADER_FILL, HEADER_FONT)
+        mcell.alignment = CENTER
+        ws.column_dimensions[get_column_letter(col)].width = 10
+
+    # Nhom "SDF": chi 1 cot Status (khong track theo tung model), dung de hien thi sdf_id
+    sdf_col = local_end_col + 1
+    ws.merge_cells(start_row=2, start_column=sdf_col, end_row=2, end_column=sdf_col)
+    sdf_header = ws.cell(row=2, column=sdf_col, value="SDF")
+    style_header_cell(sdf_header, HEADER_FILL, HEADER_FONT)
+    sdf_header.alignment = CENTER
+    sdf_status_cell = ws.cell(row=3, column=sdf_col, value="Status")
+    style_header_cell(sdf_status_cell, HEADER_FILL, HEADER_FONT)
+    sdf_status_cell.alignment = CENTER
+    ws.column_dimensions[get_column_letter(sdf_col)].width = 12
+
+    # Remark: cot cuoi, merge doc nhu cac cot co dinh
+    remark_col = sdf_col + 1
+    remark_letter = get_column_letter(remark_col)
+    ws.column_dimensions[remark_letter].width = 91
+    ws.merge_cells(start_row=2, start_column=remark_col, end_row=3, end_column=remark_col)
+    remark_header = ws.cell(row=2, column=remark_col, value="Remark")
+    style_header_cell(remark_header, HEADER_FILL, HEADER_FONT)
+    remark_header.alignment = CENTER
+
+    r = 4
+    for row in rows:
+        ws.cell(row=r, column=2, value=row["team"] or "").alignment = LEFT
+        ws.cell(row=r, column=3, value=row["item"] or "").alignment = LEFT
+        ws.cell(row=r, column=4, value=row["tc_id"] or "").alignment = LEFT
+        ws.cell(row=r, column=5, value=row["member"] or "").alignment = CENTER
+        ws.cell(row=r, column=6, value=row["assign_week"]).alignment = CENTER
+
+        dcell = ws.cell(row=r, column=7)
+        raw_date = (row["completed_date"] or "")[:10]
+        try:
+            dcell.value = date.fromisoformat(raw_date)
+            dcell.number_format = "d-mmm"
+        except ValueError:
+            dcell.value = raw_date
+        dcell.alignment = CENTER
+
+        ws.cell(row=r, column=status_col, value=row["status"] or "").alignment = CENTER
+
+        written = {m.strip() for m in (row["models_written"] or "").split(",") if m.strip()}
+        for model, col in model_col_map.items():
+            ws.cell(row=r, column=col, value="O" if model in written else "").alignment = CENTER
+
+        ws.cell(row=r, column=sdf_col, value=row["sdf_id"] or "").alignment = CENTER
+
+        remark_cell = ws.cell(row=r, column=remark_col, value=row["remark"] or "")
+        remark_cell.alignment = LEFT_WRAP
+
+        for c in range(2, remark_col + 1):
+            ws.cell(row=r, column=c).border = BORDER
+        r += 1
+
+    ws.freeze_panes = "B4"
+    return wb
+
+
+@app.route("/api/export/excel/new-scripts")
+def export_excel_new_scripts():
+    db = get_db()
+    wb = build_new_scripts_workbook(db)
+    mem = io.BytesIO()
+    wb.save(mem)
+    mem.seek(0)
+    return send_file(
+        mem,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=f"NewScripts_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+    )
+
+
 @app.route("/api/export/excel")
 def export_excel():
     db = get_db()
@@ -2681,8 +2991,9 @@ def admin_update_result(result_id):
 
     for field in allowed_fields:
         if field in data:
+            val = normalize_model_name(str(data[field]).strip()) if field == "model" else data[field]
             updates.append(f"{field}=?")
-            values.append(data[field])
+            values.append(val)
 
     # Nếu sửa Test ID và Test ID mã hoá ngày -> tự cập nhật cycle_date theo ngày đó.
     if "test_id" in data:
@@ -2779,10 +3090,11 @@ def admin_update_new_script(sid):
             val = data[field]
             if field == "status":
                 val = str(val or "").strip().upper()
-                if val not in ("DONE", "SKIP"):
-                    return jsonify({"error": "Status phải là DONE hoặc SKIP."}), 400
-            elif field == "models_written" and isinstance(val, list):
-                val = ", ".join(str(m).strip() for m in val if str(m).strip())
+                if val not in ("DONE", "SKIP", "ASSIGNED"):
+                    return jsonify({"error": "Status phải là DONE, SKIP hoặc ASSIGNED."}), 400
+            elif field == "models_written":
+                parts = re.split(r"[,/]", val) if isinstance(val, str) else (val or [])
+                val = ", ".join(normalize_model_name(str(m).strip()) for m in parts if str(m).strip())
             updates.append(f"{field}=?")
             values.append(val)
 
@@ -2889,7 +3201,7 @@ def admin_create_fix():
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             data["fix_date"], data["owner"].strip(), data["test_suite"].strip(), data["test_case"].strip(),
-            data["model_fixed"].strip(), int(data["fixed_after_cycle"]),
+            normalize_model_name(data["model_fixed"].strip()), int(data["fixed_after_cycle"]),
             data.get("note", "").strip(), data.get("root_cause", "").strip(),
         )
     )
@@ -2911,8 +3223,13 @@ def admin_update_fix(fix_id):
     values = []
     for field in allowed_fields:
         if field in data:
+            val = data[field]
+            if field == "fixed_after_cycle":
+                val = int(val)
+            elif field == "model_fixed":
+                val = normalize_model_name(str(val or "").strip())
             updates.append(f"{field}=?")
-            values.append(int(data[field]) if field == "fixed_after_cycle" else data[field])
+            values.append(val)
 
     if not updates:
         return jsonify({"error": "No fields to update"}), 400
@@ -3146,7 +3463,7 @@ def admin_get_users():
             "active": r["active"],
             "created_at": r["created_at"],
         })
-    return jsonify({"users": out, "all_tabs": ALL_TABS})
+    return jsonify({"users": out, "all_tabs": ALL_TABS, "extra_perms": NS_EXTRA_PERMS})
 
 
 @app.route("/api/admin/users/<path:username>", methods=["PUT"])
@@ -3167,7 +3484,7 @@ def admin_update_user(username):
             udb.execute("UPDATE users SET permissions=? WHERE username=?",
                         (",".join(ROLE_DEFAULT_PERMS[role]), username))
     if "permissions" in data:
-        perms = [p for p in data["permissions"] if p in ALL_TABS]
+        perms = [p for p in data["permissions"] if p in ALL_PERMS]
         udb.execute("UPDATE users SET permissions=? WHERE username=?",
                     (",".join(perms), username))
     if "active" in data:

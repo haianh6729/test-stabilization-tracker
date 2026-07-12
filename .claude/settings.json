@@ -1,0 +1,30 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -File \"d:\\Learning\\test_stabilization_app\\test_stabilization_app\\.claude\\notification.ps1\"",
+            "statusMessage": "🔔 Đang thông báo...",
+            "timeout": 300
+          }
+        ]
+      }
+    ],
+    "UserPromptExpansion": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -File \"d:\\Learning\\test_stabilization_app\\test_stabilization_app\\.claude\\notification-question.ps1\"",
+            "statusMessage": "❓ Cần câu trả lời...",
+            "timeout": 300
+          }
+        ]
+      }
+    ]
+  }
+}

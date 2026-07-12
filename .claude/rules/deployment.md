@@ -5,7 +5,6 @@
 **Điểm yếu bảo mật đã biết** — không tự "sửa" thành env vars trừ khi người dùng yêu cầu.
 
 Trong `app.py`:
-- **`SUBMIT_PASSWORD = "smartlab1@"`**: mật khẩu để submit dữ liệu qua form "Nhập kết quả"
 - **`ADMIN_SECRET_KEY = "haianh6729"`**: secret key để truy cập `/admin/<secret_key>` page (CRUD admin)
 - **`DEFAULT_RESET_PASSWORD = "abc123"`**: mật khẩu mặc định reset tài khoản + auto-create owner
 - **`app.secret_key`**: Flask session encryption key (hardcode)

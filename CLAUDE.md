@@ -80,11 +80,10 @@ python app.py        # 0.0.0.0:5000
 
 ### Secrets (Xem chi tiết: [`.claude/rules/deployment.md`](.claude/rules/deployment.md))
 
-- **Hardcode**: `SUBMIT_PASSWORD`, `ADMIN_SECRET_KEY`, `DEFAULT_RESET_PASSWORD`, Flask `secret_key` — tất cả plaintext trong `app.py`
+- **Hardcode**: `ADMIN_SECRET_KEY`, `DEFAULT_RESET_PASSWORD`, Flask `secret_key` — tất cả plaintext trong `app.py`
 - **Không "sửa"** theo hướng env vars trừ khi người dùng yêu cầu (đây là trạng thái hiện tại, chấp nhận được)
-- **`SUBMIT_PASSWORD` vs `DEFAULT_RESET_PASSWORD`**: khác nhau, không nhầm lẫn
-  - `SUBMIT_PASSWORD = "smartlab1@"`: gate form "Nhập kết quả" (không liên quan tài khoản)
-  - `DEFAULT_RESET_PASSWORD = "abc123"`: seed admin, reset PW, auto-create owner account
+- **`DEFAULT_RESET_PASSWORD = "abc123"`**: seed admin, reset PW, auto-create owner account
+- Form "Nhập kết quả" **không còn** mật khẩu gate riêng (đã bỏ `SUBMIT_PASSWORD`) — quyền truy cập chỉ dựa vào `@require_perm("input-results")`
 
 ### Database (Xem chi tiết: [`.claude/rules/database-schema.md`](.claude/rules/database-schema.md))
 
@@ -102,7 +101,7 @@ python app.py        # 0.0.0.0:5000
 
 ### Frontend (Xem chi tiết: [`.claude/rules/ui-structure.md`](.claude/rules/ui-structure.md))
 
-- **8 tabs**: dashboard, input-results, input-fix, new-scripts, priority, cycle-compare, fix-tracking, settings. Hiển thị theo permission
+- **8 tabs**: dashboard, new-scripts, input-results, input-fix, priority, cycle-compare, fix-tracking, settings. Hiển thị theo permission
 - **Polling 15s**: re-fetch `/api/me`, re-sync permissions nếu admin đổi
 - **Tiếng Việt là intent**: không "sửa chính tả" hay dịch sang Anh. Comment + variable = English, UI text = tiếng Việt
 

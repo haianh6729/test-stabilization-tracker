@@ -40,9 +40,9 @@ initAuthUI();        // wire Đổi MK modal, Đăng xuất
 | ID | Tên | Route & Gating | Nội dung |
 |----|-----|---|---|
 | dashboard | Dashboard | GET `/api/dashboard` | Overview pass rate, script, cycle |
+| new-scripts | Script viết mới | POST `/api/new-scripts/*` + `@require_perm` | List, add, edit, delete |
 | input-results | Nhập kết quả | POST `/api/results` + `@require_perm` | Paste tab-delimited results |
 | input-fix | Ghi nhận Fix | POST `/api/fixes` + `@require_perm` | Paste tab-delimited fixes |
-| new-scripts | Script viết mới | POST `/api/new-scripts/*` + `@require_perm` | List, add, edit, delete |
 | priority | Bảng ưu tiên | POST `/api/assignments` + `@require_perm` | Sort, assign owners |
 | cycle-compare | So sánh Cycle | GET `/api/cycle-matrix` | Matrix pass rate × item × cycle |
 | fix-tracking | Theo dõi Fix | GET `/api/fix-tracking` | List fix + status + trend |

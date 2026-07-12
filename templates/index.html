@@ -12,9 +12,9 @@
   <h1>🧪 Test Stabilization Tracker</h1>
   <nav id="tabs">
     <button class="tab-btn active" data-tab="dashboard">📊 Dashboard</button>
+    <button class="tab-btn" data-tab="new-scripts">✍️ Script viết mới</button>
     <button class="tab-btn" data-tab="input-results">📥 Nhập kết quả</button>
     <button class="tab-btn" data-tab="input-fix">🛠️ Ghi nhận Fix</button>
-    <button class="tab-btn" data-tab="new-scripts">✍️ Script viết mới</button>
     <button class="tab-btn" data-tab="priority">📋 Bảng ưu tiên</button>
     <button class="tab-btn" data-tab="cycle-compare">🔄 So sánh Cycle</button>
     <button class="tab-btn" data-tab="fix-tracking">🔬 Theo dõi Fix</button>
@@ -50,6 +50,48 @@
     <div class="form-row">
       <button class="btn-primary" id="btnDoChangePw">Cập nhật</button>
       <span id="cpMsg"></span>
+    </div>
+  </div>
+</div>
+
+<div id="nsEditModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1100; align-items:center; justify-content:center;">
+  <div style="background:white; border-radius:10px; padding:22px 24px; width:520px; max-width:92vw;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <h3 style="margin:0; color:var(--primary); font-size:16px;">✏️ Sửa script — <span id="nsEditTcId"></span></h3>
+      <button onclick="document.getElementById('nsEditModal').style.display='none'" style="background:none; border:none; font-size:22px; cursor:pointer;">✕</button>
+    </div>
+    <div class="ns-form-grid">
+      <label>Item <input type="text" id="nsEditItem" readonly></label>
+      <label>Member <input type="text" id="nsEditMember" list="nsMemberList" autocomplete="off"></label>
+      <label>Team <input type="text" id="nsEditTeam" readonly></label>
+      <label>Completed date <input type="date" id="nsEditDate"></label>
+      <label>Assign Week <input type="number" id="nsEditWeek" min="1" max="53"></label>
+      <label>SDF ID <input type="text" id="nsEditSdfId" autocomplete="off"></label>
+    </div>
+
+    <div class="ns-group">
+      <span class="ns-group-label">Status <span style="color:#e74c3c">*</span></span>
+      <div class="ns-radio-row">
+        <label class="ns-inline"><input type="radio" name="nsEditStatus" value="DONE"> ✅ DONE (đã viết xong)</label>
+        <label class="ns-inline"><input type="radio" name="nsEditStatus" value="SKIP"> ⏭️ SKIP (không tự động được)</label>
+        <label class="ns-inline" id="nsEditStatusAssignedWrap" style="display:none"><input type="radio" name="nsEditStatus" value="ASSIGNED"> 🧑‍💼 ASSIGNED (đã giao, chưa xong)</label>
+      </div>
+    </div>
+
+    <div class="ns-group" id="nsEditModelsWrap">
+      <span class="ns-group-label">Model đã viết script <span style="color:#e74c3c">*khi DONE</span></span>
+      <div id="nsEditModels" class="ns-model-checks"></div>
+    </div>
+
+    <div class="ns-form-grid">
+      <label class="full" id="nsEditRemarkWrap">Remark <span id="nsEditRemarkReq" style="color:#e74c3c; display:none">*bắt buộc khi SKIP</span>
+        <input type="text" id="nsEditRemark" placeholder="Lý do SKIP, hoặc ghi chú thêm">
+      </label>
+    </div>
+
+    <div class="form-row">
+      <button class="btn-primary" id="btnSaveNsEdit">Lưu</button>
+      <span id="nsEditMsg"></span>
     </div>
   </div>
 </div>
@@ -155,6 +197,94 @@
 
 </section>
 
+<!-- ============ NEW SCRIPTS (Script viết mới) ============ -->
+<section id="tab-new-scripts" class="tab-panel">
+  <div class="card">
+    <h3>✍️ Ghi nhận script được viết mới</h3>
+    <p class="hint">Mỗi thành viên tự điền khi viết xong (hoặc bỏ qua) script cho 1 Test Case. Nhập <b>TC ID</b> → hệ thống tự nhận diện <b>Item</b> và kiểm tra định dạng. <b>Item</b>, <b>Team</b>, <b>Assign Week</b> đều tự điền. Mỗi TC ID chỉ ghi nhận <b>một lần duy nhất</b> — nếu TC ID đã được ghi nhận trước đó (kể cả bởi chính bạn), hãy dùng nút <b>✏️ Sửa</b> ở bảng bên dưới thay vì nhập lại.</p>
+    <div class="ns-form-grid">
+      <label>TC ID <span style="color:#e74c3c">*</span>
+        <input type="text" id="nsTcId" placeholder="VD: Browser_000123" autocomplete="off">
+        <span id="nsTcIdHint" class="hint" style="font-weight:normal"></span>
+      </label>
+      <label>Item <span class="hint" style="font-weight:normal">(tự nhận diện)</span>
+        <input type="text" id="nsItem" placeholder="—" readonly>
+      </label>
+      <label>Member (người viết) <span style="color:#e74c3c">*</span>
+        <input type="text" id="nsMember" list="nsMemberList" placeholder="Nhập tên hoặc chọn" autocomplete="off">
+        <datalist id="nsMemberList"></datalist>
+      </label>
+      <label>Team <span class="hint" style="font-weight:normal">(tự điền theo Member)</span>
+        <input type="text" id="nsTeam" placeholder="—" readonly>
+      </label>
+      <label>Completed date
+        <input type="date" id="nsDate">
+      </label>
+      <label>Assign Week <span class="hint" style="font-weight:normal">(tự tính, sửa được)</span>
+        <input type="number" id="nsWeek" min="1" max="53" placeholder="—">
+      </label>
+      <label>SDF ID <span class="hint" style="font-weight:normal">(tuỳ chọn)</span>
+        <input type="text" id="nsSdfId" placeholder="Nhập SDF ID nếu có" autocomplete="off">
+      </label>
+    </div>
+
+    <div class="ns-group">
+      <span class="ns-group-label">Status <span style="color:#e74c3c">*</span></span>
+      <div class="ns-radio-row">
+        <label class="ns-inline"><input type="radio" name="nsStatus" value="DONE"> ✅ DONE (đã viết xong)</label>
+        <label class="ns-inline"><input type="radio" name="nsStatus" value="SKIP"> ⏭️ SKIP (không tự động được)</label>
+        <label class="ns-inline" id="nsStatusAssignedWrap" style="display:none"><input type="radio" name="nsStatus" value="ASSIGNED"> 🧑‍💼 ASSIGNED (đã giao, chưa xong)</label>
+      </div>
+    </div>
+
+    <div class="ns-group" id="nsModelsWrap">
+      <span class="ns-group-label">Model đã viết script <span style="color:#e74c3c">*khi DONE</span> <span class="hint" style="font-weight:normal">(chọn ít nhất 1 — dùng chung danh sách model hệ thống)</span></span>
+      <div id="nsModels" class="ns-model-checks"></div>
+    </div>
+
+    <div class="ns-form-grid">
+      <label class="full" id="nsRemarkWrap">Remark <span id="nsRemarkReq" style="color:#e74c3c; display:none">*bắt buộc khi SKIP</span>
+        <input type="text" id="nsRemark" placeholder="Lý do SKIP, hoặc ghi chú thêm">
+      </label>
+    </div>
+
+    <div class="form-row">
+      <button class="btn-primary" id="btnSubmitNewScript">Ghi nhận script</button>
+      <button class="btn-secondary" id="btnClearNewScript">Xoá form</button>
+      <span id="nsMsg"></span>
+    </div>
+  </div>
+
+  <div class="card" id="nsBulkAssignCard" style="display:none">
+    <h3>👥 Assign hàng loạt</h3>
+    <p class="hint">Dán danh sách TC ID + Member, mỗi dòng 1 cặp cách nhau bằng Tab (copy từ Excel). Sẽ tạo dòng Script viết mới với Status = Assigned, không cho trùng TC ID.</p>
+    <textarea id="nsBulkAssignArea" rows="6" placeholder="Browser_000201&#9;duyhung.tr
+Browser_000202&#9;tuyen.bv1"></textarea>
+    <div class="form-row">
+      <button class="btn-primary" id="btnBulkAssign">Assign hàng loạt</button>
+      <span id="nsBulkAssignMsg"></span>
+    </div>
+    <div id="nsBulkAssignErrors"></div>
+  </div>
+
+  <div class="card">
+    <h3>📄 Danh sách script đã ghi nhận (<span id="nsCount">0</span>)</h3>
+    <p class="hint">Toàn bộ script viết mới đã ghi nhận. Bấm tiêu đề cột để sắp xếp, gõ vào ô lọc dưới mỗi cột để lọc, hoặc dùng nút xuất Excel.</p>
+    <div class="form-row">
+      <button class="btn-secondary" id="btnExportNewScripts">⬇️ Xuất Excel</button>
+    </div>
+    <table id="newScriptsTable" class="data-table ns-table">
+      <thead>
+        <tr>
+          <th style="width:9%">Item</th><th style="width:12%">TC ID</th><th style="width:10%">Member</th><th style="width:8%">Team</th><th style="width:5%">Week</th>
+          <th style="width:9%">Completed date</th><th style="width:7%">Status</th><th style="width:12%">Model đã viết</th><th style="width:7%">SDF ID</th><th>Remark</th><th style="width:6%">Sửa</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+
 <!-- ============ INPUT RESULTS ============ -->
 <section id="tab-input-results" class="tab-panel">
   <div class="card">
@@ -168,9 +298,6 @@
 260706-01949	SM-X526B	Internet/test suite/Internet_ui90_part4.ts	Browser_000117.py	PASS	Test case pass successfully!	vu.thuhoai	duyhung.tr
 260706-01949	SM-X526B	Weather/test suite/Weather_ui90.ts	Weather_A135.py	FAIL	this is not Fold device	duc.chinh	manh.thuong"></textarea>
     <div class="form-row">
-      <label>🔒 Mật khẩu gửi dữ liệu
-        <input type="password" id="rPassword" placeholder="Nhập mật khẩu để được gửi" autocomplete="off">
-      </label>
       <button class="btn-primary" id="btnParsePreview">Xem trước</button>
       <button class="btn-primary" id="btnSubmitResults">Gửi dữ liệu</button>
       <span id="resultsMsg"></span>
@@ -224,78 +351,6 @@
       <button class="btn-secondary" id="btnClearFixForm">Nhập tay (bỏ chọn)</button>
       <span id="fixMsg"></span>
     </div>
-  </div>
-</section>
-
-<!-- ============ NEW SCRIPTS (Script viết mới) ============ -->
-<section id="tab-new-scripts" class="tab-panel">
-  <div class="card">
-    <h3>✍️ Ghi nhận script được viết mới</h3>
-    <p class="hint">Mỗi thành viên tự điền khi viết xong (hoặc bỏ qua) script cho 1 Test Case. Nhập <b>TC ID</b> → hệ thống tự nhận diện <b>Item</b> và kiểm tra định dạng. <b>Item</b>, <b>Team</b>, <b>Assign Week</b> đều tự điền. Mỗi TC ID chỉ ghi nhận <b>một lần duy nhất</b>.</p>
-    <div class="ns-form-grid">
-      <label>TC ID <span style="color:#e74c3c">*</span>
-        <input type="text" id="nsTcId" placeholder="VD: Browser_000123" autocomplete="off">
-        <span id="nsTcIdHint" class="hint" style="font-weight:normal"></span>
-      </label>
-      <label>Item <span class="hint" style="font-weight:normal">(tự nhận diện)</span>
-        <input type="text" id="nsItem" placeholder="—" readonly>
-      </label>
-      <label>Member (người viết) <span style="color:#e74c3c">*</span>
-        <input type="text" id="nsMember" list="nsMemberList" placeholder="Nhập tên hoặc chọn" autocomplete="off">
-        <datalist id="nsMemberList"></datalist>
-      </label>
-      <label>Team <span class="hint" style="font-weight:normal">(tự điền theo Member)</span>
-        <input type="text" id="nsTeam" placeholder="—" readonly>
-      </label>
-      <label>Completed date
-        <input type="date" id="nsDate">
-      </label>
-      <label>Assign Week <span class="hint" style="font-weight:normal">(tự tính, sửa được)</span>
-        <input type="number" id="nsWeek" min="1" max="53" placeholder="—">
-      </label>
-      <label>SDF ID <span class="hint" style="font-weight:normal">(tuỳ chọn)</span>
-        <input type="text" id="nsSdfId" placeholder="Nhập SDF ID nếu có" autocomplete="off">
-      </label>
-    </div>
-
-    <div class="ns-group">
-      <span class="ns-group-label">Status <span style="color:#e74c3c">*</span></span>
-      <div class="ns-radio-row">
-        <label class="ns-inline"><input type="radio" name="nsStatus" value="DONE"> ✅ DONE (đã viết xong)</label>
-        <label class="ns-inline"><input type="radio" name="nsStatus" value="SKIP"> ⏭️ SKIP (bỏ qua)</label>
-      </div>
-    </div>
-
-    <div class="ns-group" id="nsModelsWrap">
-      <span class="ns-group-label">Model đã viết script <span style="color:#e74c3c">*khi DONE</span> <span class="hint" style="font-weight:normal">(chọn ít nhất 1 — dùng chung danh sách model hệ thống)</span></span>
-      <div id="nsModels" class="ns-model-checks"></div>
-    </div>
-
-    <div class="ns-form-grid">
-      <label class="full" id="nsRemarkWrap">Remark <span id="nsRemarkReq" style="color:#e74c3c; display:none">*bắt buộc khi SKIP</span>
-        <input type="text" id="nsRemark" placeholder="Lý do SKIP, hoặc ghi chú thêm">
-      </label>
-    </div>
-
-    <div class="form-row">
-      <button class="btn-primary" id="btnSubmitNewScript">Ghi nhận script</button>
-      <button class="btn-secondary" id="btnClearNewScript">Xoá form</button>
-      <span id="nsMsg"></span>
-    </div>
-  </div>
-
-  <div class="card">
-    <h3>📄 Danh sách script đã ghi nhận (<span id="nsCount">0</span>)</h3>
-    <p class="hint">Toàn bộ script viết mới đã ghi nhận. Bấm tiêu đề cột để sắp xếp, gõ vào ô lọc dưới mỗi cột để lọc, hoặc dùng nút xuất CSV.</p>
-    <table id="newScriptsTable" class="data-table ns-table">
-      <thead>
-        <tr>
-          <th style="width:9%">Item</th><th style="width:13%">TC ID</th><th style="width:11%">Member</th><th style="width:9%">Team</th><th style="width:5%">Week</th>
-          <th style="width:10%">Completed date</th><th style="width:7%">Status</th><th style="width:13%">Model đã viết</th><th style="width:8%">SDF ID</th><th>Remark</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
   </div>
 </section>
 

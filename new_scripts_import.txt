@@ -1,0 +1,1969 @@
+Browser_000006	duyhung.tr	DONE	2026-06-08	SM-S721		
+Browser_000007	duyhung.tr	DONE	2026-06-08	SM-S721		
+Browser_000009	duyhung.tr	DONE	2026-06-08	SM-S721		
+Browser_000010	duyhung.tr	DONE	2026-06-08	SM-S721		
+Browser_000011	duyhung.tr	DONE	2026-06-09	SM-S721		
+Browser_000012	duyhung.tr	DONE	2026-06-09	SM-S721		
+Browser_000013	duyhung.tr	DONE	2026-06-10	SM-S721		
+Browser_000014	duyhung.tr	DONE	2026-06-10	SM-S721		
+Browser_000015	duyhung.tr	DONE	2026-06-10	SM-S721		
+Browser_000016	duyhung.tr	DONE	2026-06-10	SM-S721		
+Browser_000017	duyhung.tr	DONE	2026-06-10	SM-S721		
+Browser_000018	duyhung.tr	DONE	2026-06-10	SM-S721		
+Browser_000019	duyhung.tr	DONE	2026-06-10	SM-S721		
+Browser_000020	duyhung.tr	DONE	2026-06-10	SM-S721		
+Browser_000024	duyhung.tr	DONE	2026-06-11	SM-S721		
+Browser_000025	duyhung.tr	DONE	2026-06-11	SM-S721		
+Browser_000026	duyhung.tr	DONE	2026-06-11	SM-S721		
+Browser_000027	duyhung.tr	DONE	2026-06-11	SM-S721		
+Browser_000028	duyhung.tr	DONE	2026-06-19	SM-S721		
+Browser_000029	duyhung.tr	DONE	2026-06-19			
+Browser_000030	duyhung.tr	DONE	2026-06-12	SM-S721		
+Browser_000031	duyhung.tr	DONE	2026-06-12	SM-S721		
+Browser_000033	duyhung.tr	DONE	2026-06-12	SM-S721		
+Browser_000034	duyhung.tr	DONE	2026-06-12	SM-S721		
+Browser_000036	duyhung.tr	DONE	2026-06-15	SM-S721		
+Browser_000037	duyhung.tr	DONE	2026-06-15	SM-S721		
+Browser_000038	duyhung.tr	DONE	2026-06-15	SM-S721		
+Browser_000039	duyhung.tr	DONE	2026-06-24	SM-S721		
+Browser_000040	duyhung.tr	DONE	2026-06-24	SM-S721		
+Browser_000042	duyhung.tr	DONE	2026-06-24	SM-S721		
+Browser_000045	duyhung.tr	DONE	2026-06-16	SM-S721		
+Browser_000046	duyhung.tr	DONE	2026-06-16	SM-S721		
+Browser_000047	duyhung.tr	DONE	2026-06-16	SM-S721		
+Browser_000048	duyhung.tr	DONE	2026-06-17	SM-S721		
+Browser_000049	duyhung.tr	DONE	2026-06-17	SM-S721		
+Browser_000050	duyhung.tr	DONE	2026-06-17	SM-S721		
+Browser_000051	duyhung.tr	DONE	2026-06-17	SM-S721		
+Browser_000053	duyhung.tr	DONE	2026-06-17	SM-S721		
+Browser_000056	duyhung.tr	DONE	2026-06-18	SM-S721		
+Browser_000057	duyhung.tr	DONE	2026-06-18	SM-S721		
+Browser_000058	duyhung.tr	DONE	2026-06-18	SM-S721		
+Browser_000059	duyhung.tr	DONE	2026-06-19	SM-S721		
+Browser_000061	duyhung.tr	DONE	2026-06-19	SM-S721		
+Browser_000062	duyhung.tr	DONE	2026-06-22	SM-S721		
+Browser_000063	duyhung.tr	DONE	2026-06-22	SM-S721		
+Browser_000064	duyhung.tr	DONE	2026-06-22	SM-S721		
+Browser_000065	duyhung.tr	DONE	2026-06-22	SM-S721		
+Browser_000066	duyhung.tr	DONE	2026-06-23	SM-S721		
+Browser_000067	duyhung.tr	DONE	2026-06-23	SM-S721		
+Browser_000069	duyhung.tr	DONE	2026-06-25	SM-S721		
+Browser_000070	duyhung.tr	DONE	2026-06-25	SM-S721		
+Browser_000071	duyhung.tr	DONE	2026-06-26	SM-S721		
+Browser_000072	duyhung.tr	DONE	2026-06-26	SM-S721		
+Browser_000073	duyhung.tr	DONE	2026-06-26	SM-S721		
+Browser_000074	duyhung.tr	DONE	2026-06-26	SM-S721		
+Browser_000075	duyhung.tr	DONE	2026-06-29	SM-S721		
+Browser_000076	duyhung.tr	DONE	2026-06-29	SM-S721		
+Browser_000077	men.dao	DONE	2026-07-07	SM-S721		
+Browser_000078	vu.thuhoai	DONE	2026-06-09	SM-S721		
+Browser_000079	vu.thuhoai	DONE	2026-06-09	SM-S721		
+Browser_000080	vu.thuhoai	DONE	2026-06-09	SM-S721		
+Browser_000081	vu.thuhoai	DONE	2026-06-10	SM-S721		
+Browser_000082	vu.thuhoai	DONE	2026-06-11	SM-S721		
+Browser_000083	vu.thuhoai	DONE	2026-06-11	SM-S721		
+Browser_000084	vu.thuhoai	DONE	2026-06-12	SM-S721		
+Browser_000085	vu.thuhoai	DONE	2026-06-15	SM-S721		
+Browser_000086	vu.thuhoai	DONE	2026-06-15	SM-S721		
+Browser_000087	vu.thuhoai	DONE	2026-06-15	SM-S721		
+Browser_000088	vu.thuhoai	DONE	2026-06-15	SM-S721		
+Browser_000089	vu.thuhoai	DONE	2026-06-16	SM-S721		
+Browser_000090	vu.thuhoai	DONE	2026-06-16	SM-S721		
+Browser_000091	vu.thuhoai	SKIP				Skip: check voice search
+Browser_000092	vu.thuhoai	DONE	2026-06-16	SM-S721		
+Browser_000093	vu.thuhoai	DONE	2026-06-16	SM-S721		
+Browser_000094	vu.thuhoai	DONE	2026-06-16	SM-S721		
+Browser_000095	vu.thuhoai	DONE	2026-06-16	SM-S721		
+Browser_000096	vu.thuhoai	SKIP				Skip: connect DEX
+Browser_000097	vu.thuhoai	DONE	2026-06-17	SM-S721		
+Browser_000098	vu.thuhoai	DONE	2026-06-18	SM-S721		
+Browser_000099	vu.thuhoai	DONE	2026-06-18	SM-S721		
+Browser_000100	vu.thuhoai	DONE	2026-06-18	SM-S721		
+Browser_000101	vu.thuhoai	DONE	2026-06-18	SM-S721		
+Browser_000102	vu.thuhoai	DONE	2026-06-18	SM-S721		
+Browser_000103	vu.thuhoai	DONE	2026-06-18	SM-S721		
+Browser_000104	vu.thuhoai	DONE	2026-06-18	SM-S721		
+Browser_000105	duc.toan.nguyen	DONE	2026-07-09	SM-S721		
+Browser_000106	vu.thuhoai	DONE	2026-06-24	SM-S721		
+Browser_000107	vu.thuhoai	DONE	2026-06-25	SM-S721		
+Browser_000108	vu.thuhoai	SKIP				Skip: Smart Tab Management  feature manages/orders tabs based on an  internal algorithm that calculates based on the number of accesses
+Browser_000109	vu.thuhoai	DONE	2026-06-19	SM-S721		
+Browser_000110	vu.thuhoai	DONE	2026-06-19	SM-S721		
+Browser_000111	vu.thuhoai	DONE	2026-06-19	SM-S721		
+Browser_000112	vu.thuhoai	DONE	2026-06-19	SM-S721		
+Browser_000113	vu.thuhoai	DONE	2026-06-22	SM-S721		
+Browser_000114	vu.thuhoai	DONE	2026-06-22	SM-S721		
+Browser_000115	vu.thuhoai	DONE	2026-06-22	SM-S721		
+Browser_000116	vu.thuhoai	DONE	2026-06-22	SM-S721		
+Browser_000117	vu.thuhoai	DONE	2026-06-23	SM-S721		
+Browser_000118	vu.thuhoai	DONE	2026-06-23	SM-S721		
+Browser_000119	vu.thuhoai	DONE	2026-06-23	SM-S721		
+Browser_000120	vu.thuhoai	DONE	2026-06-24	SM-S721		
+Browser_000121	vu.thuhoai	SKIP				Skip: can not sync tab with 1 device
+Browser_000123	vu.thuhoai	SKIP				Skip: can not sync tab with 1 device
+Browser_000124	tri.tung	DONE	2026-06-29	SM-S721		
+Browser_000125	tri.tung	DONE	2026-06-23			
+Browser_000126	tri.tung	DONE	2026-06-29	SM-S721		
+Browser_000127	tri.tung	DONE	2026-06-29	SM-S721		
+Browser_000133	giang.tv3	DONE	2026-06-22	SM-S721		
+Browser_000134	giang.tv3	DONE	2026-06-22	SM-S721		
+Browser_000135	giang.tv3	DONE	2026-06-22	SM-S721		
+Browser_000136	giang.tv3	DONE	2026-06-22	SM-S721		
+Browser_000137	giang.tv3	DONE	2026-06-23	SM-S721		
+Browser_000138	tri.tung	DONE	2026-06-22			
+Browser_000139	tri.tung	DONE	2026-06-22			
+Browser_000141	tri.tung	DONE	2026-06-22			
+Browser_000142	tri.tung	DONE	2026-06-23			
+Browser_000143	tri.tung	DONE	2026-06-23			
+Browser_000144	tri.tung	DONE	2026-06-23			
+Browser_000145	tri.tung	DONE	2026-06-24			
+Browser_000148	giap.nn	DONE	2026-06-29			
+Browser_000149	giap.nn	DONE	2026-06-26			
+Browser_000150	giap.nn	DONE	2026-06-26			
+Browser_000151	giap.nn	DONE	2026-06-29			
+Browser_000152	giang.tv3	DONE	2026-07-02	SM-S721		
+Browser_000153	giang.tv3	DONE	2026-07-03	SM-S721		
+Browser_000154	giang.tv3	DONE	2026-07-03	SM-S721		
+Browser_000155	vu.thuhoai	DONE	2026-06-26	SM-S721		
+Browser_000156	vu.thuhoai	DONE	2026-06-26	SM-S721		
+Browser_000157	vu.thuhoai	DONE	2026-06-26	SM-S721		
+Browser_000158	ng.khanhduy	DONE	2026-06-16	SM-S721		
+Browser_000160	ng.khanhduy	DONE	2026-06-16	SM-S721		
+Browser_000162	ng.khanhduy	DONE	2026-06-16	SM-S721		
+Browser_000163	ng.khanhduy	DONE	2026-06-17	SM-S721		
+Browser_000164	ng.khanhduy	DONE	2026-06-18	SM-S721		
+Browser_000165	ng.khanhduy	DONE	2026-06-16	SM-S721		
+Browser_000167	ng.khanhduy	DONE	2026-06-17	SM-S721		
+Browser_000168	ng.khanhduy	DONE	2026-06-17	SM-S721		
+Browser_000169	ng.khanhduy	DONE	2026-06-18	SM-S721		
+Browser_000171	ng.khanhduy	DONE	2026-06-19	SM-S721		
+Browser_000172	ng.khanhduy	DONE	2026-06-18	SM-S721		
+Browser_000173	ng.khanhduy	DONE	2026-06-18	SM-S721		
+Browser_000179	duyhung.tr	DONE	2026-06-30	SM-S721		
+Browser_000180	duyhung.tr	DONE	2026-06-30	SM-S721		
+Browser_000182	duyhung.tr	DONE	2026-06-30	SM-S721		
+Browser_000183	duyhung.tr	DONE	2026-07-01	SM-S721		
+Browser_000186	dat.pt	DONE	2026-06-25	SM-S721		
+Browser_000187	trung.ngoc	DONE	2026-06-10	SM-S721		
+Browser_000188	trung.ngoc	DONE	2026-06-09	SM-S721		
+Browser_000189	trung.ngoc	DONE	2026-06-09	SM-S721		
+Browser_000190	dat.pt	DONE	2026-06-22	SM-S721		
+Browser_000191	dat.pt	DONE	2026-06-23	SM-S721		
+Browser_000192	trung.ngoc	DONE	2026-06-08	SM-S721		
+Browser_000193	trung.ngoc	DONE	2026-06-08	SM-S721		
+Browser_000194	trung.ngoc	DONE	2026-06-09	SM-S721		
+Browser_000195	trung.ngoc	DONE	2026-06-11	SM-S721		
+Browser_000196	dat.pt	DONE	2026-06-19	SM-S721		
+Browser_000197	dat.pt	DONE	2026-06-23	SM-S721		
+Browser_000198	dat.pt	DONE	2026-06-19	SM-S721		
+Browser_000199	dat.pt	DONE	2026-06-19	SM-S721		
+Browser_000200	dat.pt	DONE	2026-06-22	SM-S721		
+Browser_000201	trung.ngoc	DONE	2026-06-10	SM-S721		
+Browser_000202	trung.ngoc	DONE	2026-06-10	SM-S721		
+Browser_000203	dat.pt	DONE	2026-06-23	SM-S721		
+Browser_000204	dat.pt	DONE	2026-06-23	SM-S721		
+Browser_000205	dat.pt	DONE	2026-06-24	SM-S721		
+Browser_000206	dat.pt	DONE	2026-06-29	SM-S721		
+Browser_000207	dat.pt	DONE	2026-06-24	SM-S721		
+Browser_000208	dat.pt	SKIP				The test case needs to check the sound
+Browser_000209	dat.pt	DONE	2026-06-24	SM-S721		
+Browser_000210	dat.pt	SKIP				The test case needs to check the sound
+Browser_000211	trung.ngoc	DONE	2026-06-11	SM-S721		
+Browser_000212	dat.pt	DONE	2026-06-26	SM-S721		
+Browser_000213	dat.pt	DONE	2026-06-22	SM-S721		
+Browser_000214	dat.pt	DONE	2026-06-25	SM-S721		
+Browser_000215	trung.ngoc	DONE	2026-06-11	SM-S721		
+Browser_000216	dat.pt	DONE	2026-06-25	SM-S721		
+Browser_000217	dat.pt	DONE	2026-06-22	SM-S721		
+Browser_000218	trung.ngoc	DONE	2026-06-10	SM-S721		
+Browser_000219	dat.pt	DONE	2026-06-29	SM-S721		
+Browser_000220	hai.duong1	DONE	2026-06-25	SM-F966, SM-S721		
+Browser_000221	hai.duong1	DONE	2026-06-25	SM-F966, SM-S721		
+Browser_000222	hai.duong1	DONE	2026-06-23	SM-S721		
+Browser_000223	hai.duong1	DONE	2026-06-23	SM-S721		
+Browser_000224	hai.duong1	DONE	2026-06-24	SM-F966, SM-S721		
+Browser_000225	thuong.ntt1	DONE	2026-06-15	SM-S721		
+Browser_000226	thuong.ntt1	DONE	2026-06-16	SM-S721		
+Browser_000227	thuong.ntt1	ASSIGNED				checked with UI 9.0, and Opcity's default is level 3, which is different from UI 8.5.
+Browser_000228	thuong.ntt1	ASSIGNED				checked with UI 9.0, and Opcity's default is level 3, which is different from UI 8.5.
+Browser_000229	thuong.ntt1	DONE	2026-06-16	SM-S721		
+Browser_000230	thuong.ntt1	DONE	2026-06-16	SM-S721		
+Browser_000231	thuong.ntt1	DONE	2026-06-18	SM-S721		
+Browser_000232	thang.dv1	ASSIGNED				
+Browser_000233	thuong.ntt1	DONE	2026-06-18	SM-S721		
+Browser_000234	thuong.ntt1	DONE	2026-06-18	SM-S721		
+Browser_000235	thuong.ntt1	DONE	2026-06-19	SM-S721		
+Browser_000236	thuong.ntt1	DONE	2026-06-19	SM-S721		
+Browser_000237	thuong.ntt1	DONE	2026-06-19	SM-S721		
+Browser_000238	thuong.ntt1	DONE	2026-06-22	SM-S721		
+Browser_000239	thuong.ntt1	ASSIGNED				not support UI 9.0 with text
+Browser_000240	thang.viet	DONE	2026-06-17	SM-S721		
+Browser_000241	thang.viet	DONE	2026-06-17	SM-S721		
+Browser_000242	thang.viet	DONE	2026-06-23			
+Browser_000243	thang.viet	DONE	2026-06-22	SM-S721		
+Browser_000244	thang.viet	DONE	2026-06-22	SM-S721		
+Browser_000245	thang.viet	DONE	2026-06-23			
+Browser_000246	thang.dv1	DONE	2026-06-16	SM-F966, SM-S721		
+Browser_000247	thang.dv1	DONE	2026-06-16	SM-F966, SM-S721		
+Browser_000249	thang.dv1	DONE	2026-06-17	SM-F966, SM-S721		
+Browser_000250	thang.dv1	DONE	2026-06-17	SM-F966, SM-S721		
+Browser_000251	thang.dv1	DONE	2026-06-18	SM-F966, SM-S721		
+Browser_000252	thang.dv1	DONE	2026-06-18	SM-F966, SM-S721		
+Browser_000253	thang.dv1	DONE	2026-06-18	SM-F966, SM-S721		
+Browser_000254	thang.dv1	SKIP				The test case needs to check the sound
+Browser_000255	thang.dv1	SKIP				The test case needs to check sound and video
+Browser_000256	thang.dv1	DONE	2026-06-18	SM-F966, SM-S721		
+Browser_000257	thang.dv1	DONE	2026-06-19	SM-F966, SM-S721		
+Browser_000258	thang.dv1	DONE	2026-06-19	SM-F966, SM-S721		
+Browser_000259	thang.dv1	DONE	2026-06-19	SM-F966, SM-S721		
+Browser_000260	thang.dv1	DONE	2026-06-19	SM-F966, SM-S721		
+Browser_000261	thuong.ntt1	DONE	2026-06-22	SM-S721		
+Browser_000262	thuong.ntt1	DONE	2026-06-23	SM-S721		
+Browser_000263	thuong.ntt1	DONE	2026-06-23	SM-S721		
+Browser_000264	thuong.ntt1	DONE	2026-06-23	SM-S721		
+Browser_000265	thuong.ntt1	DONE	2026-06-24	SM-S721		need to check
+Browser_000266	thuong.ntt1	DONE	2026-06-24	SM-S721		
+Browser_000267	thuong.ntt1	SKIP				need biometric
+Browser_000268	hai.duong1	DONE	2026-06-29	SM-S721		
+Browser_000269	hai.duong1	DONE	2026-06-24	SM-F966, SM-S721		
+Browser_000270	hai.duong1	DONE	2026-06-24	SM-F966, SM-S721		
+Browser_000271	hai.duong1	DONE	2026-06-24	SM-F966, SM-S721		
+Browser_000272	hai.duong1	SKIP				SKIP >> Test case requires receiving calls
+Browser_000273	hai.duong1	SKIP				SKIP >> Test case requires receiving calls
+Browser_000274	hai.duong1	SKIP				SKIP >> Test case requires receiving calls
+Browser_000275	hai.duong1	DONE	2026-06-26	SM-S721		
+Browser_000280	nhat.tien	DONE	2026-07-06	SM-S721		
+Browser_000281	nhat.tien	DONE	2026-07-07	SM-S721		
+Browser_000282	duyhung.tr	DONE	2026-07-02	SM-S721		
+Browser_000287	anh.pham4	DONE	2026-07-02	SM-S721		
+Browser_000312	anh.htt	DONE	2026-07-02	SM-S721		
+Browser_000290	thevan.ng	DONE	2026-06-24	SM-S721		
+Browser_000291	thevan.ng	DONE	2026-06-23	SM-S721		
+Browser_000292	thevan.ng	DONE	2026-06-23	SM-S721		
+Browser_000293	thevan.ng	DONE	2026-06-24	SM-S721		
+Browser_000294	thevan.ng	DONE	2026-06-24	SM-S721		
+Browser_000295	thevan.ng	DONE	2026-06-24	SM-S721		
+Browser_000296	thevan.ng	DONE	2026-06-24	SM-S721		
+Browser_000298	hai.duong1	DONE	2026-06-25	SM-F966, SM-S721		
+Browser_000299	hai.duong1	DONE	2026-06-26	SM-S721		
+Browser_000300	hai.duong1	SKIP				SKIP >> Test case requires more than 2 devices
+Browser_000301	minhduc.kh	DONE	2026-06-23	SM-F966		
+Browser_000302	minhduc.kh	DONE	2026-06-23	SM-F966		
+Browser_000303	minhduc.kh	DONE	2026-06-24	SM-F966		
+Browser_000304	minhduc.kh	DONE	2026-06-24	SM-F966		
+Browser_000305	minhduc.kh	DONE	2026-06-24	SM-F966		
+Browser_000306	minhduc.kh	DONE	2026-06-25	SM-F966		
+Browser_000307	minhduc.kh	DONE	2026-06-25	SM-F966		
+Browser_000308	minhduc.kh	DONE	2026-06-25	SM-F966		
+Browser_000309	minhduc.kh	DONE	2026-06-25	SM-F966		
+Browser_000278	tung.thanh1	DONE	2026-07-03			
+Browser_000492	tung.thanh1	DONE	2026-07-07			
+Browser_000484	tung.thanh1	DONE	2026-07-09			
+Browser_000279	tung.thanh1	SKIP	2026-07-06			
+Browser_000475	huong.hm1	SKIP	2026-07-06			
+Browser_000497	huong.hm1	DONE	2026-07-06			
+Browser_000318	nhat.tien	DONE	2026-06-29	SM-S721		
+Browser_000319	nhat.tien	DONE	2026-06-26	SM-S721		
+Browser_000320	nhat.tien	SKIP	2026-07-02			Not show Last 7days / Last month when change date
+Browser_000321	nhat.tien	DONE	2026-07-01	SM-S721		
+Browser_000322	nhat.tien	DONE	2026-07-01	SM-S721		
+Browser_000323	nhat.tien	DONE	2026-07-01	SM-S721		
+Browser_000324	nhat.tien	DONE	2026-07-02	SM-S721		
+Browser_000325	nhat.tien	DONE	2026-07-02	SM-S721		
+Browser_000389	ng.khanhduy	DONE	2026-06-30			
+Browser_000326	anh.htt	DONE	2026-07-02	SM-S721		
+Browser_000327	anh.htt	DONE	2026-07-02	SM-X920		
+Browser_000328	anh.htt	DONE	2026-07-03	SM-X920		
+Browser_000331	nhat.tien	DONE	2026-06-29	SM-S721		
+Browser_000332	men.dao	DONE	2026-07-02	SM-S721		
+Browser_000333	men.dao	DONE	2026-07-02	SM-S721		
+Browser_000334	men.dao	DONE	2026-07-03	SM-S721		
+Browser_000283	men.dao	DONE	2026-07-06	SM-S721		
+Browser_000284	men.dao	DONE	2026-07-06	SM-S721		
+Browser_000435	men.dao	DONE	2026-07-08	SM-S721		
+Browser_000438	men.dao	DONE	2026-07-08	SM-S721		
+Browser_000335	dat.pt	DONE	2026-06-19	SM-S721		
+Browser_000336	dat.pt	DONE	2026-06-08	SM-S721		
+Browser_000337	dat.pt	DONE	2026-06-19	SM-S721		
+Browser_000338	dat.pt	DONE	2026-06-09	SM-S721		
+Browser_000339	dat.pt	DONE	2026-06-15	SM-S721		
+Browser_000340	dat.pt	DONE	2026-06-08	SM-S721		
+Browser_000341	dat.pt	DONE	2026-06-11	SM-S721		
+Browser_000342	dat.pt	DONE	2026-06-11	SM-S721		
+Browser_000343	dat.pt	DONE	2026-06-11	SM-S721		
+Browser_000344	dat.pt	DONE	2026-06-12	SM-S721		
+Browser_000345	dat.pt	DONE	2026-06-12	SM-S721		
+Browser_000346	dat.pt	DONE	2026-06-12	SM-S721		
+Browser_000347	dat.pt	DONE	2026-06-12	SM-S721		
+Browser_000348	dat.pt	DONE	2026-06-12	SM-S721		
+Browser_000349	dat.pt	DONE	2026-06-15	SM-S721		
+Browser_000350	dat.pt	DONE	2026-06-15	SM-S721		
+Browser_000351	dat.pt	DONE	2026-06-15	SM-S721		
+Browser_000352	dat.pt	DONE	2026-06-15	SM-S721		
+Browser_000353	dat.pt	DONE	2026-06-15	SM-S721		
+Browser_000354	dat.pt	DONE	2026-06-16	SM-S721		
+Browser_000355	dat.pt	DONE	2026-06-16	SM-S721		
+Browser_000356	dat.pt	DONE	2026-06-16	SM-S721		
+Browser_000357	dat.pt	DONE	2026-06-16	SM-S721		
+Browser_000358	dat.pt	DONE	2026-06-16	SM-S721		
+Browser_000359	dat.pt	DONE	2026-06-17	SM-S721		
+Browser_000360	dat.pt	DONE	2026-06-17	SM-S721		
+Browser_000361	dat.pt	DONE	2026-06-17	SM-S721		
+Browser_000362	dat.pt	DONE	2026-06-17	SM-S721		
+Browser_000363	dat.pt	DONE	2026-06-17	SM-S721		
+Browser_000364	dat.pt	DONE	2026-06-18	SM-S721		
+Browser_000365	dat.pt	DONE	2026-06-18	SM-S721		
+Browser_000366	dat.pt	DONE	2026-06-18	SM-S721		
+Browser_000367	dat.pt	DONE	2026-06-18	SM-S721		
+Browser_000368	ng.khanhduy	DONE	2026-06-23	SM-S721		
+Browser_000369	nhat.tien	DONE	2026-07-08	SM-S721		
+Browser_000370	nhat.tien	DONE	2026-07-08	SM-S721		
+Browser_000371	nhat.tien	DONE	2026-07-08	SM-S721		
+Browser_000374	ng.khanhduy	DONE	2026-06-23	SM-S721		
+Browser_000375	ng.khanhduy	DONE	2026-06-24	SM-S721		
+Browser_000376	ng.khanhduy	DONE	2026-06-24	SM-S721		
+Browser_000380	ng.khanhduy	DONE	2026-06-25	SM-S721		
+Browser_000381	ng.khanhduy	DONE	2026-06-25	SM-S721		
+Browser_000382	ng.khanhduy	DONE	2026-06-26	SM-S721		
+Browser_000383	ng.khanhduy	DONE	2026-06-26	SM-S721		
+Browser_000384	ng.khanhduy	DONE	2026-06-26	SM-S721		
+Browser_000386	ng.khanhduy	DONE	2026-06-26	SM-S721		
+Browser_000390	ng.khanhduy	DONE	2026-06-26	SM-S721		
+Browser_000391	tri.tung	DONE	2026-06-26	SM-S721		
+Browser_000394	tri.tung	SKIP	2026-07-02	SM-S721		Unable to check the flickering status.
+Browser_000395	giang.tv3	DONE	2026-06-26	SM-S721		
+Browser_000396	giang.tv3	DONE	2026-06-29	SM-S721		
+Browser_000397	giang.tv3	DONE	2026-06-29	SM-S721		
+Browser_000398	giang.tv3	DONE	2026-06-29	SM-S721		
+Browser_000399	tri.tung	DONE	2026-07-01	SM-S721		
+Browser_000400	tri.tung	DONE	2026-06-25	SM-S721		
+Browser_000401	tri.tung	DONE	2026-06-25	SM-S721		
+Browser_000402	tri.tung	DONE	2026-06-26	SM-S721		
+Browser_000403	tri.tung	DONE	2026-06-25	SM-S721		
+Browser_000411	tri.tung	DONE	2026-06-26	SM-S721		
+Browser_000412	giang.tv3	DONE	2026-06-23	SM-S721		
+Browser_000413	giang.tv3	DONE	2026-06-30	SM-S721		
+Browser_000414	giang.tv3	DONE	2026-06-30	SM-S721		
+Browser_000415	qtrung.tr	DONE	2026-06-26	SM-S721		
+Browser_000416	qtrung.tr	DONE	2026-06-26	SM-S721		
+Browser_000417	qtrung.tr	DONE	2026-06-29	SM-S721		
+Browser_000418	qtrung.tr	DONE	2026-06-29	SM-S721		
+Browser_000422	tri.tung	DONE	2026-07-01	SM-S721		
+Browser_000423	giang.tv3	DONE	2026-06-23	SM-S721		
+Browser_000424	giang.tv3	DONE	2026-06-23	SM-S721		
+Browser_000425	giang.tv3	DONE	2026-06-23	SM-S721		
+Browser_000426	giang.tv3	DONE	2026-06-23	SM-S721		
+Browser_000427	giang.tv3	DONE	2026-06-24	SM-S721		
+Browser_000428	giang.tv3	DONE	2026-06-24	SM-S721		
+Browser_000430	giang.tv3	DONE	2026-06-24	SM-S721		
+Browser_000431	giang.tv3	DONE	2026-06-25	SM-S721		
+Browser_000432	giang.tv3	DONE	2026-06-25	SM-S721		
+Browser_000437	ng.khanhduy	DONE	2026-06-12	SM-S721		
+Browser_000440	ng.khanhduy	DONE	2026-06-15	SM-S721		
+Browser_000441	ng.khanhduy	DONE	2026-06-15	SM-S721		
+Browser_000442	giap.nn	SKIP	2026-07-02			Need input Voice
+Browser_000443	giap.nn	DONE	2026-07-02			
+Browser_000587	giap.nn	DONE	2026-07-08			
+Browser_000444	tri.tung	DONE	2026-06-30	SM-S721		
+Browser_000445	tri.tung	DONE	2026-06-30	SM-S721		
+Browser_000446	nhat.tien	DONE	2026-07-06	SM-S721		
+Browser_000447	qtrung.tr	DONE	2026-06-25	SM-S721		
+Browser_000448	qtrung.tr	DONE	2026-06-25	SM-S721		
+Browser_000449	qtrung.tr	DONE	2026-06-26	SM-S721		
+Browser_000450	qtrung.tr	DONE	2026-06-26	SM-S721		
+Browser_000452	giang.tv3	DONE	2026-06-25	SM-S721		
+Browser_000379	duc.toan.nguyen	DONE	2026-07-08	SM-S721		
+Browser_000454	duc.toan.nguyen	DONE	2026-07-02	SM-S721		
+Browser_000457	giang.tv3	DONE	2026-06-26	SM-S721		
+Browser_000458	giang.tv3	DONE	2026-06-26	SM-S721		
+Browser_000460	nhat.tien	DONE	2026-07-03	SM-S721		
+Browser_000461	nhat.tien	DONE	2026-07-03	SM-S721		
+Browser_000462	tri.tung	DONE	2026-06-24			
+Browser_000478	thevan.ng	DONE	2026-07-02	SM-S721		
+Browser_000485	huong.hm1	ASSIGNED	2026-07-09			
+Browser_000479	thevan.ng	DONE	2026-07-02	SM-S721		
+Browser_000493	tri.tung	DONE	2026-07-02	SM-S721		
+Browser_000495	huong.hm1	DONE	2026-07-07			
+Browser_000496	huong.hm1	ASSIGNED	2026-07-08			
+Browser_000498	giang.tv3	DONE	2026-07-01	SM-S721		
+Browser_000499	giang.tv3	DONE	2026-07-01	SM-S721		
+Browser_000500	giang.tv3	DONE	2026-07-02	SM-S721		
+Browser_000501	thang.dv1	SKIP	2026-06-30			Test case requires headphones or external speakers to be connected
+Browser_000502	thang.dv1	DONE	2026-06-30	SM-S721		
+Browser_000503	thang.dv1	DONE	2026-06-30	SM-S721		
+Browser_000504	thang.dv1	SKIP	2026-06-30			Test case requires Screen lock (Biometric) registered state
+Browser_000505	thang.dv1	SKIP	2026-06-30			Test case requires Screen lock (Biometric) registered state
+Browser_000506	thang.dv1	SKIP	2026-06-30			Test case requires compare with document
+Browser_000507	thang.dv1	SKIP	2026-06-30			Test case requires 2 connected devices
+Browser_000508	thang.dv1	DONE	2026-06-30	SM-S721		
+Browser_000509	thang.dv1	DONE	2026-06-30	SM-S721		
+Browser_000510	thang.dv1	DONE	2026-07-01	SM-S721		
+Browser_000511	thang.dv1	DONE	2026-06-22	SM-S721		
+Browser_000512	thang.dv1	DONE	2026-06-22	SM-S721		
+Browser_000513	thang.dv1	DONE	2026-06-22	SM-S721		
+Browser_000514	thang.dv1	DONE	2026-06-22	SM-S721		
+Browser_000515	thang.dv1	DONE	2026-06-23	SM-S721		
+Browser_000516	thang.dv1	DONE	2026-06-23	SM-S721		
+Browser_000517	thang.dv1	DONE	2026-06-23	SM-S721		
+Browser_000518	thang.dv1	DONE	2026-06-23	SM-S721		
+Browser_000519	thang.dv1	SKIP				Chinese devices Only
+Browser_000520	thang.dv1	DONE	2026-06-24	SM-S721		
+Browser_000521	thang.dv1	DONE	2026-06-24	SM-S721		
+Browser_000522	thang.dv1	DONE	2026-06-24	SM-S721		
+Browser_000523	thang.dv1	DONE	2026-06-24	SM-S721		
+Browser_000524	thang.dv1	DONE	2026-06-25	SM-S721		
+Browser_000525	thang.dv1	DONE	2026-06-25	SM-S721		
+Browser_000526	thang.dv1	SKIP				Korea FTU legal notice is different from other countries. And need another child account
+Browser_000527	thang.dv1	DONE	2026-06-25	SM-S721		
+Browser_000528	thuong.ntt1	DONE	2026-06-24	SM-S721		
+Browser_000529	thuong.ntt1	SKIP				need 2 devices
+Browser_000530	thuong.ntt1	SKIP				need 2 devices
+Browser_000531	thuong.ntt1	ASSIGNED				need to set up two-step verification for SA
+Browser_000532	thuong.ntt1	ASSIGNED				need to set up two-step verification for SA
+Browser_000533	thuong.ntt1	DONE	2026-06-26	SM-S721		
+Browser_000534	thuong.ntt1	DONE	2026-06-25	SM-S721		
+Browser_000535	thuong.ntt1	DONE	2026-06-25	SM-S721		
+Browser_000536	thuong.ntt1	SKIP				Need to 2 devices
+Browser_000537	thuong.ntt1	DONE	2026-06-26	SM-S721		
+Browser_000538	thuong.ntt1	DONE	2026-06-26	SM-S721		
+Browser_000539	thuong.ntt1	SKIP				need to excute some steps with PC
+Browser_000540	thang.viet	DONE	2026-06-23	SM-S721		
+Browser_000541	thang.viet	SKIP				skip => insert SIM by manual
+Browser_000542	thang.viet	SKIP				not support 'Support Full Anti Adblock Avoidance'
+Browser_000543	thang.viet	SKIP				Add eSIM by manual
+Browser_000544	thang.viet	DONE	2026-06-23	SM-S721		
+Browser_000545	thang.viet	DONE	2026-06-23	SM-S721		
+Browser_000546	thang.viet	DONE	2026-06-23	SM-S721		
+Browser_000547	thang.viet	SKIP				Download webapk.zip file : https://confluence-mx.sec.samsung.net/display/BROWSER/%5BINT+2559%5D+Persistent+Storage+Support >> Skip
+Browser_000548	thuong.ntt1	SKIP				this TC requires installing the internal APK from Samsung Confluence via a PC
+Browser_000549	thuong.ntt1	SKIP				need 2 devices to sync
+Browser_000550	thuong.ntt1	ASSIGNED				need to set up two-step verification for SA
+Browser_000551	thuong.ntt1	SKIP				not support Smart anti-tracking debug settings > 'Show tracker statistics" and "Enable Anti-Tracking Debug Settings
+Browser_000552	thuong.ntt1	DONE	2026-06-29	SM-S721		
+Browser_000553	thuong.ntt1	DONE	2026-06-10	SM-S721		
+Browser_000554	thuong.ntt1	DONE	2026-06-10	SM-S721		
+Browser_000555	minhduc.kh	DONE	2026-07-02	SM-S721		
+Browser_000556	minhduc.kh	DONE	2026-07-02	SM-S721		
+Browser_000557	minhduc.kh	SKIP				SKIP: The debug menu is hidden, making it impossible to test.
+Browser_000558	minhduc.kh	SKIP				SKIP: The debug menu is hidden, making it impossible to test.
+Browser_000559	minhduc.kh	SKIP				SKIP: Need 2 devices to sync
+Browser_000560	hai.duong1	DONE	2026-06-30	SM-S721		
+Browser_000561	hai.duong1	ASSIGNED				
+Browser_000562	hai.duong1	DONE	2026-06-29	SM-S721		
+Browser_000563	hai.duong1	ASSIGNED				
+Browser_000564	hai.duong1	ASSIGNED				
+Browser_000565	hai.duong1	DONE	2026-07-02	SM-S721		
+Browser_000566	hai.duong1	DONE	2026-06-30	SM-S721		
+Browser_000567	hai.duong1	SKIP				SKIP >> TC requires DeX
+Browser_000568	hai.duong1	DONE	2026-06-30	SM-S721		
+Browser_000569	vu.thuhoai	DONE	2026-06-27	SM-S721		
+Browser_000572	thevan.ng	DONE	2026-06-30	SM-S721		
+Browser_000580	thevan.ng	DONE	2026-06-30	SM-S721		
+NowBrief_000010	quy.nt5	DONE	2026-07-02	SM-S721		
+NowBrief_000011	quy.nt5	DONE	2026-07-02	SM-S721		
+NowBrief_000012	quy.nt5	DONE	2026-07-02	SM-S721		
+NowBrief_000013	quy.nt5	DONE	2026-07-06	SM-S721		
+NowBrief_000014	quy.nt5	DONE	2026-07-06	SM-S721		
+NowBrief_000015	quy.nt5	ASSIGNED				
+NowBrief_000016	quy.nt5	ASSIGNED				
+NowBrief_000017	quy.nt5	DONE	2026-07-08	SM-S721		
+NowBrief_000018	quy.nt5	DONE	2026-07-10	SM-S721		
+NowBrief_000019	quy.nt5	ASSIGNED				
+NowBrief_000020	quy.nt5	ASSIGNED				
+NowBrief_000021	ngocanh.dt	DONE	2026-07-03			
+NowBrief_000022	ngocanh.dt	DONE	2026-07-06			
+NowBrief_000023	ngocanh.dt	DONE	2026-07-07			
+NowBrief_000024	ngocanh.dt	DONE	2026-07-08			
+NowBrief_000025	ngocanh.dt	DONE	2026-07-10			
+NowBrief_000026	ngocanh.dt	ASSIGNED				
+NowBrief_000027	ngocanh.dt	DONE	2026-07-08			
+NowBrief_000028	thang.dv1	DONE	2026-07-02	SM-S721		
+NowBrief_000029	thang.dv1	DONE	2026-07-02	SM-S721		
+NowBrief_000030	thang.dv1	DONE	2026-07-02	SM-S721		
+NowBrief_000031	thang.dv1	DONE	2026-07-02	SM-S721		
+NowBrief_000032	thang.dv1	DONE	2026-07-03	SM-S721		
+NowBrief_000033	thang.dv1	ASSIGNED				
+NowBrief_000034	thang.dv1	ASSIGNED				
+NowBrief_000035	thang.dv1	ASSIGNED				
+NowBrief_000036	thang.dv1	DONE	2026-07-03	SM-S721		
+NowBrief_000037	thang.dv1	DONE	2026-07-03	SM-S721		
+NowBrief_000038	thang.dv1	DONE	2026-07-03	SM-S721		
+NowBrief_000039	thang.dv1	DONE	2026-07-06	SM-S721		
+NowBrief_000040	thang.dv1	DONE	2026-07-06	SM-S721		
+NowBrief_000041	thang.dv1	DONE	2026-07-06	SM-S721		
+NowBrief_000042	thang.dv1	DONE	2026-07-06	SM-S721		
+NowBrief_000043	thang.dv1	DONE	2026-07-07	SM-S721		
+NowBrief_000044	thang.dv1	DONE	2026-07-07	SM-S721		
+NowBrief_000045	thang.dv1	DONE	2026-07-07	SM-S721		
+NowBrief_000046	thang.dv1	DONE	2026-07-07	SM-S721		
+NowBrief_000047	thang.dv1	DONE	2026-07-08	SM-S721		
+NowBrief_000048	thang.dv1	DONE	2026-07-08	SM-S721		
+NowBrief_000049	thang.dv1	ASSIGNED				
+NowBrief_000050	thang.dv1	DONE	2026-07-10	SM-S721		
+NowBrief_000051	thang.dv1	DONE	2026-07-10	SM-S721		
+NowBrief_000052	thang.dv1	DONE	2026-07-10	SM-S721		
+NowBrief_000053	thang.dv1	ASSIGNED				
+NowBrief_000054	thang.dv1	ASSIGNED				
+NowBrief_000055	thang.dv1	ASSIGNED				
+NowBrief_000056	thang.dv1	ASSIGNED				
+NowBrief_000057	thang.dv1	DONE	2026-07-10	SM-S721		
+NowBrief_000058	hien.ngt2	ASSIGNED				
+NowBrief_000059	hien.ngt2	ASSIGNED				
+NowBrief_000060	hien.ngt2	ASSIGNED				
+NowBrief_000061	hien.ngt2	ASSIGNED				
+NowBrief_000062	vu.nam1	DONE	2026-07-08	SM-S721		
+NowBrief_000063	vu.nam1	SKIP				SKIP (need Open, close device Flip)
+NowBrief_000064	vu.nam1	SKIP				SKIP (execute audio)
+NowBrief_000065	vu.nam1	DONE	2026-07-08	SM-S721		
+NowBrief_000066	vu.nam1	ASSIGNED				
+NowBrief_000067	vu.nam1	ASSIGNED				
+NowBrief_000068	vu.nam1	ASSIGNED				
+NowBrief_000069	vu.nam1	ASSIGNED				
+NowBrief_000070	vu.nam1	ASSIGNED				
+NowBrief_000071	vu.nam1	ASSIGNED				
+NowBrief_000072	vu.nam1	ASSIGNED				
+Reminder_0000001	q.bac.phung	DONE	2026-06-08	SM-S721		
+Reminder_0000002	q.bac.phung	DONE	2026-06-08	SM-S721		
+Reminder_0000003	thanhvan.ph	DONE	2026-06-08	SM-S721		
+Reminder_0000004	thanhvan.ph	DONE	2026-06-08	SM-S721		
+Reminder_0000005	vtriet.ng	DONE	2026-06-08	SM-S721		
+Reminder_0000006	vtriet.ng	DONE	2026-06-22	SM-S721		
+Reminder_0000007	m.kien.phung	DONE	2026-06-08	SM-S721		
+Reminder_0000008	m.kien.phung	DONE	2026-06-08	SM-S721		
+Reminder_0000009	m.kien.phung	DONE	2026-06-08	SM-S721		
+Reminder_0000010	m.kien.phung	DONE	2026-06-08	SM-S721		
+Reminder_0000011	m.kien.phung	DONE	2026-06-09	SM-S721		
+Reminder_0000012	m.kien.phung	DONE	2026-06-09	SM-S721		
+Reminder_0000013	q.bac.phung	DONE	2026-06-09	SM-S721		
+Reminder_0000014	q.bac.phung	SKIP				SKIP: Check Sound
+Reminder_0000015	q.bac.phung	SKIP				SKIP: Korea Only
+Reminder_0000016	q.bac.phung	DONE	2026-06-09	SM-S721		
+Reminder_0000017	thanhvan.ph	DONE	2026-06-08	SM-S721		
+Reminder_0000018	thanhvan.ph	DONE	2026-06-08	SM-S721		
+Reminder_0000019	thanhvan.ph	DONE	2026-06-09	SM-S721		
+Reminder_0000020	thanhvan.ph	ASSIGNED				Wait B8,Q8
+Reminder_0000021	vtriet.ng	DONE	2026-06-09	SM-S721		
+Reminder_0000022	vtriet.ng	DONE	2026-06-09	SM-S721		
+Reminder_0000023	vtriet.ng	DONE	2026-06-09	SM-S721		
+Reminder_0000030	vtriet.ng	DONE	2026-06-09	SM-S721		
+Reminder_0000032	thanhvan.ph	DONE	2026-06-19	SM-S721		
+Reminder_0000033	thanhvan.ph	DONE	2026-06-09	SM-S721		
+Reminder_0000034	thanhvan.ph	DONE	2026-06-09	SM-S721		
+Reminder_0000035	thanhvan.ph	SKIP				SKIP: MS login
+Reminder_0000038	thanhvan.ph	DONE	2026-06-09	SM-S721		
+Reminder_0000039	thanhvan.ph	DONE	2026-06-09	SM-S721		
+Reminder_0000040	thanhvan.ph	DONE	2026-06-10	SM-S721		
+Reminder_0000041	thanhvan.ph	DONE	2026-06-10	SM-S721		
+Reminder_0000042	thanhvan.ph	DONE	2026-06-10	SM-S721		
+Reminder_0000043	thanhvan.ph	DONE	2026-06-10	SM-S721		
+Reminder_0000044	thanhvan.ph	DONE	2026-06-10	SM-S721		
+Reminder_0000046	thanhvan.ph	DONE	2026-06-10	SM-S721		
+Reminder_0000047	thanhvan.ph	DONE	2026-06-11	SM-S721		
+Reminder_0000048	thanhvan.ph	DONE	2026-06-11	SM-S721		
+Reminder_0000049	thanhvan.ph	DONE	2026-06-11	SM-S721		
+Reminder_0000059	thanhvan.ph	DONE	2026-06-11	SM-S721		
+Reminder_0000060	thanhvan.ph	SKIP				SKIP: 2 device
+Reminder_0000061	thanhvan.ph	DONE	2026-06-12	SM-S721		
+Reminder_0000062	thanhvan.ph	DONE	2026-06-12	SM-S721		
+Reminder_0000067	thanhvan.ph	DONE	2026-06-11	SM-S721		
+Reminder_0000068	thanhvan.ph	DONE	2026-06-11	SM-S721		
+Reminder_0000069	thanhvan.ph	DONE	2026-06-11	SM-S721		
+Reminder_0000070	thanhvan.ph	SKIP				SKIP: Removed Save your changes or discard them? Popup
+Reminder_0000073	thanhvan.ph	DONE	2026-06-12	SM-S721		
+Reminder_0000087	thanhvan.ph	SKIP				SKIP: MS login
+Reminder_0000127	thanhvan.ph	DONE	2026-06-12	SM-S721		
+Reminder_0000128	thanhvan.ph	SKIP				SKIP: Pause alert off removed
+Reminder_0000129	thanhvan.ph	DONE	2026-06-22	SM-S721		
+Reminder_0000130	thanhvan.ph	DONE	2026-06-22	SM-S721		
+Reminder_0000131	thanhvan.ph	ASSIGNED				Check latter, have issue
+Reminder_0000132	thanhvan.ph	DONE	2026-06-15	SM-S721		
+Reminder_0000133	thanhvan.ph	DONE	2026-06-15	SM-S721		
+Reminder_0000134	thanhvan.ph	DONE	2026-06-16	SM-S721		
+Reminder_0000135	thanhvan.ph	DONE	2026-06-15	SM-S721		
+Reminder_0000136	thanhvan.ph	DONE	2026-06-15	SM-S721		
+Reminder_0000137	thanhvan.ph	DONE	2026-06-15	SM-S721		
+Reminder_0000138	thanhvan.ph	DONE	2026-06-15	SM-S721		
+Reminder_0000139	thanhvan.ph	DONE	2026-06-15	SM-S721		
+Reminder_0000140	thanhvan.ph	DONE	2026-06-22	SM-S721		
+Reminder_0000141	thanhvan.ph	DONE	2026-06-15	SM-S721		
+Reminder_0000142	q.bac.phung	DONE	2026-06-09	SM-S721		
+Reminder_0000143	q.bac.phung	DONE	2026-06-09	SM-S721		
+Reminder_0000144	q.bac.phung	DONE	2026-06-09	SM-S721		
+Reminder_0000145	q.bac.phung	DONE	2026-06-09	SM-S721		
+Reminder_0000146	q.bac.phung	DONE	2026-06-09	SM-S721		
+Reminder_0000147	q.bac.phung	DONE	2026-06-10	SM-S721		
+Reminder_0000148	q.bac.phung	DONE	2026-06-10	SM-S721		
+Reminder_0000149	q.bac.phung	DONE	2026-06-10	SM-S721		
+Reminder_0000150	q.bac.phung	DONE	2026-06-10	SM-S721		
+Reminder_0000151	q.bac.phung	SKIP				SKIP: Check Sound
+Reminder_0000152	q.bac.phung	DONE	2026-06-10	SM-S721		
+Reminder_0000153	q.bac.phung	DONE	2026-06-11	SM-S721		
+Reminder_0000154	q.bac.phung	DONE	2026-06-11	SM-S721		
+Reminder_0000155	q.bac.phung	DONE	2026-06-11	SM-S721		
+Reminder_0000156	q.bac.phung	DONE	2026-06-11	SM-S721		
+Reminder_0000157	q.bac.phung	DONE	2026-06-11	SM-S721		
+Reminder_0000158	q.bac.phung	DONE	2026-06-12	SM-S721		
+Reminder_0000159	q.bac.phung	DONE	2026-06-12	SM-S721		
+Reminder_0000160	q.bac.phung	DONE	2026-06-12	SM-S721		
+Reminder_0000161	q.bac.phung	SKIP				SKIP: Check Sound
+Reminder_0000162	q.bac.phung	SKIP				SKIP: Check Sound
+Reminder_0000163	q.bac.phung	DONE	2026-06-12	SM-S721		
+Reminder_0000164	q.bac.phung	DONE	2026-06-15	SM-S721		
+Reminder_0000165	q.bac.phung	DONE	2026-06-15	SM-S721		
+Reminder_0000166	q.bac.phung	DONE	2026-06-15	SM-S721		
+Reminder_0000167	q.bac.phung	SKIP				SKIP: Check Sound
+Reminder_0000169	q.bac.phung	SKIP				SKIP: Check Arrving/ Leaving
+Reminder_0000170	q.bac.phung	SKIP				SKIP: Check Sound
+Reminder_0000171	q.bac.phung	DONE	2026-06-15	SM-S721		
+Reminder_0000172	q.bac.phung	DONE	2026-06-15	SM-S721		
+Reminder_0000173	q.bac.phung	DONE	2026-06-16	SM-S721		
+Reminder_0000174	q.bac.phung	DONE	2026-06-16	SM-S721		
+Reminder_0000175	q.bac.phung	DONE	2026-06-16	SM-S721		
+Reminder_0000176	q.bac.phung	DONE	2026-06-16	SM-S721		
+Reminder_0000177	q.bac.phung	DONE	2026-06-22	SM-S721		
+Reminder_0000178	q.bac.phung	DONE	2026-06-17	SM-S721		
+Reminder_0000180	q.bac.phung	DONE	2026-06-17	SM-S721		
+Reminder_0000181	q.bac.phung	DONE	2026-06-17	SM-S721		
+Reminder_0000182	q.bac.phung	DONE	2026-06-18	SM-S721		
+Reminder_0000183	q.bac.phung	DONE	2026-06-18	SM-S721		
+Reminder_0000184	m.kien.phung	DONE	2026-06-09	SM-S721		
+Reminder_0000185	m.kien.phung	DONE	2026-06-09	SM-S721		
+Reminder_0000186	m.kien.phung	DONE	2026-06-09	SM-S721		
+Reminder_0000187	m.kien.phung	DONE	2026-06-09	SM-S721		
+Reminder_0000189	m.kien.phung	DONE	2026-06-09	SM-S721		
+Reminder_0000190	m.kien.phung	DONE	2026-06-09	SM-S721		
+Reminder_0000191	m.kien.phung	DONE	2026-06-09	SM-S721		
+Reminder_0000192	m.kien.phung	DONE	2026-06-09	SM-S721		
+Reminder_0000193	m.kien.phung	DONE	2026-06-09	SM-S721		
+Reminder_0000194	m.kien.phung	DONE	2026-06-23	SM-S721		
+Reminder_0000195	m.kien.phung	SKIP	2026-06-17			need to move to check Brief popup occurs at step 4
+Reminder_0000196	m.kien.phung	SKIP	2026-06-17			need to move to check Brief popup occurs at step 5
+Reminder_0000197	m.kien.phung	DONE	2026-06-10	SM-S721		
+Reminder_0000198	m.kien.phung	DONE	2026-06-10	SM-S721		
+Reminder_0000199	m.kien.phung	DONE	2026-06-10	SM-S721		
+Reminder_0000200	m.kien.phung	DONE	2026-06-10	SM-S721		
+Reminder_0000201	m.kien.phung	DONE	2026-06-10	SM-S721		
+Reminder_0000202	m.kien.phung	DONE	2026-06-11	SM-S721		
+Reminder_0000203	m.kien.phung	DONE	2026-06-11	SM-S721		
+Reminder_0000204	m.kien.phung	DONE	2026-06-11	SM-S721		
+Reminder_0000205	m.kien.phung	DONE	2026-06-11	SM-S721		
+Reminder_0000206	m.kien.phung	DONE	2026-06-12	SM-S721		
+Reminder_0000207	m.kien.phung	DONE	2026-06-12	SM-S721		
+Reminder_0000208	m.kien.phung	DONE	2026-06-12	SM-S721		
+Reminder_0000209	m.kien.phung	DONE	2026-06-12	SM-S721		
+Reminder_0000210	m.kien.phung	DONE	2026-06-12	SM-S721		
+Reminder_0000211	m.kien.phung	DONE	2026-06-12	SM-S721		
+Reminder_0000212	m.kien.phung	DONE	2026-06-12	SM-S721		
+Reminder_0000213	m.kien.phung	DONE	2026-06-12	SM-S721		
+Reminder_0000214	m.kien.phung	DONE	2026-06-15	SM-S721		
+Reminder_0000215	m.kien.phung	DONE	2026-06-15	SM-S721		
+Reminder_0000216	m.kien.phung	DONE	2026-06-15	SM-S721		
+Reminder_0000217	m.kien.phung	DONE	2026-06-15	SM-S721		
+Reminder_0000218	m.kien.phung	DONE	2026-06-16	SM-S721		
+Reminder_0000219	m.kien.phung	DONE	2026-06-16	SM-S721		
+Reminder_0000220	m.kien.phung	DONE	2026-06-16	SM-S721		
+Reminder_0000221	m.kien.phung	DONE	2026-06-16	SM-S721		
+Reminder_0000222	m.kien.phung	SKIP	2026-06-16			need voice input
+Reminder_0000224	m.kien.phung	DONE	2026-06-16	SM-S721		
+Reminder_0000225	m.kien.phung	DONE	2026-06-16	SM-S721		
+Reminder_0000226	vtriet.ng	DONE	2026-06-09	SM-S721		
+Reminder_0000227	vtriet.ng	DONE	2026-06-09	SM-S721		
+Reminder_0000228	vtriet.ng	DONE	2026-06-09	SM-S721		
+Reminder_0000229	vtriet.ng	DONE	2026-06-09	SM-S721		
+Reminder_0000230	vtriet.ng	DONE	2026-06-09	SM-S721		
+Reminder_0000231	vtriet.ng	DONE	2026-06-09	SM-S721		
+Reminder_0000233	vtriet.ng	DONE	2026-06-09	SM-S721		
+Reminder_0000234	vtriet.ng	DONE	2026-06-10	SM-S721		
+Reminder_0000235	vtriet.ng	DONE	2026-06-10	SM-S721		
+Reminder_0000236	vtriet.ng	DONE	2026-06-23	SM-S721		
+Reminder_0000237	vtriet.ng	DONE	2026-06-10	SM-S721		
+Reminder_0000238	vtriet.ng	DONE	2026-06-23	SM-S721		
+Reminder_0000239	vtriet.ng	SKIP	2026-06-10			Need to check sound/vibrate
+Reminder_0000240	vtriet.ng	SKIP	2026-06-10			Need to check sound/vibrate
+Reminder_0000241	vtriet.ng	SKIP	2026-06-10			Need to check sound/vibrate
+Reminder_0000242	vtriet.ng	SKIP	2026-06-10			Need to check sound/vibrate
+Reminder_0000243	vtriet.ng	SKIP	2026-06-10			Need to check sound/vibrate
+Reminder_0000244	vtriet.ng	SKIP	2026-06-10			Need to check sound/vibrate
+Reminder_0000245	vtriet.ng	DONE	2026-06-23	SM-S721		
+Reminder_0000246	vtriet.ng	SKIP	2026-06-10			Need to check sound/vibrate
+Reminder_0000247	vtriet.ng	DONE	2026-06-10	SM-S721		
+Reminder_0000248	vtriet.ng	DONE	2026-06-11	SM-S721		
+Reminder_0000249	vtriet.ng	DONE	2026-06-11	SM-S721		
+Reminder_0000250	vtriet.ng	DONE	2026-06-11	SM-S721		
+Reminder_0000251	vtriet.ng	DONE	2026-06-11	SM-S721		
+Reminder_0000252	vtriet.ng	DONE	2026-06-11	SM-S721		
+Reminder_0000253	vtriet.ng	DONE	2026-06-11	SM-S721		
+Reminder_0000254	vtriet.ng	DONE	2026-06-11	SM-S721		
+Reminder_0000255	vtriet.ng	DONE	2026-06-11	SM-S721		
+Reminder_0000257	vtriet.ng	DONE	2026-06-11	SM-S721		
+Reminder_0000258	vtriet.ng	DONE	2026-06-11	SM-S721		
+Reminder_0000259	vtriet.ng	DONE	2026-06-17	SM-S721		
+Reminder_0000260	vtriet.ng	DONE	2026-06-17	SM-S721		
+Reminder_0000261	vtriet.ng	DONE	2026-06-18	SM-S721		
+Reminder_0000262	vtriet.ng	DONE	2026-06-18	SM-S721		
+Reminder_0000264	vtriet.ng	DONE	2026-06-18	SM-S721		
+Reminder_0000265	vtriet.ng	DONE	2026-06-18	SM-S721		
+Reminder_0000266	vtriet.ng	DONE	2026-06-19	SM-S721		
+Reminder_0000267	vtriet.ng	DONE	2026-06-19	SM-S721		
+Reminder_0000268	vtriet.ng	DONE	2026-06-19	SM-S721		
+Reminder_0000269	manh.thuong	DONE	2026-06-09	SM-S721		
+Reminder_0000270	manh.thuong	DONE	2026-06-09	SM-S721		
+Reminder_0000271	manh.thuong	DONE	2026-06-09	SM-S721		
+Reminder_0000272	manh.thuong	DONE	2026-06-10	SM-S721		
+Reminder_0000273	manh.thuong	DONE	2026-06-11	SM-S721		
+Reminder_0000275	manh.thuong	DONE	2026-06-11	SM-S721		
+Reminder_0000276	manh.thuong	DONE	2026-06-11	SM-S721		
+Reminder_0000277	manh.thuong	DONE	2026-06-11	SM-S721		
+Reminder_0000278	manh.thuong	DONE	2026-06-11	SM-S721		
+Reminder_0000279	manh.thuong	DONE	2026-06-16	SM-S721		
+Reminder_0000280	manh.thuong	DONE	2026-06-11	SM-S721		
+Reminder_0000281	manh.thuong	DONE	2026-06-17	SM-S721		
+Reminder_0000282	manh.thuong	DONE	2026-06-12	SM-S721		
+Reminder_0000283	manh.thuong	SKIP				Skip: sound check
+Reminder_0000284	manh.thuong	DONE	2026-06-12	SM-S721		
+Reminder_0000285	manh.thuong	SKIP				Skip: sound check
+Reminder_0000286	manh.thuong	SKIP				Skip: sound check
+Reminder_0000287	manh.thuong	SKIP				Skip: sound check
+Reminder_0000288	manh.thuong	DONE	2026-06-12	SM-S721		
+Reminder_0000292	manh.thuong	DONE	2026-06-15	SM-S721		
+Reminder_0000293	manh.thuong	DONE	2026-06-15	SM-S721		
+Reminder_0000294	manh.thuong	DONE	2026-06-15	SM-S721		
+Reminder_0000295	manh.thuong	DONE	2026-06-15	SM-S721		
+Reminder_0000296	manh.thuong	DONE	2026-06-15	SM-S721		
+Reminder_0000297	manh.thuong	DONE	2026-06-15	SM-S721		
+Reminder_0000298	manh.thuong	DONE	2026-06-22	SM-S721		Device with hardware power button
+Reminder_0000299	manh.thuong	DONE	2026-06-22	SM-S721		Device with hardware home button
+Reminder_0000300	manh.thuong	DONE	2026-06-22	SM-S721		Device with hardware back button
+Reminder_0000301	manh.thuong	SKIP				1. Device 2 with H / W Bixby button. Bixby Voice Configuration Completed
+Reminder_0000302	manh.thuong	DONE	2026-06-15	SM-S721		
+Reminder_0000303	manh.thuong	DONE	2026-06-15	SM-S721		
+Reminder_0000304	manh.thuong	DONE	2026-06-15	SM-S721		
+Reminder_0000305	manh.thuong	DONE	2026-06-16	SM-S721		
+Reminder_0000306	manh.thuong	DONE	2026-06-16	SM-S721		
+Reminder_0000308	manh.thuong	DONE	2026-06-16	SM-S721		
+Reminder_0000312	minhduc.kh	DONE	2026-06-15	SM-F966		
+Reminder_0000313	minhduc.kh	DONE	2026-06-15	SM-F966		
+Reminder_0000314	minhduc.kh	DONE	2026-06-15	SM-F966		
+Reminder_0000315	minhduc.kh	DONE	2026-06-15	SM-F966		
+Reminder_0000316	minhduc.kh	DONE	2026-06-16	SM-F966		
+Reminder_0000317	minhduc.kh	DONE	2026-06-16	SM-F966		
+Reminder_0000319	minhduc.kh	DONE	2026-06-18	SM-F966		
+Reminder_0000320	minhduc.kh	DONE	2026-06-18	SM-F966		
+Reminder_0000321	minhduc.kh	DONE	2026-06-16	SM-F966		
+Reminder_0000322	minhduc.kh	DONE	2026-06-16	SM-F966		
+Reminder_0000323	hai.duong1	DONE	2026-06-15	SM-F966		
+Reminder_0000324	hai.duong1	DONE	2026-06-15	SM-F966		
+Reminder_0000325	hai.duong1	DONE	2026-06-15	SM-F966		
+Reminder_0000326	hai.duong1	DONE	2026-06-15	SM-F966		
+Reminder_0000327	hai.duong1	DONE	2026-06-16	SM-F966		
+Reminder_0000328	hai.duong1	DONE	2026-06-16	SM-F966		
+Reminder_0000329	hai.duong1	DONE	2026-06-18	SM-F966		
+Reminder_0000330	hai.duong1	DONE	2026-06-16	SM-F966		
+Reminder_0000331	hai.duong1	DONE	2026-06-16	SM-F966		
+Reminder_0000333	hai.duong1	DONE	2026-06-18	SM-F966		
+Reminder_0000334	thanhvan.ph	DONE	2026-06-18	SM-S721		
+Reminder_0000335	thanhvan.ph	DONE	2026-06-18	SM-S721		
+Reminder_0000336	thanhvan.ph	DONE	2026-06-16	SM-S721		
+Reminder_0000337	thanhvan.ph	DONE	2026-06-16	SM-S721		
+Reminder_0000339	thanhvan.ph	DONE	2026-06-16	SM-S721		
+Reminder_0000340	thanhvan.ph	DONE	2026-06-16	SM-S721		
+Reminder_0000341	thanhvan.ph	DONE	2026-06-17	SM-S721		
+Reminder_0000342	thanhvan.ph	DONE	2026-06-17	SM-S721		
+Reminder_0000343	thanhvan.ph	DONE	2026-06-17	SM-S721		
+Reminder_0000344	thanhvan.ph	DONE	2026-06-17	SM-S721		
+Reminder_0000345	thanhvan.ph	DONE	2026-06-17	SM-S721		
+Reminder_0000346	thanhvan.ph	DONE	2026-06-18	SM-S721		
+Reminder_0000347	thanhvan.ph	DONE	2026-06-19	SM-S721		
+Reminder_0000348	thanhvan.ph	DONE	2026-06-19	SM-S721		
+Reminder_0000349	thanhvan.ph	DONE	2026-06-17	SM-S721		
+Reminder_0000350	vtriet.ng	DONE	2026-06-11	SM-S721		
+Reminder_0000351	vtriet.ng	DONE	2026-06-11	SM-S721		
+Reminder_0000352	vtriet.ng	DONE	2026-06-11	SM-S721		
+Reminder_0000353	vtriet.ng	DONE	2026-06-11	SM-S721		
+Reminder_0000354	vtriet.ng	DONE	2026-06-11	SM-S721		
+Reminder_0000355	vtriet.ng	DONE	2026-06-12	SM-S721		
+Reminder_0000356	vtriet.ng	DONE	2026-06-12	SM-S721		
+Reminder_0000357	vtriet.ng	DONE	2026-06-16	SM-S721		
+Reminder_0000358	vtriet.ng	DONE	2026-06-16	SM-S721		
+Reminder_0000359	vtriet.ng	DONE	2026-06-16	SM-S721		
+Reminder_0000360	vtriet.ng	DONE	2026-06-16	SM-S721		
+Reminder_0000361	vtriet.ng	DONE	2026-06-16	SM-F966		
+Reminder_0000362	vtriet.ng	DONE	2026-06-16	SM-F966		
+Reminder_0000363	vtriet.ng	DONE	2026-06-16	SM-F966		
+Reminder_0000364	vtriet.ng	DONE	2026-06-16	SM-F966		
+Reminder_0000365	m.kien.phung	DONE	2026-06-17	SM-S721		
+Reminder_0000366	m.kien.phung	DONE	2026-06-17	SM-S721		
+Reminder_0000367	m.kien.phung	DONE	2026-06-18	SM-S721		
+Reminder_0000368	m.kien.phung	DONE	2026-06-18	SM-S721		
+Reminder_0000369	m.kien.phung	DONE	2026-06-19	SM-S721		
+Reminder_0000370	m.kien.phung	DONE	2026-06-19	SM-S721		
+Reminder_0000371	m.kien.phung	DONE	2026-06-22	SM-S721		
+Reminder_0000372	m.kien.phung	DONE	2026-06-22	SM-S721		
+Reminder_0000373	m.kien.phung	DONE	2026-06-23	SM-S721		
+Reminder_0000374	m.kien.phung	ASSIGNED				WAIT DEVICE: B5, B6 model
+Reminder_0000375	m.kien.phung	ASSIGNED				WAIT DEVICE: B5, B6 model
+Reminder_0000376	m.kien.phung	ASSIGNED				WAIT DEVICE: B5, B6 model
+Reminder_0000377	m.kien.phung	ASSIGNED				WAIT DEVICE: B5, B6 model
+Reminder_0000378	m.kien.phung	ASSIGNED				WAIT DEVICE: B5, B6 model
+Reminder_0000379	m.kien.phung	ASSIGNED				WAIT DEVICE: B5, B6 model
+Reminder_0000380	q.bac.phung	ASSIGNED				WAIT DEVICE: B5, B6 model
+Reminder_0000381	q.bac.phung	ASSIGNED				WAIT DEVICE: B5, B6 model
+Reminder_0000382	q.bac.phung	ASSIGNED				WAIT DEVICE: B5, B6 model
+Reminder_0000383	q.bac.phung	ASSIGNED				WAIT DEVICE: B5, B6 model
+Reminder_0000384	q.bac.phung	ASSIGNED				WAIT DEVICE: B5, B6 model
+Reminder_0000385	q.bac.phung	ASSIGNED				WAIT DEVICE: B5, B6 model
+Reminder_0000386	q.bac.phung	SKIP				SKIP: Check Sound
+Reminder_0000387	q.bac.phung	DONE	2026-06-18	SM-S721		
+Reminder_0000388	q.bac.phung	DONE	2026-06-19	SM-S721		
+Reminder_0000389	q.bac.phung	DONE	2026-06-19	SM-S721		
+Reminder_0000391	q.bac.phung	SKIP				SKIP: Check Sound
+Reminder_0000392	q.bac.phung	DONE	2026-06-19	SM-S721		
+Reminder_0000393	q.bac.phung	DONE	2026-06-19	SM-S721		
+Reminder_0000394	q.bac.phung	DONE	2026-06-22	SM-S721		
+Reminder_0000395	q.bac.phung	SKIP				SKIP: Check sound
+SKBD_000003	anh.mai1	DONE	2026-07-03	SM-S721		
+SKBD_000004	tuyen.bv1	DONE	2026-06-05	SM-F966, SM-S721		
+SKBD_000005	tuyen.bv1	DONE	2026-06-08	SM-F966, SM-S721		
+SKBD_000006	tuyen.bv1	DONE	2026-06-08	SM-F966, SM-S721		
+SKBD_000007	tuyen.bv1	DONE	2026-06-08	SM-F966, SM-S721		
+SKBD_000008	tuyen.bv1	DONE	2026-06-08	SM-F966, SM-S721		
+SKBD_000009	tuyen.bv1	DONE	2026-06-09	SM-F966, SM-S721		
+SKBD_000010	tuyen.bv1	DONE	2026-06-09	SM-F966, SM-S721		
+SKBD_000011	tuyen.bv1	DONE	2026-06-09	SM-F966, SM-S721		
+SKBD_000012	tuyen.bv1	DONE	2026-06-09	SM-F966, SM-S721		
+SKBD_000013	anh.mai1	DONE	2026-07-03	SM-S721		
+SKBD_000014	tuyen.bv1	DONE	2026-06-09	SM-F966, SM-S721		
+SKBD_000017	tuyen.bv1	SKIP				Not automate : Verify Local(Chinese language) by manual
+SKBD_000018	tuyen.bv1	DONE	2026-06-10	SM-F966, SM-S721, SM-X920		
+SKBD_000019	tuyen.bv1	DONE	2026-06-10	SM-F966, SM-S721, SM-X920		
+SKBD_000020	tuyen.bv1	DONE	2026-06-10	SM-F966, SM-S721, SM-X920		
+SKBD_000021	tuyen.bv1	DONE	2026-06-11	SM-S721		
+SKBD_000022	tuyen.bv1	DONE	2026-06-11	SM-S721		
+SKBD_000023	tuyen.bv1	DONE	2026-06-11	SM-S721		
+SKBD_000024	tuyen.bv1	DONE	2026-06-11	SM-S721		
+SKBD_000025	tuyen.bv1	DONE	2026-06-12	SM-S721		
+SKBD_000026	tuyen.bv1	DONE	2026-06-12	SM-S721		
+SKBD_000027	tuyen.bv1	DONE	2026-06-12	SM-S721		
+SKBD_000028	tuyen.bv1	DONE	2026-06-12	SM-S721		
+SKBD_000029	tuyen.bv1	DONE	2026-06-12	SM-S721		
+SKBD_000030	tuyen.bv1	DONE	2026-06-12	SM-S721		
+SKBD_000031	tuyen.bv1	DONE	2026-06-12	SM-S721		
+SKBD_000032	tuyen.bv1	DONE	2026-06-12	SM-S721		
+SKBD_000033	tuyen.bv1	DONE	2026-06-15	SM-S721		
+SKBD_000034	tuyen.bv1	DONE	2026-06-15	SM-S721		
+SKBD_000035	tuyen.bv1	DONE	2026-06-15	SM-S721		
+SKBD_000036	tuyen.bv1	DONE	2026-06-15	SM-S721		create Chujiin tablet layout, write symbol tablet chujiin typer.writeAllNumberAndSymbol_Chujiin_Tablet()
+SKBD_000037	tuyen.bv1	DONE	2026-06-16	SM-S721		
+SKBD_000038	tuyen.bv1	DONE	2026-06-16	SM-S721		
+SKBD_000039	tuyen.bv1	DONE	2026-06-16	SM-S721		
+SKBD_000040	tuyen.bv1	DONE	2026-06-16	SM-S721		
+SKBD_000041	tuyen.bv1	DONE	2026-06-16	SM-S721		
+SKBD_000042	tuyen.bv1	DONE	2026-06-16	SM-S721		
+SKBD_000043	tuyen.bv1	DONE	2026-06-16	SM-S721		
+SKBD_000044	tuyen.bv1	DONE	2026-06-16	SM-S721		
+SKBD_000045	tuyen.bv1	DONE	2026-06-16	SM-S721		
+SKBD_000046	tuyen.bv1	DONE	2026-06-17	SM-S721		
+SKBD_000047	tuyen.bv1	DONE	2026-06-17	SM-S721		
+SKBD_000048	tuyen.bv1	DONE	2026-06-17	SM-S721		
+SKBD_000049	tuyen.bv1	DONE	2026-06-17	SM-S721		
+SKBD_000050	tuyen.bv1	DONE	2026-06-17	SM-S721		
+SKBD_000051	tuyen.bv1	DONE	2026-06-18	SM-S721		
+SKBD_000052	tuyen.bv1	DONE	2026-06-18	SM-S721		
+SKBD_000053	tuyen.bv1	DONE	2026-06-18	SM-S721		
+SKBD_000054	tuyen.bv1	DONE	2026-06-18	SM-S721		
+SKBD_000055	tuyen.bv1	DONE	2026-06-18	SM-S721		
+SKBD_000056	tuyen.bv1	DONE	2026-06-18	SM-S721		
+SKBD_000057	tuyen.bv1	DONE	2026-06-18	SM-S721		
+SKBD_000058	tuyen.bv1	DONE	2026-06-18	SM-S721		
+SKBD_000059	tuyen.bv1	DONE	2026-06-18	SM-S721		
+SKBD_000060	tuyen.bv1	DONE	2026-06-18	SM-S721		
+SKBD_000061	tuyen.bv1	DONE	2026-06-18	SM-S721		
+SKBD_000062	tuyen.bv1	DONE	2026-06-18	SM-S721		
+SKBD_000063	tuyen.bv1	DONE	2026-06-18	SM-S721		
+SKBD_000064	tuyen.bv1	DONE	2026-06-19	SM-S721		
+SKBD_000065	tuyen.bv1	DONE	2026-06-19	SM-S721		
+SKBD_000066	tuyen.bv1	DONE	2026-06-19	SM-S721		
+SKBD_000067	tuyen.bv1	DONE	2026-06-19	SM-S721		
+SKBD_000068	tuyen.bv1	DONE	2026-06-19	SM-S721		
+SKBD_000069	tuyen.bv1	DONE	2026-06-19	SM-S721		
+SKBD_000070	tuyen.bv1	DONE	2026-06-19	SM-S721		
+SKBD_000071	tuyen.bv1	DONE	2026-06-19	SM-S721		
+SKBD_000072	tuyen.bv1	DONE	2026-06-22	SM-S721		
+SKBD_000073	tuyen.bv1	DONE	2026-06-22	SM-S721		
+SKBD_000074	tuyen.bv1	DONE	2026-06-22	SM-S721		
+SKBD_000075	tuyen.bv1	DONE	2026-06-22	SM-S721		
+SKBD_000081	tuyen.bv1	DONE	2026-06-23	SM-S721		
+SKBD_000082	tuyen.bv1	DONE	2026-06-23	SM-S721		
+SKBD_000083	tuyen.bv1	DONE	2026-06-23	SM-S721		
+SKBD_000084	tuyen.bv1	ASSIGNED				PROCEDURE and EXPECTED RESULT not match. Request confirm
+SKBD_000085	tuyen.bv1	DONE	2026-06-24	SM-S721		
+SKBD_000086	tuyen.bv1	DONE	2026-06-24	SM-S721		
+SKBD_000087	tuyen.bv1	DONE	2026-06-24	SM-S721		
+SKBD_000088	tuyen.bv1	DONE	2026-06-25	SM-S721		
+SKBD_000089	tuyen.bv1	DONE	2026-06-26	SM-S721		
+SKBD_000090	tuyen.bv1	DONE	2026-06-26	SM-S721		
+SKBD_000091	tuyen.bv1	DONE	2026-06-26	SM-S721		
+SKBD_000092	tuyen.bv1	DONE	2026-06-26	SM-S721		
+SKBD_000093	tuyen.bv1	DONE	2026-06-26	SM-S721		
+SKBD_000094	tuyen.bv1	DONE	2026-06-29	SM-S721		
+SKBD_000095	tuyen.bv1	DONE	2026-07-01	SM-S721		
+SKBD_000096	hoang.ph	DONE	2026-07-06	SM-S721		
+SKBD_000097	hoang.ph	DONE	2026-07-06	SM-S721		
+SKBD_000098	trang.htt	DONE	2026-07-10	SM-S721		
+SKBD_000099	trang.htt	DONE	2026-07-06	SM-S721, SM-X920		
+SKBD_000100	bachchien.tr	DONE	2026-07-01	SM-S721		
+SKBD_000101	bachchien.tr	DONE	2026-07-02	SM-S721		
+SKBD_000102	bachchien.tr	DONE	2026-07-03	SM-S721		
+SKBD_000103	bachchien.tr	DONE	2026-07-03	SM-S721		
+SKBD_000104	hai.nt2	SKIP	2026-07-02			skip test case because it is not able to check more over 3000 icons. check manual and refer with DOC
+SKBD_000105	minh.giang2	DONE	2026-07-01	SM-F966		assign Minh 105 > 109
+SKBD_000106	minh.giang2	DONE	2026-07-01	SM-F966		
+SKBD_000107	minh.giang2	DONE	2026-07-02	SM-F966		
+SKBD_000108	minh.giang2	DONE	2026-07-02	SM-F966		
+SKBD_000109	minh.giang2	DONE	2026-07-02	SM-F966		
+SKBD_000110	minh.giang2	DONE	2026-06-08	SM-F966, SM-S721		
+SKBD_000111	minh.giang2	DONE	2026-06-08	SM-F966, SM-S721		
+SKBD_000112	minh.giang2	DONE	2026-06-08	SM-F966, SM-S721		Instead of check all items in Kaomoji list, check the first only(might need to check the last one also)
+SKBD_000113	minh.giang2	DONE	2026-06-08	SM-F966, SM-S721		Tenor webpage is blocked; only check if it do navigate to sbrowser
+SKBD_000114	minh.giang2	DONE	2026-06-09	SM-F966, SM-S721		
+SKBD_000115	minh.giang2	DONE	2026-06-09	SM-F966, SM-S721		
+SKBD_000116	minh.giang2	DONE	2026-06-09	SM-F966, SM-S721		
+SKBD_000117	minh.giang2	DONE	2026-06-09	SM-F966, SM-S721		
+SKBD_000118	minh.giang2	DONE	2026-06-09	SM-F966, SM-S721		
+SKBD_000119	minh.giang2	DONE	2026-06-10	SM-F966, SM-S721		Check manually Gifs between Gifs keyboard and Gifs from tenor and giphy
+SKBD_000120	minh.giang2	SKIP				Can not automated
+SKBD_000121	minh.giang2	DONE	2026-06-30	SM-F966, SM-S721		
+SKBD_000123	minh.giang2	DONE	2026-06-10	SM-F966, SM-S721		
+SKBD_000124	minh.giang2	DONE	2026-06-10	SM-F966, SM-S721		
+SKBD_000125	minh.giang2	DONE	2026-06-11	SM-S721		
+SKBD_000126	minh.giang2	DONE	2026-06-11	SM-S721		
+SKBD_000127	minh.giang2	DONE	2026-06-11	SM-S721		
+SKBD_000128	minh.giang2	DONE	2026-06-11	SM-S721		
+SKBD_000129	minh.giang2	DONE	2026-06-11	SM-S721		
+SKBD_000130	minh.giang2	DONE	2026-06-12	SM-S721		
+SKBD_000131	minh.giang2	DONE	2026-06-12	SM-S721		
+SKBD_000132	minh.giang2	DONE	2026-06-12	SM-S721		
+SKBD_000133	minh.giang2	DONE	2026-06-15	SM-S721		
+SKBD_000134	minh.giang2	DONE	2026-06-15	SM-S721		
+SKBD_000135	minh.giang2	DONE	2026-06-15	SM-S721		
+SKBD_000136	minh.giang2	DONE	2026-06-15	SM-S721		
+SKBD_000137	minh.giang2	DONE	2026-06-15	SM-S721		
+SKBD_000138	minh.giang2	DONE	2026-06-19	SM-S721		
+SKBD_000139	minh.giang2	DONE	2026-06-19	SM-S721		
+SKBD_000140	minh.giang2	DONE	2026-06-19	SM-S721		
+SKBD_000141	minh.giang2	DONE	2026-06-19	SM-S721		
+SKBD_000142	minh.giang2	DONE	2026-06-19	SM-S721		
+SKBD_000143	minh.giang2	DONE	2026-06-19	SM-S721		
+SKBD_000144	minh.giang2	DONE	2026-06-19	SM-S721		
+SKBD_000145	minh.giang2	DONE	2026-06-19	SM-S721		
+SKBD_000146	minh.giang2	DONE	2026-06-19	SM-S721		
+SKBD_000147	minh.giang2	DONE	2026-06-19	SM-S721		
+SKBD_000148	minh.giang2	DONE	2026-06-19	SM-S721		
+SKBD_000149	minh.giang2	DONE	2026-06-25	SM-S721		
+SKBD_000150	minh.giang2	DONE	2026-06-25	SM-S721		
+SKBD_000151	minh.giang2	DONE	2026-06-25	SM-S721		
+SKBD_000152	minh.giang2	DONE	2026-06-26	SM-S721		
+SKBD_000153	minh.giang2	DONE	2026-06-26	SM-S721		
+SKBD_000154	minh.giang2	DONE	2026-06-26	SM-S721		Current does not have method to play internal sounds without UI(since can not change key-voice in WolfServer)
+SKBD_000155	minh.giang2	DONE	2026-06-26	SM-S721		
+SKBD_000156	minh.giang2	DONE	2026-06-29	SM-S721		
+SKBD_000157	minh.giang2	DONE	2026-06-29	SM-S721		
+SKBD_000158	minh.giang2	DONE	2026-06-29	SM-S721		
+SKBD_000159	thang.dv1	SKIP	2026-06-29			SKIP: Need voice input
+SKBD_000160	thang.dv1	SKIP	2026-06-29			SKIP: Need voice input
+SKBD_000164	thang.dv1	SKIP	2026-06-29			Skip: Need continue voice input while waiting for the alarm to appear. No voice input after 15s will automatically turn off voice input
+SKBD_000166	thang.dv1	DONE	2026-06-29	SM-S721		
+SKBD_000167	thang.dv1	SKIP	Browser_00			SKIP: Need voice input
+SKBD_000168	thang.dv1	SKIP	2026-06-29			SKIP: Need voice input
+SKBD_000169	thang.dv1	DONE	2026-06-29	SM-S721		
+SKBD_000170	thang.dv1	DONE	2026-06-29	SM-S721		
+SKBD_000171	thang.dv1	DONE	2026-06-29	SM-S721		
+SKBD_000172	minhduc.kh	DONE	2026-06-26	SM-S721		
+SKBD_000173	minhduc.kh	DONE	2026-06-26	SM-S721		
+SKBD_000174	minhduc.kh	DONE	2026-06-26	SM-S721		
+SKBD_000175	minhduc.kh	DONE	2026-06-26	SM-S721		
+SKBD_000176	minhduc.kh	DONE	2026-06-29	SM-S721		
+SKBD_000177	minhduc.kh	DONE	2026-06-29	SM-S721		
+SKBD_000178	minhduc.kh	DONE	2026-06-29	SM-S721		
+SKBD_000179	minhduc.kh	DONE	2026-06-30	SM-S721		
+SKBD_000180	minhduc.kh	DONE	2026-06-30	SM-S721		
+SKBD_000181	minhduc.kh	DONE	2026-07-01	SM-S721		
+SKBD_000182	minhduc.kh	DONE	2026-07-01	SM-S721		
+SKBD_000183	ngocphuc.tr	DONE	2026-06-26	SM-S721		
+SKBD_000184	ngocphuc.tr	DONE	2026-06-26	SM-S721, SM-X920		
+SKBD_000185	ngocphuc.tr	DONE	2026-06-30	SM-S721, SM-X920		
+SKBD_000186	ngocphuc.tr	DONE	2026-06-30	SM-S721, SM-X920		
+SKBD_000187	ngocphuc.tr	DONE	2026-06-30	SM-S721		
+SKBD_000188	ngocphuc.tr	DONE	2026-06-30	SM-S721		
+SKBD_000189	ngocphuc.tr	DONE	2026-07-01	SM-S721		
+SKBD_000190	ngocphuc.tr	DONE	2026-07-01	SM-S721		
+SKBD_000191	ngocphuc.tr	DONE	2026-07-01	SM-S721		
+SKBD_000192	ngocphuc.tr	DONE	2026-07-01	SM-S721		
+SKBD_000193	minhduc.kh	DONE	2026-06-19	SM-S721		assign >> anh.hh 193>202
+SKBD_000194	minhduc.kh	DONE	2026-06-19	SM-S721		
+SKBD_000195	minhduc.kh	DONE	2026-06-19	SM-S721		
+SKBD_000196	minhduc.kh	DONE	2026-06-22	SM-S721		
+SKBD_000197	minhduc.kh	DONE	2026-06-22	SM-S721		
+SKBD_000198	minhduc.kh	DONE	2026-06-23	SM-S721		
+SKBD_000199	minhduc.kh	DONE	2026-06-23	SM-S721		
+SKBD_000200	minhduc.kh	DONE	2026-06-23	SM-S721		
+SKBD_000201	minhduc.kh	DONE	2026-06-22	SM-S721		
+SKBD_000202	minhduc.kh	DONE	2026-06-22	SM-S721		
+SKBD_000203	hai.duong1	DONE	2026-06-22	SM-F966		
+SKBD_000204	hai.duong1	DONE	2026-06-18	SM-F966		
+SKBD_000205	hai.duong1	DONE	2026-06-18	SM-F966		
+SKBD_000206	hanh.nv1	DONE	2026-06-09	SM-S721, SM-X920, SM-X526		
+SKBD_000207	hai.duong1	DONE	2026-06-19	SM-F966		
+SKBD_000208	hai.duong1	DONE	2026-06-19	SM-F966		
+SKBD_000209	hai.duong1	DONE	2026-06-22	SM-F966		
+SKBD_000210	hai.duong1	DONE	2026-06-19	SM-F966		
+SKBD_000211	hai.duong1	DONE	2026-06-19	SM-F966		
+SKBD_000212	hai.duong1	DONE	2026-06-22	SM-F966		
+SKBD_000213	thi.nh	DONE	2026-06-08	SM-S721		
+SKBD_000214	thi.nh	DONE	2026-06-08	SM-S721		
+SKBD_000215	thi.nh	DONE	2026-06-08	SM-S721		
+SKBD_000216	thi.nh	DONE	2026-06-08	SM-S721		
+SKBD_000217	thi.nh	DONE	2026-06-09	SM-S721		
+SKBD_000218	thi.nh	DONE	2026-06-09	SM-S721		
+SKBD_000219	thi.nh	DONE	2026-06-09	SM-S721		
+SKBD_000220	thi.nh	DONE	2026-06-10	SM-S721		
+SKBD_000221	thi.nh	DONE	2026-06-09	SM-S721		
+SKBD_000223	thi.nh	DONE	2026-06-10	SM-S721		
+SKBD_000224	thi.nh	DONE	2026-06-10	SM-S721		
+SKBD_000225	thi.nh	DONE	2026-06-10	SM-S721		
+SKBD_000226	thi.nh	DONE	2026-06-10	SM-S721		
+SKBD_000227	thi.nh	DONE	2026-06-11	SM-S721		step 1-4 NA, step 1-6 NA
+SKBD_000228	thi.nh	DONE	2026-06-11	SM-S721		
+SKBD_000229	thi.nh	DONE	2026-06-11	SM-S721		
+SKBD_000230	thi.nh	DONE	2026-06-11	SM-S721		
+SKBD_000231	thi.nh	DONE	2026-06-12	SM-S721		
+SKBD_000232	thi.nh	DONE	2026-06-12	SM-S721		
+SKBD_000233	thi.nh	DONE	2026-06-12	SM-S721		
+SKBD_000234	thi.nh	DONE	2026-06-12	SM-S721		
+SKBD_000235	thi.nh	DONE	2026-06-12	SM-S721		
+SKBD_000236	thi.nh	DONE	2026-06-12	SM-S721		
+SKBD_000237	thi.nh	DONE	2026-06-15	SM-S721		
+SKBD_000238	thi.nh	DONE	2026-06-15	SM-S721		
+SKBD_000239	thi.nh	DONE	2026-06-15	SM-S721		
+SKBD_000240	thi.nh	DONE	2026-06-15	SM-S721		
+SKBD_000241	thi.nh	DONE	2026-06-15	SM-S721		
+SKBD_000242	thi.nh	DONE	2026-06-15	SM-S721		
+SKBD_000243	thi.nh	DONE	2026-06-15	SM-S721		
+SKBD_000244	thi.nh	DONE	2026-06-15	SM-S721		
+SKBD_000245	thi.nh	DONE	2026-06-15	SM-S721		
+SKBD_000246	thi.nh	DONE	2026-06-15	SM-S721		
+SKBD_000247	thi.nh	DONE	2026-06-16	SM-S721		
+SKBD_000248	thi.nh	DONE	2026-06-16	SM-S721		
+SKBD_000249	thi.nh	DONE	2026-06-16	SM-S721		
+SKBD_000250	thi.nh	DONE	2026-06-16	SM-S721		
+SKBD_000251	thi.nh	DONE	2026-06-17	SM-S721		
+SKBD_000252	thi.nh	DONE	2026-06-17	SM-S721		
+SKBD_000253	thi.nh	DONE	2026-06-17	SM-S721		
+SKBD_000254	thi.nh	DONE	2026-06-17	SM-S721		
+SKBD_000255	thi.nh	DONE	2026-06-17	SM-S721		
+SKBD_000256	thi.nh	DONE	2026-06-17	SM-S721		
+SKBD_000257	thi.nh	DONE	2026-06-17	SM-S721		
+SKBD_000258	thi.nh	DONE	2026-06-18	SM-S721		
+SKBD_000259	thi.nh	DONE	2026-06-18	SM-S721		
+SKBD_000260	thi.nh	DONE	2026-06-18	SM-S721		
+SKBD_000261	thi.nh	DONE	2026-06-18	SM-S721		
+SKBD_000262	thi.nh	DONE	2026-06-18	SM-S721		
+SKBD_000263	thi.nh	DONE	2026-06-18	SM-S721		
+SKBD_000264	thi.nh	DONE	2026-06-18	SM-S721		
+SKBD_000265	thi.nh	DONE	2026-06-18	SM-S721		
+SKBD_000266	thi.nh	DONE	2026-06-18	SM-S721		
+SKBD_000267	thi.nh	DONE	2026-06-18	SM-S721		
+SKBD_000268	thi.nh	DONE	2026-06-19	SM-S721		
+SKBD_000269	thi.nh	DONE	2026-06-19	SM-S721		
+SKBD_000270	thi.nh	DONE	2026-06-19	SM-S721		
+SKBD_000271	hai.nt2	DONE	2026-07-03	SM-S721, SM-X920, SM-X526		
+SKBD_000272	loc.td1	DONE	2026-07-02	SM-F741, SM-S721		
+SKBD_000273	loc.td1	DONE	2026-06-30	SM-F741, SM-S721		
+SKBD_000274	loc.td1	DONE	2026-07-01	SM-F741, SM-S721		
+SKBD_000275	loc.td1	DONE	2026-07-03	SM-S721		
+SKBD_000276	loc.td1	DONE	2026-06-29	SM-F741, SM-S721		
+SKBD_000277	loc.td1	DONE	2026-07-01	SM-F741, SM-S721		
+SKBD_000278	lien.ptt	DONE	2026-07-07	SM-S721, SM-X920, SM-X526		
+SKBD_000279	loc.td1	DONE	2026-07-02	SM-F741, SM-S721		
+SKBD_000280	ngocphuc.tr	DONE	2026-07-06	SM-S721		SKIP step1-4: Need manual check
+SKBD_000281	loc.td1	DONE	2026-07-03	SM-S721		
+SKBD_000282	tuan.ta1	DONE	2026-06-29	SM-S721		
+SKBD_000283	linh.trinh1	DONE	2026-07-03	SM-F741, SM-S721, SM-X920, SM-X526		
+SKBD_000284	linh.trinh1	DONE	2026-07-07	SM-F741, SM-S721, SM-X920, SM-X526		
+SKBD_000305	lien.ptt	DONE	2026-07-03	SM-S721, SM-X920		
+SKBD_000306	tuan.ta1	DONE	2026-07-03	SM-S721, SM-X920		
+SKBD_000307	tuan.ta1	DONE	2026-07-02	SM-S721, SM-X920		Only done for normal phone,Fold/Flip wait for Oneui9.0 binary
+SKBD_000308	tuan.ta1	DONE	2026-07-02	SM-S721, SM-X920		
+SKBD_000309	tuan.ta1	DONE	2026-07-01	SM-S721, SM-X920		
+SKBD_000310	tuan.ta1	DONE	2026-06-30	SM-S721, SM-X920		
+SKBD_000311	tuan.ta1	DONE	2026-07-01	SM-S721, SM-X920		
+SKBD_000312	hoang.ph	DONE	2026-07-03	SM-S721		
+SKBD_000313	ngocquang.ng	DONE	2026-07-03	SM-S721		
+SKBD_000314	hoang.ph	DONE	2026-07-01	SM-S721		
+SKBD_000315	ngocquang.ng	DONE	2026-07-03	SM-S721		
+SKBD_000316	hoang.ph	DONE	2026-07-03	SM-S721		
+SKBD_000317	hoang.ph	DONE	2026-07-01	SM-S721		
+SKBD_000318	hoang.ph	DONE	2026-07-02	SM-S721		
+SKBD_000319	hoang.ph	DONE	2026-06-30	SM-S721		
+SKBD_000320	hoang.ph	DONE	2026-07-02	SM-S721		
+SKBD_000321	hoang.ph	DONE	2026-07-02	SM-S721		
+SKBD_000322	bachchien.tr	DONE	2026-06-26	SM-S721		
+SKBD_000323	bachchien.tr	DONE	2026-06-29	SM-S721		
+SKBD_000324	bachchien.tr	DONE	2026-06-29	SM-S721		
+SKBD_000325	bachchien.tr	DONE	2026-06-29	SM-S721		
+SKBD_000326	bachchien.tr	ASSIGNED				TC not clear step, request confirmed
+SKBD_000327	bachchien.tr	DONE	2026-06-30	SM-S721		
+SKBD_000328	bachchien.tr	DONE	2026-06-30	SM-S721		
+SKBD_000329	bachchien.tr	DONE	2026-06-30	SM-S721		
+SKBD_000330	bachchien.tr	DONE	2026-06-30	SM-S721		
+SKBD_000331	bachchien.tr	DONE	2026-06-30	SM-S721		
+SKBD_000332	sontung.pham3	DONE	2026-06-08	SM-S721		
+SKBD_000333	sontung.pham3	DONE	2026-06-09	SM-S721		
+SKBD_000334	sontung.pham3	DONE	2026-06-09	SM-S721		
+SKBD_000335	sontung.pham3	DONE	2026-06-09	SM-S721		
+SKBD_000336	sontung.pham3	DONE	2026-06-09	SM-S721		
+SKBD_000337	sontung.pham3	DONE	2026-06-10	SM-S721		
+SKBD_000338	sontung.pham3	DONE	2026-06-09	SM-S721		
+SKBD_000339	sontung.pham3	DONE	2026-06-10	SM-S721		
+SKBD_000340	sontung.pham3	DONE	2026-06-12	SM-S721		
+SKBD_000341	sontung.pham3	DONE	2026-06-10	SM-S721		
+SKBD_000342	sontung.pham3	DONE	2026-06-10	SM-S721		
+SKBD_000343	sontung.pham3	DONE	2026-06-10	SM-S721		
+SKBD_000344	sontung.pham3	DONE	2026-06-10	SM-S721		
+SKBD_000345	sontung.pham3	DONE	2026-06-11	SM-S721		
+SKBD_000346	sontung.pham3	DONE	2026-06-11	SM-S721		
+SKBD_000347	sontung.pham3	DONE	2026-06-11	SM-S721		
+SKBD_000348	sontung.pham3	DONE	2026-06-11	SM-S721		
+SKBD_000349	sontung.pham3	DONE	2026-06-11	SM-S721		
+SKBD_000350	sontung.pham3	DONE	2026-06-12	SM-S721		
+SKBD_000351	sontung.pham3	DONE	2026-06-12	SM-S721		
+SKBD_000352	sontung.pham3	DONE	2026-06-12	SM-S721		
+SKBD_000353	sontung.pham3	DONE	2026-06-12	SM-S721		
+SKBD_000354	sontung.pham3	DONE	2026-06-15	SM-S721		
+SKBD_000355	sontung.pham3	DONE	2026-06-15	SM-S721		
+SKBD_000356	sontung.pham3	DONE	2026-06-15	SM-S721		
+SKBD_000357	sontung.pham3	DONE	2026-06-15	SM-S721		
+SKBD_000358	sontung.pham3	DONE	2026-06-15	SM-S721		
+SKBD_000359	sontung.pham3	DONE	2026-06-16	SM-S721		
+SKBD_000360	sontung.pham3	DONE	2026-06-16	SM-S721		
+SKBD_000361	sontung.pham3	DONE	2026-06-16	SM-S721		
+SKBD_000362	sontung.pham3	DONE	2026-06-16	SM-S721		
+SKBD_000363	ngocphuc.tr	SKIP	2026-07-02			Test case need sound check
+SKBD_000364	ngocphuc.tr	SKIP	2026-07-02			Test case need sound check
+SKBD_000366	ngocphuc.tr	SKIP	2026-07-02			Test case need sound check
+SKBD_000367	lien.ptt	SKIP	2026-07-03			there is no ideal environment to test Speak keyboard input aloud function
+SKBD_000368	ngocquang.ng	SKIP	2026-07-03			Test case need sound check
+SKBD_000369	ngocquang.ng	SKIP	2026-07-03			Test case need sound check
+SKBD_000370	anh.mai1	SKIP	2026-07-02			Test case need sound check
+SKBD_000371	anh.mai1	SKIP	2026-07-02			Test case need sound check
+SKBD_000372	sontung.pham3	DONE	2026-06-16	SM-S721		
+SKBD_000373	sontung.pham3	DONE	2026-06-17	SM-S721		
+SKBD_000374	sontung.pham3	DONE	2026-06-17	SM-S721		
+SKBD_000375	sontung.pham3	DONE	2026-06-17	SM-S721		
+SKBD_000377	sontung.pham3	DONE	2026-06-17	SM-S721		
+SKBD_000378	sontung.pham3	DONE	2026-06-17	SM-S721		
+SKBD_000379	sontung.pham3	DONE	2026-06-18	SM-S721		
+SKBD_000383	sontung.pham3	DONE	2026-06-18	SM-S721		
+SKBD_000384	sontung.pham3	DONE	2026-06-19	SM-S721		
+SKBD_000385	sontung.pham3	DONE	2026-06-18	SM-S721		
+SKBD_000386	sontung.pham3	DONE	2026-06-18	SM-S721		
+SKBD_000387	sontung.pham3	DONE	2026-06-18	SM-S721		
+SKBD_000388	sontung.pham3	DONE	2026-06-19	SM-S721		
+SKBD_000389	sontung.pham3	DONE	2026-06-19	SM-S721		
+SKBD_000391	sontung.pham3	SKIP				SKIP: need Fingerprint
+SKBD_000392	sontung.pham3	ASSIGNED				PENDING: TC is for Flip model only
+SKBD_000393	sontung.pham3	ASSIGNED				PENDING: TC is for Flip model only
+SKBD_000394	sontung.pham3	ASSIGNED				PENDING: TC is for Flip model only
+SKBD_000395	sontung.pham3	ASSIGNED				PENDING: TC is for Flip model only
+SKBD_000396	sontung.pham3	ASSIGNED				PENDING: TC is for Flip model only
+SKBD_000397	sontung.pham3	ASSIGNED				PENDING: TC is for Flip model only
+SKBD_000399	sontung.pham3	ASSIGNED				PENDING: TC is for Flip model only
+SKBD_000400	sontung.pham3	DONE	2026-06-19	SM-S721		
+SKBD_000401	ngocphuc.tr	DONE	2026-07-03	SM-S721		
+SKBD_000402	sontung.pham3	DONE	2026-06-19	SM-S721		
+SKBD_000403	sontung.pham3	DONE	2026-06-22	SM-S721		
+SKBD_000404	sontung.pham3	DONE	2026-06-22	SM-S721		
+SKBD_000405	sontung.pham3	DONE	2026-06-22	SM-S721		
+SKBD_000406	sontung.pham3	DONE	2026-06-22	SM-S721		
+SKBD_000407	sontung.pham3	DONE	2026-06-22	SM-S721		
+SKBD_000408	sontung.pham3	SKIP				SKIP: need HW cover keyboard to check
+SKBD_000409	sontung.pham3	SKIP				SKIP: need two devices
+SKBD_000410	sontung.pham3	DONE	2026-06-23	SM-S721		
+SKBD_000411	sontung.pham3	DONE	2026-06-23	SM-S721		
+SKBD_000412	sontung.pham3	DONE	2026-06-23	SM-S721		
+SKBD_000413	sontung.pham3	DONE	2026-06-23	SM-S721		
+SKBD_000414	sontung.pham3	DONE	2026-06-24	SM-S721		
+SKBD_000416	ngocphuc.tr	SKIP	2026-07-03			
+SKBD_000417	sontung.pham3	DONE	2026-06-24	SM-S721		
+SKBD_000420	sontung.pham3	DONE	2026-06-24	SM-S721		
+SKBD_000421	ngocphuc.tr	SKIP	2026-07-03			
+SKBD_000422	sontung.pham3	DONE	2026-06-24	SM-S721		
+SKBD_000423	sontung.pham3	SKIP				SKIP: USB connection cannot be recognized upon rebooting after setting a password
+SKBD_000424	sontung.pham3	DONE	2026-06-24	SM-S721		
+SKBD_000425	sontung.pham3	DONE	2026-06-29	SM-S721		
+SKBD_000426	sontung.pham3	DONE	2026-06-29	SM-S721		
+SKBD_000427	sontung.pham3	DONE	2026-06-29	SM-S721		
+SKBD_000429	sontung.pham3	SKIP				SKIP: Excluded due to object's elements in Secure Folder cannot be detected
+SKBD_000430	sontung.pham3	SKIP				SKIP: Excluded due to object's elements in Secure Folder cannot be detected
+SKBD_000432	sontung.pham3	DONE	2026-06-30	SM-S721		
+SKBD_000433	sontung.pham3	DONE	2026-06-29	SM-S721		
+SKBD_000434	sontung.pham3	DONE	2026-06-30	SM-S721		
+SKBD_000435	sontung.pham3	DONE	2026-06-30	SM-S721		
+SKBD_000436	sontung.pham3	DONE	2026-07-01	SM-S721		
+SKBD_000437	minh.giang2	DONE	2026-07-01	SM-S721		
+SKBD_000438	minh.giang2	DONE	2026-06-30	SM-S721		
+SKBD_000439	minh.giang2	DONE	2026-06-30	SM-S721		
+SKBD_000440	hanh.nv1	ASSIGNED				
+SM-00-001	thuong.ntt1	DONE	2026-06-05	SM-F966		
+SM-00-002	thuong.ntt1	DONE	2026-06-05	SM-F966, SM-S721		
+SM-00-004	thuong.ntt1	DONE	2026-06-05	SM-F966, SM-S721		
+SM-00-010	thuong.ntt1	DONE	2026-06-05	SM-F966, SM-S721		
+SM-00-012	thuong.ntt1	DONE	2026-06-05	SM-F966, SM-S721		
+SM-00-013	thuong.ntt1	DONE	2026-06-05	SM-F966, SM-S721		
+SM-00-015	thuong.ntt1	SKIP	2026-06-10			regional function, this feature is only supported in Korea
+SM-00-017	thuong.ntt1	DONE	2026-06-10	SM-F966, SM-S721		
+SM-00-018	thuong.ntt1	DONE	2026-06-10	SM-F966, SM-S721		
+SM-00-019	thuong.ntt1	DONE	2026-06-10	SM-F966, SM-S721		
+SM-00-020	thuong.ntt1	DONE	2026-06-11	SM-F966, SM-S721		
+SM-00-021	thuong.ntt1	DONE	2026-06-10	SM-F966, SM-S721		
+SM-01-001	thuong.ntt1	DONE	2026-06-09	SM-F966, SM-S721		
+SM-01-002	thuong.ntt1	DONE	2026-06-09	SM-F966, SM-S721		
+SM-01-003	thuong.ntt1	SKIP	2026-06-09			features support only Korean > manual
+SM-01-004	thuong.ntt1	DONE	2026-06-09	SM-F966, SM-S721		
+SM-01-005	thuong.ntt1	SKIP	2026-06-09			a few features must be implemented (microphone, fingerprint...) > manual
+SM-01-006	thuong.ntt1	SKIP	2026-06-09			Result depends on device care battery usage data and test enviroment setup> manual
+SM-01-007	thuong.ntt1	SKIP	2026-06-09			Result depends on device care data and test enviroment setup > manual
+SM-01-008	thuong.ntt1	DONE	2026-06-09	SM-F966, SM-S721		
+SM-01-009	thuong.ntt1	DONE	2026-06-10	SM-F966, SM-S721		
+SM-01-011	thuong.ntt1	DONE	2026-06-11	SM-F966, SM-S721		
+SM-01-012	thuong.ntt1	DONE	2026-06-11	SM-F966, SM-S721		
+SM-01-014	thuong.ntt1	SKIP	2026-06-11			TC depends on coupon availability
+SM-01-015	thuong.ntt1	SKIP	2026-06-11			TC depends on coupon availability
+SM-01-016	thuong.ntt1	SKIP	2026-06-11			TC depends on coupon availability
+SM-01-017	thuong.ntt1	SKIP	2026-06-11			TC depends on coupon availability
+SM-01-018	thuong.ntt1	SKIP	2026-06-11			TC depends on coupon availability
+SM-01-019	thuong.ntt1	SKIP	2026-06-11			TC depends on coupon availability
+SM-01-020	thuong.ntt1	SKIP	2026-06-11			Skip > Korean SIM region required
+SM-01-021	thang.viet	SKIP	2026-06-11			Skip > Korean SIM region required
+SM-01-022	thang.viet	SKIP	2026-06-11			Skip > Korean SIM region required
+SM-01-023	thang.viet	SKIP	2026-06-11			Korean region only
+SM-01-024	thang.viet	SKIP	2026-06-11			Korean region only
+SM-01-025	thang.viet	SKIP	2026-06-11			Korean region only
+SM-01-026	thang.viet	SKIP	2026-06-11			Korean region only
+SM-01-027	thang.viet	SKIP	2026-06-11			Korean region only
+SM-01-028	thang.viet	SKIP	2026-06-11			SKIP >> Not support Note
+SM-01-029	thang.viet	SKIP	2026-06-11			SKIP >> Not support Note
+SM-01-030	thang.viet	DONE	2026-06-11			
+SM-01-032	thang.viet	SKIP	2026-06-11			Korean region only
+SM-02-001	thang.dv1	SKIP				SKIP => need to use a special account to gain access to demo mode that can use Recommendation Tab
+SM-02-002	thang.dv1	SKIP				SKIP => need to use a special account to gain access to demo mode that can use Recommendation Tab
+SM-02-003	thang.dv1	SKIP				SKIP => need to use a special account to gain access to demo mode that can use Recommendation Tab
+SM-02-004	thang.dv1	SKIP				SKIP => need to use a special account to gain access to demo mode that can use Recommendation Tab
+SM-02-005	thang.dv1	SKIP				SKIP => need to use a special account to gain access to demo mode that can use Recommendation Tab
+SM-02-006	hai.duong1	SKIP				SKIP >> Need to use a special account to access demo mode in order to use Recommendation Tab
+SM-02-007	hai.duong1	SKIP				SKIP >> Need to use special account to access demo mode in order to use those features (eg. Camera)
+SM-02-009	hai.duong1	SKIP				SKIP >> Not support Note
+SM-02-010	hai.duong1	SKIP				SKIP >> Not support Note
+SM-02-011	minhduc.kh	SKIP				SKIP >> Not support Note
+SM-02-012	minhduc.kh	SKIP				SKIP >> Not support Note
+SM-02-013	minhduc.kh	SKIP				SKIP >> Not support Note
+SM-02-014	minhduc.kh	SKIP				SKIP >> Need to use a special account to access the new demo mode that appears these features. The language of community feature appears by country
+SM-02-015	minhduc.kh	SKIP				SKIP >> Need to use a special account to access the new demo mode that appears these features. The language of community feature appears by country
+SM-02-016	minhduc.kh	SKIP				SKIP >> Need to use a special account to access the new demo mode that appears these features. The language of community feature appears by country
+SM-02-017	minhduc.kh	SKIP				SKIP >> Need to use a special account to access the new demo mode that appears these features. The language of community feature appears by country
+SM-02-018	minhduc.kh	SKIP				SKIP >> Need to use a special account to access the new demo mode that appears these features. The language of community feature appears by country
+SM-02-019	minhduc.kh	SKIP				SKIP >> Need to use a special account to access the new demo mode that appears these features. The language of community feature appears by country
+SM-02-020	minhduc.kh	SKIP				SKIP >> Need to use a special account to access the new demo mode that appears these features. The language of community feature appears by country
+SM-02-021	minhduc.kh	SKIP				SKIP >> Need to use a special account to access the new demo mode that appears these features. The language of community feature appears by country
+SM-02-022	minhduc.kh	SKIP				SKIP >> Need to use a special account to access the new demo mode that appears these features. The language of community feature appears by country
+SM-02-023	minhduc.kh	SKIP				SKIP >> Need to use a special account to access the new demo mode that appears these features. The language of community feature appears by country
+SM-02-024	minhduc.kh	SKIP				SKIP >> Need to use a special account to access the new demo mode that appears these features. The language of community feature appears by country
+SM-02-025	minhduc.kh	SKIP				SKIP >> Need to use a special account to access the new demo mode that appears these features. The language of community feature appears by country
+SM-02-026	minhduc.kh	SKIP				SKIP >> Need to use a special account to access the new demo mode that appears these features. The language of community feature appears by country
+SM-02-027	minhduc.kh	SKIP				SKIP >> Need to use a special account to access the new demo mode that appears these features. The language of community feature appears by country
+SM-02-030	minhduc.kh	SKIP				SKIP >> Display country language
+SM-02-031	minhduc.kh	SKIP				SKIP >> Display country language
+SM-02-032	minhduc.kh	SKIP				SKIP >> Need to use a special account to access the new demo mode that appears these features. The language of community feature appears by country
+SM-02-033	minhduc.kh	SKIP				SKIP >> Need to use a special account to access the new demo mode that appears these features. The language of community feature appears by country
+SM-02-035	hai.duong1	SKIP				Display country language
+SM-02-036	hai.duong1	SKIP				Display country language
+SM-02-037	hai.duong1	SKIP				Display country language
+SM-02-038	hai.duong1	SKIP				Display country language
+SM-02-040	hai.duong1	SKIP				Display country language
+SM-02-041	hai.duong1	SKIP				Display country language
+SM-02-042	hai.duong1	SKIP				Display country language
+SM-02-043	hai.duong1	SKIP				Display country language
+SM-02-044	hai.duong1	SKIP				Display country language
+SM-03-001	hai.duong1	DONE	2026-06-11	SM-F966		
+SM-03-007	hai.duong1	SKIP				13 out of the 20 diagnosis tests are interactive (eg. Fingerprint recognition, Face recognition, Mic,...) >> Cannot be automated
+SM-03-008	hai.duong1	SKIP				13 out of the 20 diagnosis tests are interactive (eg. Fingerprint recognition, Face recognition, Mic,...) >> Cannot be automated
+SM-03-009	hai.duong1	DONE	2026-06-11	SM-F966		
+SM-03-010	hai.duong1	SKIP				13 out of the 20 diagnosis tests are interactive (eg. Fingerprint recognition, Face recognition, Mic,...) >> Cannot be automated
+SM-03-011	hai.duong1	DONE	2026-06-11	SM-F966		
+SM-03-012	hai.duong1	DONE	2026-06-11	SM-F966		
+SM-03-013	hai.duong1	DONE	2026-06-12	SM-F966		
+SM-03-020	hai.duong1	SKIP				SKIP >> Easy solution is only support when Korean SIM is inserted
+SM-03-021	hai.duong1	SKIP				SKIP >> Easy solution is only support when Korean SIM is inserted
+SM-03-022	hai.duong1	SKIP				SKIP >> Easy solution is only support when Korean SIM is inserted
+SM-03-023	hai.duong1	DONE	2026-06-10	SM-F966		
+SM-03-025	thang.dv1	DONE	2026-06-10	SM-F966		
+SM-03-035	thang.dv1	DONE	2026-06-15	SM-F966		
+SM-04-001	thuong.ntt1	DONE	2026-06-12	SM-S721		
+SM-04-003	thuong.ntt1	DONE	2026-06-12	SM-S721		
+SM-04-004	thuong.ntt1	SKIP				not support Change Text Color icon
+SM-04-006	thuong.ntt1	SKIP				Need to use a special account to access the new demo mode that appears these features. The language of community feature appears by country
+SM-04-007	thuong.ntt1	SKIP				Need to use a special account to access the new demo mode that appears these features. The language of community feature appears by country
+SM-04-008	thuong.ntt1	DONE	2026-06-12	SM-S721		
+SM-04-010	thang.viet	DONE	2026-06-11	SM-X526		
+SM-04-011	thang.viet	DONE	2026-06-11	SM-X526		
+SM-04-014	thang.viet	DONE	2026-06-16	SM-S721		
+SM-04-015	thang.viet	SKIP	2026-06-16			Not found "see less" feature
+SM-04-016	thang.viet	DONE	2026-06-16	SM-S721		
+SM-04-019	thang.viet	SKIP	2026-06-12			The language of community feature appears by country
+Wallpaper_000002	thang.dv1	DONE	2026-05-26	SM-F966		
+Wallpaper_000003	thang.dv1	DONE	2026-05-26	SM-F966		
+Wallpaper_000004	thang.dv1	DONE	2026-06-09	SM-F966		
+Wallpaper_000005	thang.dv1	DONE	2026-06-01	SM-F966		
+Wallpaper_000006	thang.dv1	DONE	2026-06-01	SM-F966		
+Wallpaper_000007	thang.dv1	DONE	2026-06-08	SM-F966		
+Wallpaper_000008	thang.dv1	DONE	2026-06-08	SM-F966		
+Wallpaper_000009	thang.dv1	DONE	2026-06-08	SM-F966		
+Wallpaper_000010	thang.dv1	DONE	2026-05-29	SM-F966		
+Wallpaper_000011	thang.dv1	DONE	2026-05-29	SM-F966		
+Wallpaper_000012	thang.dv1	DONE	2026-05-29	SM-F966		
+Wallpaper_000013	thang.dv1	DONE	2026-06-09	SM-F966		
+Wallpaper_000014	thang.dv1	DONE	2026-05-27	SM-F966		
+Wallpaper_000015	thang.dv1	DONE	2026-05-27	SM-F966		
+Wallpaper_000016	thang.dv1	DONE	2026-05-27	SM-F966		
+Wallpaper_000017	thang.dv1	DONE	2026-05-29	SM-F966		
+Wallpaper_000018	thang.dv1	DONE	2026-05-29	SM-F966		
+Wallpaper_000019	thang.dv1	DONE	2026-05-29	SM-F966		
+Wallpaper_000020	thang.dv1	DONE	2026-06-08	SM-F966		
+Wallpaper_000021	minhduc.kh	DONE	2026-06-09	SM-F966		
+Wallpaper_000022	minhduc.kh	DONE	2026-06-09	SM-F966		
+Wallpaper_000023	thang.dv1	DONE	2026-06-02	SM-F966		
+Wallpaper_000024	thang.dv1	DONE	2026-06-02	SM-F966		
+Wallpaper_000025	thang.dv1	DONE	2026-06-02	SM-F966		
+Wallpaper_000026	thang.dv1	DONE	2026-06-02	SM-F966		
+Wallpaper_000027	thang.dv1	DONE	2026-06-02	SM-F966		
+Wallpaper_000028	thang.dv1	DONE	2026-06-02	SM-F966		
+Wallpaper_000029	thang.dv1	DONE	2026-06-03	SM-F966		
+Wallpaper_000030	thang.dv1	DONE	2026-06-03	SM-F966		
+Wallpaper_000031	thang.dv1	DONE	2026-06-03	SM-F966		
+Wallpaper_000032	thang.dv1	DONE	2026-06-03	SM-F966		
+Wallpaper_000033	thang.dv1	SKIP	2026-06-03			SKIP => Combined 3rd App Interworking Test, Need check motion live thumbnail
+Wallpaper_000034	thang.dv1	DONE	2026-06-03	SM-F966		
+Wallpaper_000035	thang.dv1	DONE	2026-06-04	SM-F966		
+Wallpaper_000036	thang.dv1	DONE	2026-06-05	SM-F966		
+Wallpaper_000037	thang.dv1	DONE	2026-06-04	SM-F966		
+Wallpaper_000038	thang.dv1	DONE	2026-06-04	SM-F966		
+Wallpaper_000039	thang.dv1	DONE	2026-06-04	SM-F966		
+Wallpaper_000040	minhduc.kh	DONE	2026-06-08	SM-F966		
+Wallpaper_000041	minhduc.kh	DONE	2026-06-08	SM-F966		
+Wallpaper_000042	minhduc.kh	DONE	2026-06-08	SM-F966		
+Wallpaper_000043	thang.dv1	DONE	2026-06-05	SM-F966		
+Wallpaper_000044	thang.dv1	DONE	2026-06-05	SM-F966		
+Wallpaper_000045	thang.dv1	DONE	2026-06-04	SM-F966		
+Wallpaper_000046	tung.huu	DONE	2026-05-28	SM-F966		
+Wallpaper_000047	thang.dv1	DONE	2026-06-05	SM-F966		
+Wallpaper_000048	tung.huu	DONE	2026-05-28	SM-F966		
+Wallpaper_000050	tung.huu	DONE	2026-05-28	SM-F966		
+Wallpaper_000051	hai.duong1	DONE	2026-05-26	SM-F966		
+Wallpaper_000052	hai.duong1	DONE	2026-05-26	SM-F966		
+Wallpaper_000053	hai.duong1	DONE	2026-05-26	SM-F966		
+Wallpaper_000054	hai.duong1	DONE	2026-06-02	SM-F966		
+Wallpaper_000055	hai.duong1	DONE	2026-05-27	SM-F966		
+Wallpaper_000056	hai.duong1	DONE	2026-05-28	SM-F966		
+Wallpaper_000057	hai.duong1	DONE	2026-05-27	SM-F966		
+Wallpaper_000058	hai.duong1	DONE	2026-05-27	SM-F966		
+Wallpaper_000059	hai.duong1	DONE	2026-06-02	SM-F966		
+Wallpaper_000060	hai.duong1	DONE	2026-06-02	SM-F966		
+Wallpaper_000061	hai.duong1	DONE	2026-06-02	SM-F966		
+Wallpaper_000062	hai.duong1	DONE	2026-05-28	SM-F966		
+Wallpaper_000064	hai.duong1	DONE	2026-06-03	SM-F966		
+Wallpaper_000065	hai.duong1	DONE	2026-06-01	SM-F966		
+Wallpaper_000066	hai.duong1	DONE	2026-06-01	SM-F966		
+Wallpaper_000067	hai.duong1	DONE	2026-06-03	SM-F966		
+Wallpaper_000068	hai.duong1	DONE	2026-06-03	SM-F966		
+Wallpaper_000069	hai.duong1	SKIP				Skip: Regional required
+Wallpaper_000070	hai.duong1	DONE	2026-06-03	SM-F966		
+Wallpaper_000071	hai.duong1	DONE	2026-05-28	SM-F966		
+Wallpaper_000072	hai.duong1	DONE	2026-06-03	SM-F966		
+Wallpaper_000073	hai.duong1	DONE	2026-05-29	SM-F966		
+Wallpaper_000074	hai.duong1	DONE	2026-05-29	SM-F966		
+Wallpaper_000075	hai.duong1	DONE	2026-05-29	SM-F966		
+Wallpaper_000076	hai.duong1	SKIP				Skip: Cant unlock by stp after reboot
+Wallpaper_000081	hai.duong1	DONE	2026-06-04	SM-F966		
+Wallpaper_000082	hai.duong1	DONE	2026-06-05	SM-F966		
+Wallpaper_000083	hai.duong1	DONE	2026-06-03	SM-F966		
+Wallpaper_000084	hai.duong1	DONE	2026-06-01	SM-F966		
+Wallpaper_000085	hai.duong1	DONE	2026-06-08	SM-F966		
+Wallpaper_000086	hai.duong1	DONE	2026-06-09	SM-F966		
+Wallpaper_000087	hai.duong1	DONE	2026-06-09	SM-F966		
+Wallpaper_000093	hai.duong1	DONE	2026-06-04	SM-F966		
+Wallpaper_000094	hai.duong1	DONE	2026-06-04	SM-F966		
+Wallpaper_000095	hai.duong1	DONE	2026-06-04	SM-F966		
+Wallpaper_000096	hai.duong1	DONE	2026-06-05	SM-F966		
+Wallpaper_000097	tung.huu	DONE	2026-05-26	SM-F966		
+Wallpaper_000098	tung.huu	DONE	2026-05-29	SM-F966		
+Wallpaper_000099	tung.huu	DONE	2026-05-29	SM-F966		
+Wallpaper_000100	hai.duong1	DONE	2026-06-05	SM-F966		
+Wallpaper_000101	minhduc.kh	DONE	2026-05-26	SM-F966		
+Wallpaper_000102	minhduc.kh	DONE	2026-05-27	SM-F966		
+Wallpaper_000103	minhduc.kh	DONE	2026-05-26	SM-F966		
+Wallpaper_000104	minhduc.kh	DONE	2026-05-27	SM-F966		
+Wallpaper_000105	minhduc.kh	DONE	2026-05-27	SM-F966		
+Wallpaper_000106	minhduc.kh	DONE	2026-05-27	SM-F966		
+Wallpaper_000107	minhduc.kh	DONE	2026-05-28	SM-F966		
+Wallpaper_000108	tung.huu	DONE	2026-05-26	SM-F966		
+Wallpaper_000109	minhduc.kh	DONE	2026-05-28	SM-F966		
+Wallpaper_000110	minhduc.kh	DONE	2026-05-28	SM-F966		
+Wallpaper_000111	minhduc.kh	DONE	2026-05-29	SM-F966		
+Wallpaper_000112	minhduc.kh	DONE	2026-06-03	SM-F966		
+Wallpaper_000113	minhduc.kh	SKIP				SKIP need actual weather and enviroinment (in 8.5UI
+Wallpaper_000114	minhduc.kh	DONE	2026-05-29	SM-F966		
+Wallpaper_000115	minhduc.kh	DONE	2026-06-01	SM-F966		
+Wallpaper_000116	minhduc.kh	SKIP				SKIP, factory reset --> mất apps
+Wallpaper_000117	minhduc.kh	SKIP				SKIP --> Relate to QA store. Skip
+Wallpaper_000118	minhduc.kh	ASSIGNED				Không có Resolution trên F966U
+Wallpaper_000119	minhduc.kh	DONE	2026-06-01	SM-F966		
+Wallpaper_000120	minhduc.kh	SKIP				SKIP --> Samsung Vision Model
+Wallpaper_000121	minhduc.kh	DONE	2026-06-01	SM-F966		
+Wallpaper_000122	minhduc.kh	SKIP				SKIP --> FOTA not suitable for UI target
+Wallpaper_000123	minhduc.kh	DONE	2026-06-02	SM-F966		
+Wallpaper_000124	minhduc.kh	DONE	2026-06-02	SM-F966		
+Wallpaper_000125	minhduc.kh	DONE	2026-06-02	SM-F966		
+Wallpaper_000126	minhduc.kh	ASSIGNED				Drawing assist
+Wallpaper_000127	minhduc.kh	ASSIGNED				Drawing assist
+Wallpaper_000128	minhduc.kh	ASSIGNED				Drawing assist
+Wallpaper_000129	minhduc.kh	ASSIGNED				Drawing assist
+Wallpaper_000130	minhduc.kh	ASSIGNED				Drawing assist
+Wallpaper_000131	minhduc.kh	DONE	2026-06-03	SM-F966		
+Wallpaper_000132	minhduc.kh	DONE	2026-06-04	SM-F966		
+Wallpaper_000133	minhduc.kh	ASSIGNED				Cover Screen
+Wallpaper_000134	minhduc.kh	ASSIGNED				Cover Screen
+Wallpaper_000135	minhduc.kh	ASSIGNED				Cover Screen
+Wallpaper_000136	minhduc.kh	ASSIGNED				Cover Screen
+Wallpaper_000137	minhduc.kh	ASSIGNED				Cover Screen
+Wallpaper_000138	minhduc.kh	ASSIGNED				Cover Screen
+Wallpaper_000139	minhduc.kh	ASSIGNED				Cover Screen
+Wallpaper_000140	minhduc.kh	ASSIGNED				Cover Screen
+Wallpaper_000141	minhduc.kh	ASSIGNED				Cover Screen
+Wallpaper_000142	minhduc.kh	ASSIGNED				Cover Screen
+Wallpaper_000143	minhduc.kh	ASSIGNED				Cover Screen
+Wallpaper_000144	minhduc.kh	ASSIGNED				Cover Screen
+Wallpaper_000145	minhduc.kh	ASSIGNED				Cover Screen
+Wallpaper_000146	minhduc.kh	ASSIGNED				Cover Screen
+Wallpaper_000147	minhduc.kh	ASSIGNED				Cover Screen
+Wallpaper_000148	tung.huu	DONE	2026-05-27	SM-F966		
+Wallpaper_000149	tung.huu	DONE	2026-05-27	SM-F966		
+Wallpaper_000150	minhduc.kh	ASSIGNED				Cover Screen
+Wallpaper_000151	minhduc.kh	ASSIGNED				
+Wallpaper_000152	minhduc.kh	ASSIGNED				
+Wallpaper_000153	minhduc.kh	ASSIGNED				
+Wallpaper_000154	minhduc.kh	ASSIGNED				
+Wallpaper_000155	minhduc.kh	ASSIGNED				
+Wallpaper_000156	minhduc.kh	ASSIGNED				
+Wallpaper_000157	minhduc.kh	ASSIGNED				
+Wallpaper_000158	minhduc.kh	ASSIGNED				
+Wallpaper_000159	minhduc.kh	ASSIGNED				
+Wallpaper_000160	minhduc.kh	ASSIGNED				
+Wallpaper_000161	tung.huu	ASSIGNED				
+Wallpaper_000162	tung.huu	ASSIGNED				
+Wallpaper_000163	tung.huu	ASSIGNED				
+Wallpaper_000164	tung.huu	ASSIGNED				
+Wallpaper_000165	tung.huu	ASSIGNED				
+Wallpaper_000166	tung.huu	ASSIGNED				
+Wallpaper_000167	tung.huu	ASSIGNED				
+Wallpaper_000168	tung.huu	ASSIGNED				
+Wallpaper_000169	tung.huu	ASSIGNED				
+Wallpaper_000170	tung.huu	ASSIGNED				
+Wallpaper_000171	tung.huu	ASSIGNED				
+Wallpaper_000172	tung.huu	ASSIGNED				
+Wallpaper_000173	tung.huu	ASSIGNED				
+Wallpaper_000174	tung.huu	ASSIGNED				
+Wallpaper_000175	tung.huu	ASSIGNED				
+Wallpaper_000176	tung.huu	ASSIGNED				
+Wallpaper_000177	tung.huu	ASSIGNED				
+Wallpaper_000178	tung.huu	ASSIGNED				
+Wallpaper_000179	tung.huu	ASSIGNED				
+Wallpaper_000180	tung.huu	ASSIGNED				
+Wallpaper_000181	tung.huu	ASSIGNED				
+Wallpaper_000182	tung.huu	ASSIGNED				
+Wallpaper_000188	tung.huu	ASSIGNED				
+Wallpaper_000189	tung.huu	ASSIGNED				
+Wallpaper_000190	tung.huu	ASSIGNED				
+Wallpaper_000191	tung.huu	ASSIGNED				
+Wallpaper_000192	tung.huu	ASSIGNED				
+Wallpaper_000193	tung.huu	ASSIGNED				
+Wallpaper_000194	tung.huu	ASSIGNED				
+Wallpaper_000195	tung.huu	ASSIGNED				
+Weather_A001	thanhvan.ph	DONE	2026-06-24	SM-S721		
+Weather_A002	thanhvan.ph	SKIP				SKIP: Regional TCs
+Weather_A003	thanhvan.ph	SKIP				SKIP: Regional TCs
+Weather_A004	thanhvan.ph	DONE	2026-06-24	SM-S721		
+Weather_A005	thanhvan.ph	SKIP				SKIP: Unable to control the weather at the selected location to check all illustrations and backgrounds.
+Weather_A006	thanhvan.ph	DONE	2026-06-24	SM-S721		
+Weather_A007	thanhvan.ph	DONE	2026-07-02	SM-S721		
+Weather_A008	thanhvan.ph	DONE	2026-06-24	SM-S721		
+Weather_A009	thanhvan.ph	DONE	2026-06-24	SM-S721		
+Weather_A010	thanhvan.ph	DONE	2026-06-24	SM-S721		
+Weather_A011	thanhvan.ph	DONE	2026-06-25	SM-S721		
+Weather_A012	thanhvan.ph	SKIP				SKIP: Unable to control the weather at the selected location to check steps 5+6.
+Weather_A013	thanhvan.ph	DONE	2026-06-25	SM-S721		
+Weather_A014	thanhvan.ph	DONE	2026-06-25	SM-S721		
+Weather_A015	thanhvan.ph	DONE	2026-06-25	SM-S721		
+Weather_A016	thanhvan.ph	DONE	2026-06-29	SM-S721		
+Weather_A017	thanhvan.ph	DONE	2026-06-26	SM-S721		
+Weather_A018	thanhvan.ph	SKIP				SKIP: Unable to control the weather temperature at the selected location to check step 3.
+Weather_A019	thanhvan.ph	DONE	2026-06-29	SM-S721		
+Weather_A020	tienthanh.d	DONE	2026-06-29	SM-S721		
+Weather_A021	tienthanh.d	DONE	2026-07-01	SM-S721		
+Weather_A022	thanhvan.ph	DONE	2026-06-26	SM-S721		
+Weather_A023	thanhvan.ph	DONE	2026-07-02	SM-S721		
+Weather_A024	thanhvan.ph	DONE	2026-06-26	SM-S721		
+Weather_A025	tienthanh.d	DONE	2026-07-01	SM-S721		
+Weather_A026	tienthanh.d	DONE	2026-06-27	SM-S721		
+Weather_A027	tienthanh.d	DONE	2026-06-27	SM-S721		
+Weather_A028	thanhvan.ph	DONE	2026-06-30	SM-S721		
+Weather_A029	duc.chinh	DONE	2026-07-02	SM-S721		
+Weather_A030	tienthanh.d	SKIP				Country not supported
+Weather_A031	tienthanh.d	DONE	2026-07-01	SM-S721		
+Weather_A032	tienthanh.d	DONE				
+Weather_A033	q.bac.phung	SKIP				Watch Project
+Weather_A034	q.bac.phung	DONE	2026-06-25	SM-S721		
+Weather_A035	q.bac.phung	DONE	2026-06-26	SM-S721		
+Weather_A036	q.bac.phung	DONE	2026-06-26	SM-S721		
+Weather_A037	q.bac.phung	DONE	2026-06-26	SM-S721		
+Weather_A038	q.bac.phung	DONE	2026-06-29	SM-S721		
+Weather_A039	q.bac.phung	SKIP				SKIP: Regional TCs
+Weather_A040	q.bac.phung	DONE	2026-06-29	SM-S721		
+Weather_A041	q.bac.phung	DONE	2026-06-29	SM-S721		
+Weather_A042	tu.vd1	DONE	2026-07-02	SM-S721		
+Weather_A043	q.bac.phung	DONE	2026-06-30	SM-S721		
+Weather_A044	q.bac.phung	DONE	2026-06-30	SM-S721		
+Weather_A045	tu.vd1	DONE	2026-06-29	SM-S721		
+Weather_A046	q.bac.phung	DONE				
+Weather_A047	nhien.nguyen	SKIP				SKIP: Regional TCs
+Weather_A048	nhien.nguyen	SKIP				SKIP: Regional TCs
+Weather_A049	nhien.nguyen	DONE	2026-06-30	SM-S721		
+Weather_A050	nhien.nguyen	SKIP				Can not access to CP site ( ip VietNam is blocked )
+Weather_A051	nhien.nguyen	SKIP				Can not access to CP site ( ip VietNam is blocked )
+Weather_A052	tu.vd1	DONE	2026-06-30	SM-S721		Global only
+Weather_A053	tu.vd1	DONE	2026-07-01	SM-S721		
+Weather_A054	nhien.nguyen	SKIP				Can not access to CP site ( ip VietNam is blocked )
+Weather_A055	nhien.nguyen	SKIP		SM-F966		Can not access to CP site ( ip VietNam is blocked )
+Weather_A056	nhien.nguyen	SKIP				Can not access to CP site ( ip VietNam is blocked )
+Weather_A057	tu.vd1	SKIP				SKIP: Regional TCs
+Weather_A058	tu.vd1	SKIP				Need go to Weather chanel site: This content is no longer available in your area
+Weather_A059	tu.vd1	SKIP				Need go to Weather chanel site: This content is no longer available in your area
+Weather_A060	tu.vd1	DONE	2026-06-30			
+Weather_A061	m.kien.phung	DONE	2026-06-25	SM-S721		
+Weather_A062	m.kien.phung	DONE	2026-06-25	SM-S721		
+Weather_A063	m.kien.phung	DONE	2026-06-25	SM-S721		
+Weather_A064	m.kien.phung	DONE	2026-06-25	SM-S721		
+Weather_A065	m.kien.phung	DONE	2026-06-25	SM-S721		
+Weather_A066	thodung.h	DONE	2026-06-29	SM-S721		
+Weather_A067	thodung.h	DONE	2026-06-30	SM-S721		
+Weather_A068	thodung.h	DONE	2026-06-30	SM-S721		
+Weather_A069	m.kien.phung	DONE	2026-06-29	SM-S721		
+Weather_A070	m.kien.phung	DONE	2026-06-29	SM-S721		
+Weather_A071	m.kien.phung	DONE	2026-06-30	SM-S721		
+Weather_A072	m.kien.phung	SKIP	2026-07-01			Not check vibration
+Weather_A073	thodung.h	SKIP	2026-07-02			Test case need sound check
+Weather_A074	thodung.h	DONE	2026-07-02	SM-S721		
+Weather_A075	m.kien.phung	DONE	2026-07-01	SM-S721		
+Weather_A076	thodung.h	DONE	2026-07-01	SM-S721		
+Weather_A077	thodung.h	DONE	2026-07-01	SM-S721		
+Weather_A078	thodung.h	DONE	2026-07-01	SM-S721		
+Weather_A079	m.kien.phung	SKIP	2026-07-01			SIM card required
+Weather_A080	thao.nv3	DONE	2026-06-29	SM-S721		
+Weather_A081	thao.nv3	DONE	2026-06-30	SM-S721		
+Weather_A082	thao.nv3	DONE	2026-07-01	SM-S721		check refresh icon with Image
+Weather_A083	thao.nv3	DONE	2026-07-01	SM-S721		
+Weather_A084	thao.nv3	DONE	2026-07-02	SM-S721		
+Weather_A085	thao.nv3	DONE	2026-07-02	SM-S721		
+Weather_A086	thao.nv3	DONE	2026-07-03	SM-S721		
+Weather_A087	thao.nv3	DONE	2026-07-03	SM-S721		
+Weather_A088	vtriet.ng	DONE	2026-06-24	SM-S721		
+Weather_A089	vtriet.ng	DONE	2026-06-24	SM-S721		
+Weather_A090	vtriet.ng	DONE	2026-07-01	SM-S721		
+Weather_A091	vtriet.ng	DONE	2026-06-25	SM-S721		
+Weather_A092	vtriet.ng	SKIP	2026-06-25			Voice input
+Weather_A093	vtriet.ng	DONE	2026-06-25	SM-S721		
+Weather_A094	vtriet.ng	DONE	2026-06-25	SM-S721		
+Weather_A095	vtriet.ng	DONE	2026-06-29	SM-S721		
+Weather_A096	vtriet.ng	SKIP	2026-06-29			Voice assistant
+Weather_A097	vtriet.ng	SKIP	2026-06-29			Use moblie network / SIM card
+Weather_A098	vtriet.ng	DONE	2026-06-29	SM-S721		
+Weather_A099	vtriet.ng	SKIP	2026-06-29			Device object is wrong in one-hand mode. Can't auto
+Weather_A100	vtriet.ng	SKIP	2026-06-29			Device object is wrong in one-hand mode. Can't auto
+Weather_A101	vtriet.ng	DONE	2026-06-29	SM-S721		
+Weather_A102	vtriet.ng	DONE	2026-06-30	SM-S721		
+Weather_A103	vtriet.ng	DONE	2026-06-30	SM-S721		
+Weather_A104	duong.ld	DONE	2026-06-29	SM-S721		
+Weather_A105	duong.ld	DONE	2026-06-30	SM-S721		
+Weather_A106	duong.ld	DONE	2026-07-01	SM-S721		
+Weather_A107	duong.ld	DONE	2026-07-02	SM-S721		
+Weather_A108	duong.ld	DONE	2026-07-06	SM-S721		
+Weather_A109	duong.ld	DONE	2026-07-07	SM-S721		
+Weather_A110	duong.ld	DONE	2026-07-10	SM-S721		
+Weather_A111	vtriet.ng	SKIP	2026-07-01			Expected results will vary by region.
+Weather_A112	vtriet.ng	SKIP	2026-07-01			Expected results will vary by region.
+Weather_A113	nhien.nguyen	DONE	2026-07-07	SM-S721		
+Weather_A114	vtriet.ng	SKIP	2026-07-01			Expected results will vary by region.
+Weather_A115	q.bac.phung	DONE	2026-07-03	SM-S721		
+Weather_A116	tu.vd1	DONE	2026-07-02			
+Weather_A117	tu.vd1	SKIP				Can't cover by automation: "can't check all conditions at same time"
+Weather_A118	nhien.nguyen	DONE	2026-07-05			
+Weather_A119	m.kien.phung	SKIP	2026-07-01			KR only
+Weather_A120	m.kien.phung	SKIP	2026-07-02			need to factory device
+Weather_A121	vtriet.ng	DONE	2026-07-03	SM-S721		
+Weather_A122	vtriet.ng	SKIP	2026-06-24			DeX for PC
+Weather_A123	vtriet.ng	SKIP	2026-06-24			Smart view
+Weather_A124	vtriet.ng	DONE	2026-06-30	SM-S721		
+Weather_A125	manh.thuong	DONE		SM-S721		
+Weather_A126	manh.thuong	ASSIGNED				Model does not support
+Weather_A127	manh.thuong	DONE		SM-S721		
+Weather_A128	duc.chinh	DONE	2026-07-01	SM-S721		
+Weather_A129	duc.chinh	SKIP		SM-S721		required cable to PC
+Weather_A130	duc.chinh	DONE	2026-06-30	SM-S721		
+Weather_A131	manh.thuong	SKIP		SM-S721		Can not Verify Motion smoothness
+Weather_A132	manh.thuong	SKIP		SM-S721		TC does not align with UI
+Weather_A133	duc.chinh	ASSIGNED				
+Weather_A134	duc.chinh	DONE	2026-07-02	SM-F966		
+Weather_A135	duc.chinh	DONE	2026-07-03	SM-F966		
+Weather_A136	duc.chinh	DONE	2026-07-06	SM-F966		
+Weather_A137	manh.thuong	ASSIGNED				
+Weather_A138	manh.thuong	ASSIGNED				
+Weather_A139	manh.thuong	ASSIGNED				
+Weather_A140	manh.thuong	ASSIGNED				
+Weather_A141	duc.chinh	ASSIGNED				Pending Testcase for flip/fold
+Weather_A142	duc.chinh	ASSIGNED				Pending Testcase for flip only
+Weather_A143	duc.chinh	ASSIGNED				Pending Testcase for flip only
+Weather_A144	duc.chinh	ASSIGNED				Pending Testcase for flip only
+Weather_A145	manh.thuong	SKIP				Watch Project
+Weather_A146	manh.thuong	SKIP				Watch Project
+Weather_A147	manh.thuong	SKIP				Watch Project
+Weather_A148	manh.thuong	SKIP				Watch Project
+Weather_A149	manh.thuong	SKIP				Watch Project
+Weather_A150	manh.thuong	SKIP				Watch Project
+Weather_A151	manh.thuong	SKIP				Watch Project
+Weather_A152	manh.thuong	SKIP				Watch Project
+Weather_A153	manh.thuong	SKIP				Watch Project
+Weather_A154	manh.thuong	SKIP				Watch Project
+Weather_A155	manh.thuong	SKIP				Watch Project
+Browser_000131	tri.tung	DONE	2026-07-03			
+Browser_000132	tri.tung	DONE	2026-07-03			
+Browser_000140	tri.tung	SKIP	2026-07-03			Test case requires input Keyword by Voice search
+Browser_000286	anh.pham4	DONE	2026-07-03			
+Browser_000288	anh.pham4	DONE	2026-07-03			
+NowBrief_000101	thodung.h	ASSIGNED				
+NowBrief_000102	thodung.h	ASSIGNED				
+NowBrief_000103	thodung.h	ASSIGNED				
+NowBrief_000104	thodung.h	ASSIGNED				
+NowBrief_000105	thodung.h	ASSIGNED				
+NowBrief_000106	thodung.h	ASSIGNED				
+NowBrief_000107	tu.vd1	DONE	2026-07-06	SM-S721		
+NowBrief_000108	tu.vd1	DONE	2026-07-06	SM-S721		
+NowBrief_000109	tu.vd1	DONE	2026-07-06	SM-S721		
+NowBrief_000110	tu.vd1	SKIP				Flip model
+NowBrief_000111	tu.vd1	SKIP				TC verify audio
+NowBrief_000112	tu.vd1	DONE	2026-07-07	SM-S721		
+NowBrief_000113	tu.vd1	ASSIGNED				
+NowBrief_000114	tu.vd1	DONE	2026-07-08	SM-S721		
+NowBrief_000115	dung.ng2	ASSIGNED				
+NowBrief_000116	dung.ng2	ASSIGNED				
+NowBrief_000117	dung.ng2	ASSIGNED				
+NowBrief_000118	dung.ng2	ASSIGNED				
+NowBrief_000119	dung.ng2	ASSIGNED				
+NowBrief_000120	dung.ng2	ASSIGNED				
+NowBrief_000121	dung.ng2	ASSIGNED				
+NowBrief_000122	minh.hoang1	ASSIGNED				
+NowBrief_000123	minh.hoang1	ASSIGNED				
+NowBrief_000124	minh.hoang1	ASSIGNED				
+NowBrief_000125	minh.hoang1	ASSIGNED				
+NowBrief_000126	minh.hoang1	ASSIGNED				
+NowBrief_000127	minh.hoang1	ASSIGNED				
+NowBrief_000128	minh.hoang1	ASSIGNED				
+NowBrief_000129	minh.hoang1	ASSIGNED				
+NowBrief_000130	hieu.bm	SKIP				TC Call
+NowBrief_000131	hieu.bm	SKIP				TC Call
+NowBrief_000132	hieu.bm	SKIP				TC Call
+NowBrief_000133	hieu.bm	SKIP				TC Call
+NowBrief_000134	hieu.bm	SKIP				TC Call
+NowBrief_000135	hieu.bm	SKIP				TC Call
+NowBrief_000136	hieu.bm	SKIP				TC Call
+NowBrief_000137	hieu.bm	SKIP				TC Call
+NowBrief_000138	qhuy.tran	ASSIGNED				
+NowBrief_000139	qhuy.tran	ASSIGNED				
+NowBrief_000140	qhuy.tran	ASSIGNED				
+NowBrief_000141	qhuy.tran	ASSIGNED				
+NowBrief_000142	qhuy.tran	ASSIGNED				
+NowBrief_000143	qhuy.tran	ASSIGNED				
+NowBrief_000144	qhuy.tran	ASSIGNED				
+NowBrief_000145	qhuy.tran	ASSIGNED				
+NowBrief_000146		ASSIGNED				
+NowBrief_000147		ASSIGNED				
+NowBrief_000148	hieu.bm	ASSIGNED				
+NowBrief_000149	hieu.bm	ASSIGNED				
+NowBrief_000150	hieu.bm	ASSIGNED				
+NowBrief_000151	hieu.bm	DONE	2026-07-06	SM-S721		
+NowBrief_000152	hieu.bm	DONE	2026-07-08	SM-S721		
+NowBrief_000153	hieu.bm	ASSIGNED				
+NowBrief_000154	hieu.bm	ASSIGNED				
+NowBrief_000155	hieu.bm	ASSIGNED				
+NowBrief_000156	thodung.h	DONE	2026-07-06	SM-S721		
+NowBrief_000157	thodung.h	ASSIGNED				
+NowBrief_000158	thodung.h	ASSIGNED				
+NowBrief_000159	thodung.h	ASSIGNED				
+NowBrief_000160	thodung.h	ASSIGNED				
+NowBrief_000161	thodung.h	ASSIGNED				
+NowBrief_000162	thodung.h	ASSIGNED				
+NowBrief_000163	thodung.h	ASSIGNED				
+NowBrief_000164	tienthanh.d	DONE	2026-07-10	SM-S721		
+NowBrief_000165	tienthanh.d	ASSIGNED				
+NowBrief_000166	tienthanh.d	ASSIGNED				
+NowBrief_000167	tienthanh.d	ASSIGNED				
+NowBrief_000168	tienthanh.d	ASSIGNED				
+NowBrief_000169	tienthanh.d	ASSIGNED				
+NowBrief_000170		ASSIGNED				
+NowBrief_000171		ASSIGNED				
+NowBrief_000172		ASSIGNED				
+NowBrief_000173	m.kien.phung	DONE	2026-07-06	SM-S721		
+NowBrief_000174	m.kien.phung	SKIP	2026-07-07			KR only(related to KR app: TMAP, Naver map, Kakao navi)
+NowBrief_000175	m.kien.phung	SKIP	2026-07-07			KR only(related to KR app: TMAP, Naver map, Kakao navi)
+NowBrief_000176	m.kien.phung	SKIP	2026-07-07			KR only(related to KR app: TMAP, Naver map, Kakao navi)
+NowBrief_000177	m.kien.phung	SKIP	2026-07-07			KR only(related to KR app: TMAP, Naver map, Kakao navi)
+NowBrief_000178	m.kien.phung	DONE	2026-07-07	SM-S721		
+NowBrief_000179	m.kien.phung	ASSIGNED				
+NowBrief_000180	m.kien.phung	ASSIGNED				
+NowBrief_000181	qtrung.tr	DONE	2026-07-09	SM-S721		
+NowBrief_000182	qhuy.tran	ASSIGNED				
+NowBrief_000183	qhuy.tran	ASSIGNED				
+NowBrief_000184	qhuy.tran	ASSIGNED				
+NowBrief_000185	qhuy.tran	ASSIGNED				
+NowBrief_000186		ASSIGNED				
+NowBrief_000187		ASSIGNED				
+NowBrief_000188		ASSIGNED				
+NowBrief_000189		ASSIGNED				
+NowBrief_000190		ASSIGNED				
+NowBrief_000191		ASSIGNED				
+NowBrief_000192		ASSIGNED				
+NowBrief_000193		ASSIGNED				
+NowBrief_000194	nhien.nguyen	ASSIGNED				
+NowBrief_000195	nhien.nguyen	ASSIGNED				
+NowBrief_000196	nhien.nguyen	ASSIGNED				
+NowBrief_000197	nhien.nguyen	ASSIGNED				
+NowBrief_000198	nhien.nguyen	ASSIGNED				
+NowBrief_000199	nhien.nguyen	ASSIGNED				
+NowBrief_000200	nhien.nguyen	DONE	2016-07-09	SM-S721		
+NowBrief_000201	nhien.nguyen	DONE	2026-07-08	SM-S721		
+NowBrief_000202		ASSIGNED				
+NowBrief_000203		ASSIGNED				
+NowBrief_000204		ASSIGNED				
+NowBrief_000205		ASSIGNED				
+NowBrief_000206		ASSIGNED				
+NowBrief_000207		ASSIGNED				
+NowBrief_000208		ASSIGNED				
+NowBrief_000209		ASSIGNED				
+NowBrief_000210	qtrung.tr	DONE	2026-07-05	SM-S721		
+NowBrief_000211		ASSIGNED				
+NowBrief_000212	qtrung.tr	DONE	2026-07-05	SM-S721		
+Browser_000276	giang.tv3	DONE	2026-07-06	SM-S721		
+Browser_000277	giang.tv3	DONE	2026-07-06	SM-S721		
+Browser_000285	anh.pham4	DONE	2026-07-06	SM-S721		
+Browser_000128	tri.tung	DONE	2026-07-06	SM-S721		
+Browser_000405	tri.tung	DONE	2026-07-07	SM-S721		
+Browser_000406	tri.tung	DONE	2026-07-07	SM-S721		
+Browser_000407	tri.tung	DONE	2026-07-07	SM-S721		
+Browser_000455	giang.tv3	DONE	2026-07-07	SM-S721		
+Browser_000463	giang.tv3	SKIP	2026-07-07			SKIP: KOR -Excluded due to object's elements in Notice detail screen
+Browser_000122	anh.pham4	DONE	2026-07-07	SM-S721		
+Browser_000311	anh.pham4	DONE	2026-07-07	SM-S721		
+NowBrief_000213		ASSIGNED				
+NowBrief_000214	duc.chinh	SKIP				need insert Sim card to display samsung news on nowbrief
+NowBrief_000215	duc.chinh	DONE	2026-07-10	SM-S721		
+NowBrief_000216	duc.chinh	ASSIGNED				
+NowBrief_000217	duc.chinh	ASSIGNED				
+NowBrief_000218	duc.chinh	ASSIGNED				
+NowBrief_000219	duc.chinh	ASSIGNED				
+NowBrief_000220	duc.chinh	DONE	2026-07-10	SM-S721		
+NowBrief_000221		ASSIGNED				
+NowBrief_000222	duong.ld	ASSIGNED				
+NowBrief_000223	duong.ld	ASSIGNED				
+NowBrief_000224	duong.ld	ASSIGNED				
+NowBrief_000225	duong.ld	ASSIGNED				
+NowBrief_000226	duong.ld	ASSIGNED				
+NowBrief_000227	duong.ld	ASSIGNED				
+NowBrief_000228	duong.ld	ASSIGNED				
+NowBrief_000229	duong.ld	ASSIGNED				
+NowBrief_000230		ASSIGNED				
+NowBrief_000231		ASSIGNED				
+NowBrief_000232		ASSIGNED				
+NowBrief_000233		ASSIGNED				
+NowBrief_000234		ASSIGNED				
+NowBrief_000235		ASSIGNED				
+NowBrief_000236		ASSIGNED				
+NowBrief_000237		ASSIGNED				
+NowBrief_000238	m.kien.phung	DONE	2026-07-08	SM-S721		
+NowBrief_000239	m.kien.phung	ASSIGNED				
+NowBrief_000240	m.kien.phung	DONE	2026-07-08	SM-S721		
+NowBrief_000241	m.kien.phung	ASSIGNED				
+NowBrief_000242	m.kien.phung	ASSIGNED				
+NowBrief_000243	m.kien.phung	ASSIGNED				
+NowBrief_000244	m.kien.phung	ASSIGNED				
+NowBrief_000245	m.kien.phung	ASSIGNED				
+NowBrief_000246	m.kien.phung	DONE	2026-07-09	SM-S721		
+NowBrief_000247	m.kien.phung	DONE	2026-07-09	SM-S721		
+NowBrief_000248	m.kien.phung	DONE	2026-07-09	SM-S721		
+NowBrief_000001	thang.dv1	ASSIGNED				
+NowBrief_000073	vu.nam1	ASSIGNED				
+NowBrief_000074	vu.nam1	ASSIGNED				
+NowBrief_000075	vu.nam1	ASSIGNED				
+NowBrief_000076	vu.nam1	ASSIGNED				
+NowBrief_000077	vu.nam1	ASSIGNED				
+NowBrief_000078	vu.nam1	ASSIGNED				
+NowBrief_000079	vu.nam1	ASSIGNED				
+NowBrief_000080	vu.nam1	ASSIGNED				
+NowBrief_000081	vu.nam1	ASSIGNED				
+NowBrief_000082	vu.nam1	ASSIGNED				
+NowBrief_000083	vu.nam1	ASSIGNED				
+NowBrief_000084	vu.nam1	ASSIGNED				
+NowBrief_000085	vu.nam1	ASSIGNED				
+NowBrief_000086	vu.nam1	ASSIGNED				
+NowBrief_000087	vu.nam1	ASSIGNED				
+NowBrief_000088	vu.nam1	ASSIGNED				
+NowBrief_000089	vu.nam1	ASSIGNED				
+NowBrief_000090	vu.nam1	ASSIGNED				
+NowBrief_000091	vu.nam1	ASSIGNED				
+NowBrief_000092	vu.nam1	ASSIGNED				
+NowBrief_000093	vu.nam1	ASSIGNED				
+NowBrief_000094	vu.nam1	ASSIGNED				
+NowBrief_000095	vu.nam1	ASSIGNED				
+NowBrief_000096	vu.nam1	ASSIGNED				
+NowBrief_000097	vu.nam1	ASSIGNED				
+NowBrief_000098	vu.nam1	ASSIGNED				
+NowBrief_000099	vu.nam1	ASSIGNED				
+NowBrief_000100	vu.nam1	ASSIGNED				
+Browser_000433	giang.tv3	SKIP	2026-07-08			SKIP: Need setup two-step verification in Samsung Pass
+Browser_000434	giang.tv3	SKIP	2026-07-08			SKIP: Need setup two-step verification in Samsung Pass
+Browser_000570	giang.tv3	SKIP	2026-07-08			SKIP > Manual test : need to Login Samsung account in PC
+Browser_000588	giang.tv3	SKIP	2026-07-08			SKIP > Manual test : Execute test with PC Chrome
+Browser_000589	giang.tv3	DONE	2026-07-08	SM-S721		
+NowBrief_000267	tuan.ta1	DONE	2026-07-08	SM-S721		
+NowBrief_000268	loc.td1	DONE	2026-07-08	SM-F966, SM-S721		
+NowBrief_000269	ngocphuc.tr	ASSIGNED				
+NowBrief_000270	hoang.ph	ASSIGNED				
+NowBrief_000271	bachchien.tr	DONE	2026-07-08	SM-S721		
+NowBrief_000272	ngocquang.ng	DONE	2026-07-08	SM-S721, SM-X920		
+NowBrief_000273	hanh.nv1	ASSIGNED				
+NowBrief_000274	ngocphuc.tr	ASSIGNED				PENDING: Cannot procedure TC
+NowBrief_000275	ngocphuc.tr	SKIP				SKIP: Precondition requires add real airport tickets. HQ confirms now way to fake
+NowBrief_000276	ngocphuc.tr	SKIP				SKIP: Precondition requires add real airport tickets. HQ confirms now way to fake
+NowBrief_000277	ngocphuc.tr	SKIP				SKIP: Precondition requires add real airport tickets. HQ confirms now way to fake
+NowBrief_000278	ngocphuc.tr	SKIP				SKIP: Precondition requires add real airport tickets. HQ confirms now way to fake
+NowBrief_000279	ngocphuc.tr	ASSIGNED				PENDING: Cannot procedure TC
+NowBrief_000280	loc.td1	SKIP	2026-07-09			SKIP: Precondition requires boarding pass
+NowBrief_000281	loc.td1	SKIP	2026-07-09			SKIP: Precondition requires boarding pass
+NowBrief_000282	loc.td1	SKIP	2026-07-09			SKIP: Precondition requires boarding pass
+NowBrief_000283	loc.td1	SKIP	2026-07-09			SKIP: Precondition requires boarding pass
+NowBrief_000284	loc.td1	SKIP	2026-07-09			SKIP: Precondition requires boarding pass
+NowBrief_000285	tuan.ta1	SKIP	2026-07-10			SKIP: Precondition requires boarding pass
+NowBrief_000286	tuan.ta1	ASSIGNED				
+NowBrief_000287	tuan.ta1	ASSIGNED				
+NowBrief_000288	tuan.ta1	ASSIGNED				
+NowBrief_000289	tuan.ta1	ASSIGNED				
+NowBrief_000290	hoang.ph	ASSIGNED				
+NowBrief_000291	hoang.ph	ASSIGNED				
+NowBrief_000292	hoang.ph	ASSIGNED				
+NowBrief_000293	hoang.ph	ASSIGNED				
+NowBrief_000294	hoang.ph	ASSIGNED				
+NowBrief_000295	bachchien.tr	ASSIGNED				
+NowBrief_000296	bachchien.tr	ASSIGNED				
+NowBrief_000297	bachchien.tr	ASSIGNED				
+NowBrief_000298	bachchien.tr	SKIP	2026-07-08			SKIP: Precondition requires boarding pass
+NowBrief_000299	bachchien.tr	SKIP	2026-07-08			SKIP: Precondition requires boarding pass
+NowBrief_000300	ngocquang.ng	SKIP	2026-07-08			SKIP: Precondition requires boarding pass
+NowBrief_000301	ngocquang.ng	SKIP	2026-07-08			SKIP: Precondition requires boarding pass
+NowBrief_000302	ngocquang.ng	SKIP	2026-07-08			SKIP: Precondition requires boarding pass
+NowBrief_000303	ngocquang.ng	SKIP	2026-07-08			SKIP: Precondition requires boarding pass
+NowBrief_000304	ngocquang.ng	SKIP	2026-07-08			SKIP: Precondition requires boarding pass
+NowBrief_000305	hanh.nv1	SKIP	2026-07-08			SKIP: Precondition requires boarding pass
+NowBrief_000306	hanh.nv1	SKIP	2026-07-08			SKIP: Precondition requires boarding pass
+NowBrief_000307	hanh.nv1	SKIP	2026-07-08			SKIP: Precondition requires boarding pass
+NowBrief_000308	lien.ptt	SKIP	2026-07-08			SKIP: Precondition requires boarding pass and audio brief to read content
+NowBrief_000309	lien.ptt	SKIP	2026-07-08			SKIP: Precondition requires boarding pass
+NowBrief_000310	lien.ptt	SKIP	2026-07-08			SKIP: Precondition requires boarding pass
+NowBrief_000311	hai.nt2	SKIP	2026-07-08			SKIP: Precondition requires add real airport tickets. HQ confirms now way to fake
+NowBrief_000312	hai.nt2	SKIP	2026-07-08			SKIP: Precondition requires add real airport tickets. HQ confirms now way to fake
+NowBrief_000313	hai.nt2	SKIP	2026-07-08			SKIP: Precondition requires add real airport tickets. HQ confirms now way to fake
+NowBrief_000314	anh.mai1	SKIP	2026-07-08			SKIP: Precondition requires add real airport tickets. HQ confirms now way to fake
+NowBrief_000315	anh.mai1	SKIP	2026-07-08			SKIP: Precondition requires boarding pass
+NowBrief_000316	anh.mai1	SKIP	2026-07-08			SKIP: Precondition requires boarding pass
+NowBrief_000317	linh.trinh1	SKIP	2026-07-08			SKIP: Precondition requires boarding pass
+NowBrief_000318	linh.trinh1	SKIP	2026-07-08			SKIP: Precondition requires boarding pass
+NowBrief_000319	linh.trinh1	SKIP	2026-07-08			SKIP: Precondition requires boarding pass
+NowBrief_000320	trang.htt	SKIP				SKIP: Precondition requires boarding pass
+NowBrief_000321	trang.htt	SKIP				SKIP: Precondition requires boarding pass
+NowBrief_000322	trang.htt	SKIP				SKIP: Precondition requires boarding pass
+NowBrief_000323	tuyen.bv1	SKIP				SKIP: Precondition requires boarding pass
+NowBrief_000324	tuyen.bv1	SKIP				SKIP: Precondition requires boarding pass
+NowBrief_000325	tuyen.bv1	SKIP				SKIP: Precondition requires boarding pass
+NowBrief_000326	tuyen.bv1	SKIP				SKIP: Precondition requires boarding pass
+NowBrief_000327	tuyen.bv1	SKIP				SKIP: Precondition requires boarding pass
+NowBrief_000328	tuyen.bv1	SKIP				SKIP: Precondition requires boarding pass
+NowBrief_000329	tuyen.bv1	SKIP				SKIP: Precondition requires boarding pass
+NowBrief_000330	tuyen.bv1	SKIP				SKIP: Precondition requires boarding pass
+NowBrief_000331	tuyen.bv1	SKIP				SKIP: Precondition requires boarding pass
+NowBrief_000332	ngocquang.ng	DONE	2026-07-09	SM-S721, SM-X920		
+NowBrief_000333	ngocquang.ng	DONE	2026-07-09	SM-S721, SM-X920		
+NowBrief_000334	ngocquang.ng	ASSIGNED				SKIP > wait for flip model on OneUI 9.0
+NowBrief_000335	ngocquang.ng	DONE	2026-07-10	SM-S721		
+NowBrief_000336	ngocquang.ng	DONE	2026-07-10	SM-S721		
+NowBrief_000337	lien.ptt	ASSIGNED				
+NowBrief_000338	lien.ptt	ASSIGNED				
+NowBrief_000339	lien.ptt	ASSIGNED				
+NowBrief_000340	lien.ptt	DONE	2026-07-09	SM-S721, SM-X920		
+NowBrief_000341	lien.ptt	DONE	2026-07-10	SM-S721, SM-X920		
+NowBrief_000342	hai.nt2	ASSIGNED				
+NowBrief_000343	hai.nt2	ASSIGNED				
+NowBrief_000344	hai.nt2	ASSIGNED				
+NowBrief_000345	hai.nt2	DONE	2026-07-08	SM-S721		
+NowBrief_000346	hai.nt2	DONE	2026-07-09	SM-S721		
+NowBrief_000347	anh.mai1	DONE	2026-07-10	SM-S721		
+NowBrief_000348	anh.mai1	DONE	2026-07-10	SM-S721		
+NowBrief_000349	anh.mai1	ASSIGNED				
+NowBrief_000350	anh.mai1	ASSIGNED				
+NowBrief_000351	anh.mai1	ASSIGNED				
+NowBrief_000352	linh.trinh1	DONE	2026-07-10	SM-S721		
+NowBrief_000353	linh.trinh1	SKIP	2026-07-09			SKIP> Need data Face recognition and Fingerprints
+NowBrief_000354	linh.trinh1	SKIP	2026-07-09			SKIP> Need data Face recognition and Fingerprints
+NowBrief_000355	linh.trinh1	DONE	2026-07-10	SM-S721		
+NowBrief_000356	linh.trinh1	ASSIGNED				
+NowBrief_000357	trang.htt	ASSIGNED				
+NowBrief_000358	trang.htt	ASSIGNED				
+NowBrief_000359	trang.htt	ASSIGNED				
+NowBrief_000360	hanh.nv1	ASSIGNED				
+NowBrief_000361	hanh.nv1	ASSIGNED				
+NowBrief_000362	hanh.nv1	ASSIGNED				
+NowBrief_000363	ngocphuc.tr	DONE	2026-07-10	SM-S721, SM-X920		
+NowBrief_000364	ngocphuc.tr	DONE	2026-07-10	SM-S721, SM-X920		
+NowBrief_000365	ngocphuc.tr	ASSIGNED				
+NowBrief_000366	ngocphuc.tr	ASSIGNED				
+NowBrief_000367	ngocphuc.tr	ASSIGNED				
+NowBrief_000368	loc.td1	DONE	2026-07-10	SM-S721		
+NowBrief_000369	loc.td1	DONE	2026-07-10	SM-S721		
+NowBrief_000370	loc.td1	DONE	2026-07-10	SM-S721		
+NowBrief_000371	loc.td1	DONE	2026-07-10	SM-S721		
+Browser_000159	anh.pham4	DONE	2026-07-08			
+Browser_000129	tri.tung	DONE	2026-07-08			
+Browser_000408	tri.tung	DONE	2026-07-08			
+Browser_000579	anh.htt	DONE	2026-07-06	SM-S721		
+Browser_000573	anh.htt	DONE	2026-07-07	SM-S721		
+Browser_000574	anh.htt	DONE	2026-07-08	SM-S721		
+Browser_000166	thevan.ng	DONE	2026-07-10	SM-S721, SM-X920		
+Browser_000170	thevan.ng	DONE	2026-07-08	SM-S721, SM-X920		
+Browser_000575	anh.htt	DONE	2026-07-10	SM-S721		
+Browser_000576	anh.htt	ASSIGNED				
+Browser_000577	anh.htt	ASSIGNED				

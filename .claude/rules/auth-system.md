@@ -28,7 +28,7 @@ Hệ thống tài khoản và phân quyền theo tab chức năng (2026-07-11).
   - user       → 6 tab (không input-results, không settings)
 
 ALL_TABS = [
-  'dashboard', 'input-results', 'input-fix', 'new-scripts',
+  'dashboard', 'new-scripts', 'input-results', 'input-fix',
   'priority', 'cycle-compare', 'fix-tracking', 'settings'
 ]
 ```
@@ -66,7 +66,7 @@ ALL_TABS = [
   - Admin reset password user → `abc123`
   - Auto-create account cho owner mới → password = `abc123`
 
-- **`SUBMIT_PASSWORD = "smartlab1@"`** — **riêng biệt**, dùng cho form "Nhập kết quả" (tab submit data), không liên quan tài khoản
+- Form "Nhập kết quả" **không còn** mật khẩu gate riêng — đã bỏ `SUBMIT_PASSWORD`, quyền truy cập chỉ dựa vào `@require_perm("input-results")`
 
 ## Registration
 
