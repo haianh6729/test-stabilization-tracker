@@ -20,6 +20,9 @@ import urllib.parse
 from datetime import datetime, date, timedelta
 from flask import Flask, request, jsonify, render_template, send_file, g, session, redirect
 from werkzeug.security import generate_password_hash, check_password_hash
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 
 DB_PATH = "tracker.db"
 USERS_DB_PATH = "users.db"  # DB rieng cho tai khoan - tach khoi tracker.db (du lieu song)
@@ -4355,6 +4358,203 @@ def api_report_weekly():
     if err:
         return jsonify({"error": err}), 404
     return jsonify({"markdown": md, "meta": {"type": "weekly", "week": week_str}})
+
+
+def _excel_style_header(sheet, row, values, color="4472C4"):
+    """Helper: style header row (bold, white text, colored background)."""
+    for col_idx, val in enumerate(values, 1):
+        cell = sheet.cell(row=row, column=col_idx, value=val)
+        cell.font = Font(bold=True, color="FFFFFF", size=11)
+        cell.fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+
+def _excel_style_data_row(sheet, row, values):
+    """Helper: style data row with light background."""
+    for col_idx, val in enumerate(values, 1):
+        cell = sheet.cell(row=row, column=col_idx, value=val)
+        cell.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
+        if row % 2 == 0:
+            cell.fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+
+
+def _build_daily_report_excel(db, date_str):
+    """Export daily report to Excel workbook. Dùng build_daily_report() → parse markdown → Excel sheets."""
+    md, err = build_daily_report(db, date_str)
+    if err:
+        raise ValueError(err)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Báo cáo ngày"
+
+    trend = compute_cycle_trend(db)
+    if not trend:
+        return wb
+
+    if date_str:
+        entry = next((t for t in trend if t["cycle_date"] == date_str), None)
+        if not entry:
+            raise ValueError(f"Không có cycle ngày {date_str}.")
+    else:
+        entry = trend[-1]
+        date_str = entry["cycle_date"]
+
+    idx = trend.index(entry)
+    prev = trend[idx - 1] if idx > 0 else None
+    priority = get_script_priority(db)
+    kpi = _report_kpis(db, priority)
+    coverage = compute_coverage(db)
+
+    r = 1
+    ws.cell(row=r, column=1, value=f"Báo cáo Stabilization — Cycle {entry['cycle']} ({date_str})").font = Font(bold=True, size=14)
+    r += 2
+
+    # KPI summary
+    _excel_style_header(ws, r, ["Chỉ số", "Hôm nay", "Cycle trước"])
+    r += 1
+    for key, label in [("pass_rate", "Pass rate (%)"), ("fail_count", "Số lỗi (fail)"), ("total", "Tổng lượt chạy")]:
+        cur = entry.get(key)
+        prv = prev.get(key) if prev else None
+        if key == "pass_rate":
+            cur = f"{cur*100:.1f}" if cur is not None else "…"
+            prv = f"{prv*100:.1f}" if prv is not None else "…"
+        _excel_style_data_row(ws, r, [label, cur, prv])
+        r += 1
+
+    for label, val in [
+        ("Script còn lỗi", f"{kpi['still_failing']}/{kpi['total_scripts']}"),
+        ("P0", kpi["tier_counts"]["P0"]),
+        ("Verify", kpi["tier_counts"]["Verify"]),
+        ("Flaky", kpi["flaky_count"]),
+    ]:
+        _excel_style_data_row(ws, r, [label, val, ""])
+        r += 1
+
+    r += 1
+    recent_cycles = [t["cycle"] for t in trend[:idx + 1]][-3:]
+    _excel_style_header(ws, r, ["Item", "Model"] + [f"C{c}" for c in recent_cycles], "70AD47")
+    r += 1
+    matrix = compute_suite_model_matrix(db)
+    for row in sorted(matrix["rows"], key=lambda x: (x["test_suite"], x["model"])):
+        cells = [row["by_cycle"].get(c) for c in recent_cycles]
+        rate_cells = [f"{c['pass_rate']*100:.1f}%" if c and c["pass_rate"] is not None else "…" for c in cells]
+        _excel_style_data_row(ws, r, [row["test_suite"], row["model"]] + rate_cells)
+        r += 1
+
+    r += 2
+    _excel_style_header(ws, r, ["Coverage", "Giá trị"], "FFC000")
+    r += 1
+    if coverage.get("configured"):
+        _excel_style_data_row(ws, r, ["Done / Cần", f"{coverage['done']}/{coverage['total_needed']}"])
+        r += 1
+        _excel_style_data_row(ws, r, ["Tỉ lệ", f"{coverage['pct']*100:.1f}%"])
+    else:
+        _excel_style_data_row(ws, r, ["Trạng thái", "Chưa đồng bộ"])
+
+    for col in range(1, 3 + len(recent_cycles)):
+        ws.column_dimensions[get_column_letter(col)].width = 22
+
+    return wb
+
+
+def _build_weekly_report_excel(db, week_str):
+    """Export weekly report to Excel workbook."""
+    md, err = build_weekly_report(db, week_str)
+    if err:
+        raise ValueError(err)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Báo cáo tuần"
+
+    if week_str:
+        m = re.match(r"^(\d{4})-W(\d{1,2})$", week_str.strip())
+        if not m:
+            raise ValueError("Định dạng tuần không hợp lệ.")
+        year, wk = int(m.group(1)), int(m.group(2))
+    else:
+        iso = date.today().isocalendar()
+        year, wk = iso[0], iso[1]
+        week_str = f"{year}-W{wk:02d}"
+
+    monday = date.fromisocalendar(year, wk, 1)
+    sunday = monday + timedelta(days=6)
+
+    trend = compute_cycle_trend(db)
+    in_week = [t for t in trend if t["cycle_date"] and monday.isoformat() <= t["cycle_date"] <= sunday.isoformat()]
+    if not in_week:
+        raise ValueError(f"Không có cycle trong tuần {week_str}.")
+
+    priority = get_script_priority(db)
+    kpi = _report_kpis(db, priority)
+    coverage = compute_coverage(db)
+
+    n_fix = db.execute("SELECT COUNT(*) c FROM fixes WHERE fix_date>=? AND fix_date<=?",
+                      (monday.isoformat(), sunday.isoformat())).fetchone()["c"]
+    n_new = db.execute("SELECT COUNT(*) c FROM new_scripts WHERE status='DONE' AND completed_date>=? AND completed_date<=?",
+                      (monday.isoformat(), sunday.isoformat())).fetchone()["c"]
+
+    r = 1
+    ws.cell(row=r, column=1, value=f"Báo cáo Tuần {wk} ({monday.strftime('%d/%m')}–{sunday.strftime('%d/%m/%Y')})").font = Font(bold=True, size=14)
+    r += 2
+
+    _excel_style_header(ws, r, ["Chỉ số", "Giá trị"])
+    r += 1
+    data = [
+        ["Pass rate đầu–cuối tuần", f"{in_week[0]['pass_rate']*100:.1f}% → {in_week[-1]['pass_rate']*100:.1f}%"],
+        ["Fixes trong tuần", n_fix],
+        ["Scripts viết mới (DONE)", n_new],
+        ["Script còn lỗi", f"{kpi['still_failing']}/{kpi['total_scripts']}"],
+        ["Coverage", f"{coverage['done']}/{coverage['total_needed']} ({coverage['pct']*100:.1f}%)" if coverage.get("configured") else "Chưa đồng bộ"],
+        ["P0", kpi['tier_counts'].get('P0', 0)],
+        ["Verify", kpi['tier_counts'].get('Verify', 0)],
+        ["Flaky", kpi['flaky_count']],
+    ]
+    for lbl, val in data:
+        _excel_style_data_row(ws, r, [lbl, val])
+        r += 1
+
+    for col in range(1, 3):
+        ws.column_dimensions[get_column_letter(col)].width = 30
+
+    return wb
+
+
+@app.route("/api/report/daily/export")
+@require_login
+def api_report_daily_export():
+    """Export daily report as Excel file."""
+    db = get_db()
+    date_str = (request.args.get("date") or "").strip() or None
+    try:
+        wb = _build_daily_report_excel(db, date_str)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return send_file(buffer, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name=f"daily_cycle_{date_str or 'latest'}.xlsx")
+
+
+@app.route("/api/report/weekly/export")
+@require_login
+def api_report_weekly_export():
+    """Export weekly report as Excel file."""
+    db = get_db()
+    week_str = (request.args.get("week") or "").strip() or None
+    try:
+        wb = _build_weekly_report_excel(db, week_str)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return send_file(buffer, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name=f"weekly_report_{week_str or 'current'}.xlsx")
 
 
 # ==================================================================
