@@ -4,19 +4,21 @@ Hai file SQLite riêng, schema tự định nghĩa, migration inline mỗi lần
 
 ## `tracker.db` (Dữ liệu nghiệp vụ)
 
-**Live data file** — chứa lịch sử thực tế, không xoá/reset tuỳ tiện. Backup = copy file.
+**Live data file** — chứa lịch sử thực tế, không xoá/reset tuỳ tiện. Backup tự động hằng ngày vào `backups/` (xem mục Backup).
 
 ### Bảng chính
 
-- **results**: Cycle × Test Suite × Test Case × Model × Result (pass/fail/...). Columns: cycle, test_suite, test_case, model, state, result, author (Owner), team, submitted_by, submission_date.
-- **fixes**: Ghi nhận fix (owner, test_suite, test_case, model_fixed, root_cause, fix_date, link, fix_status, fixed_after_cycle).
+- **results**: Cycle × Test Suite × Test Case × Model × Result (pass/fail/...). Columns: cycle, cycle_date, test_id, test_suite, test_case, model, state, description, result, created_by, author (Owner), team.
+- **fixes**: Ghi nhận fix (owner, test_suite, test_case, model_fixed, root_cause, **root_cause_group** — nhóm chuẩn từ `ROOT_CAUSE_GROUPS` (mới 2026-07-12), fix_date, note, fixed_after_cycle).
 - **assignments**: Gán script/owner hiện tại (test_suite, test_case, owner, assigned_date). PK: (test_suite, test_case).
 - **owners**: Danh sách owner + team (name PK, active, team). Soft-delete via `active=0`.
-- **priority**: Bảng ưu tiên tính toán (test_suite, test_case, rank, ...).
-- **models**: Danh sách model (name PK, active).
-- **test_suites**: Danh sách test suite (name PK, active).
-- **settings**: Key-value config (key PK, value).
-- **new_scripts**: Script viết mới (test_suite, test_case, model, reason, link, item_id).
+- **models**: Danh sách model (name PK, sort_order).
+- **test_suites**: Danh sách test suite (name PK, **script_path** — thư mục script của Item trên repo GitHub cho đối chiếu 3 chiều, mới 2026-07-12).
+- **settings**: Key-value config (key PK, value). Keys tích hợp mới 2026-07-12: `farm_api_url/token`, `import_token`, `company_api_url/token`, `github_api_base/repo/branch/token`, `flaky_window`, `flaky_min_flips`, `exit_criteria_cycles`, `exclude_new_scripts_cycles`, `backup_enabled/retention`, `last_backup_date`. Token thuộc `SENSITIVE_SETTINGS` → GET trả mask `********`, POST giá trị mask = không đổi.
+- **new_scripts**: Script viết mới (item, tc_id UNIQUE, member, team, assign_week, completed_date, status DONE/SKIP/ASSIGNED, models_written CSV, sdf_id, remark).
+- **company_testcases** (mới 2026-07-12): cache TC từ hệ thống công ty (tc_id PK, item, status, raw, source 'api'|'manual', synced_at). Nguồn tổng số TC cần script (SKIP không tính); "Performed" = xong bên công ty.
+- **repo_files** (mới 2026-07-12): cache file script nhánh main GitHub (path PK, source, synced_at).
+- **audit_log** (mới 2026-07-12): id, ts, username, action, target, detail — ghi qua `log_audit()` cùng transaction với mutation.
 
 ### Migration pattern
 
@@ -48,6 +50,11 @@ Hai file SQLite riêng, schema tự định nghĩa, migration inline mỗi lần
 - `ALTER TABLE ... ADD COLUMN` cho optional columns
 - Seed/force `anh.hh` admin (luôn giữ admin role + full perms)
 - **Backfill**: tạo account cho owner active (không ghi đè tài khoản có sẵn)
+
+## Backup (mới 2026-07-12)
+
+- Daemon thread trong app (`backup_daemon`, start ở `__main__`): kiểm tra mỗi 30 phút, mỗi ngày snapshot 2 file DB vào `backups/YYYY-MM-DD/` bằng **sqlite3 backup API** (bắt buộc — DB chạy WAL, copy file thường mất dữ liệu trong `-wal`). Giữ `backup_retention` bản gần nhất (mặc định 30). `backups/` đã gitignore.
+- Backup tay: `POST /api/backup/run` (perm settings); trạng thái: `GET /api/backup/status`.
 
 ## Dữ liệu phụ
 

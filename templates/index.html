@@ -18,6 +18,8 @@
     <button class="tab-btn" data-tab="priority">📋 Bảng ưu tiên</button>
     <button class="tab-btn" data-tab="cycle-compare">🔄 So sánh Cycle</button>
     <button class="tab-btn" data-tab="fix-tracking">🔬 Theo dõi Fix</button>
+    <button class="tab-btn" data-tab="reports">📤 Báo cáo</button>
+    <button class="tab-btn" data-tab="integrations">🔗 Đồng bộ</button>
     <button class="tab-btn" data-tab="settings">⚙️ Cài đặt</button>
   </nav>
   <div class="topbar-right">
@@ -108,6 +110,26 @@
     <ul id="insightsList"></ul>
   </div>
 
+  <div class="table-grid">
+    <div class="card">
+      <h3>🎯 Tiến độ viết script (theo hệ thống công ty)</h3>
+      <p class="hint">Tổng số TC cần script lấy <b>động</b> từ hệ thống công ty (TC bị SKIP bên đó không tính vào tổng). Đồng bộ/paste dữ liệu ở tab <b>🔗 Đồng bộ</b>.</p>
+      <div id="coverageBox">—</div>
+      <table id="coverageTable" class="data-table" style="display:none">
+        <thead><tr><th>Item</th><th>Cần</th><th>Done</th><th>%</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h3>🧭 Nguyên nhân đã xác nhận khi fix (từ Fix Log)</h3>
+      <p class="hint">Khác với Pareto bên dưới (mô tả lỗi <b>đang quan sát</b> từ kết quả chạy): bảng này gom theo <b>nhóm nguyên nhân do người fix xác nhận</b> — dùng để chọn chiến dịch batch-fix.</p>
+      <table id="fixParetoTable" class="data-table">
+        <thead><tr><th>Nhóm nguyên nhân</th><th>Số fix</th><th>%</th><th>% cộng dồn</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
   <div class="card">
     <h3>📈 Pass Rate chi tiết theo Cycle</h3>
     <p class="hint">Công thức: <b>Pass Rate = (Pass + Check + Manual Check) / (Tổng số − Skip − NA)</b>. Skip (RUNNING) không bao giờ được lưu vào hệ thống nên không xuất hiện trong bảng; NA bị loại khỏi cả tử số lẫn mẫu số (trung lập, không tính là Pass hay Fail).</p>
@@ -188,7 +210,7 @@
       <input type="text" class="table-filter" data-target="suiteTable" placeholder="🔍 Lọc test suite...">
       <table id="suiteTable" class="data-table">
         <thead>
-          <tr><th>Test suite</th><th>Tổng script</th><th>Đã xong</th><th>Còn lỗi</th><th>% hoàn thành</th></tr>
+          <tr><th>Test suite</th><th>Tổng script</th><th>Đã xong</th><th>Đang xác minh</th><th>Còn lỗi</th><th>% hoàn thành</th></tr>
         </thead>
         <tbody></tbody>
       </table>
@@ -339,7 +361,12 @@ Browser_000202&#9;tuyen.bv1"></textarea>
       <label>Fixed after cycle <span class="hint" style="font-weight:normal">(tự động, không cần sửa tay)</span>
         <input type="number" id="fCycle" min="1" readonly>
       </label>
-      <label class="full">Root cause — nguyên nhân gốc của lỗi <span style="color:#e74c3c">*bắt buộc</span>
+      <label class="full">Nhóm nguyên nhân gốc <span style="color:#e74c3c">*bắt buộc</span> <span class="hint" style="font-weight:normal">(chuẩn hoá để Pareto chính xác — Infra/Device = lỗi môi trường/farm, không phải lỗi script)</span>
+        <select id="fRootCauseGroup">
+          <option value="">— Chọn nhóm nguyên nhân —</option>
+        </select>
+      </label>
+      <label class="full">Chi tiết nguyên nhân <span class="hint" style="font-weight:normal">(mô tả cụ thể — nên điền)</span>
         <textarea id="fRootCause" rows="2" placeholder="VD: locator button submit bị đổi ID sau update UI; hoặc: server trả timeout do data test hết hạn..."></textarea>
       </label>
       <label class="full">Ghi chú thêm (tuỳ chọn)
@@ -366,6 +393,7 @@ Browser_000202&#9;tuyen.bv1"></textarea>
         <option value="P1">P1</option>
         <option value="P2">P2</option>
         <option value="P3">P3</option>
+        <option value="Verify">Verify (đang xác minh)</option>
         <option value="Done">Done</option>
       </select>
       <button class="btn-secondary" id="btnExportExcel">⬇️ Xuất Excel</button>
@@ -397,6 +425,7 @@ Browser_000202&#9;tuyen.bv1"></textarea>
         <option value="P1">P1</option>
         <option value="P2">P2</option>
         <option value="P3">P3</option>
+        <option value="Verify">Verify (đang xác minh)</option>
         <option value="Done">Done</option>
       </select>
       <select id="cycmTrendFilter">
@@ -455,6 +484,101 @@ Browser_000202&#9;tuyen.bv1"></textarea>
   </div>
 </section>
 
+<!-- ============ REPORTS (Báo cáo) ============ -->
+<section id="tab-reports" class="tab-panel">
+  <div class="card">
+    <h3>📤 Sinh báo cáo tự động (markdown)</h3>
+    <p class="hint">Báo cáo được sinh <b>toàn bộ từ dữ liệu hệ thống</b> theo mẫu chuẩn: pass rate Item × Model theo ≥3 cycle, tỉ lệ lỗi môi trường, tiến độ viết script, sản lượng viết/fix từng người, ước lượng hoàn thành dự án. Bấm <b>Copy markdown</b> rồi dán vào group chat/email — chỉ cần điền thêm phần nhận định &amp; số liệu farm (điền tay).</p>
+    <div class="form-row" style="align-items:flex-end; flex-wrap:wrap;">
+      <label>Loại báo cáo
+        <select id="rpType">
+          <option value="daily">📅 Báo cáo ngày (Daily)</option>
+          <option value="weekly">🗓️ Báo cáo tuần (Weekly)</option>
+        </select>
+      </label>
+      <label id="rpDateWrap">Ngày (cycle)
+        <input type="date" id="rpDate">
+      </label>
+      <label id="rpWeekWrap" style="display:none">Tuần
+        <input type="week" id="rpWeek">
+      </label>
+      <button class="btn-primary" id="btnGenReport">🔄 Tạo báo cáo</button>
+      <button class="btn-secondary" id="btnCopyReport" style="display:none">📋 Copy markdown</button>
+      <span id="rpMsg"></span>
+    </div>
+    <pre id="reportPreview" class="report-pre" style="display:none"></pre>
+  </div>
+</section>
+
+<!-- ============ INTEGRATIONS (Đồng bộ) ============ -->
+<section id="tab-integrations" class="tab-panel">
+
+  <div class="card">
+    <h3>🚜 Lấy kết quả từ Test Farm theo Test ID</h3>
+    <p class="hint">Nhập danh sách <b>Test ID</b> (mỗi dòng 1 ID, hoặc cách nhau bằng dấu phẩy) → hệ thống gọi API farm lấy kết quả và nhập thẳng vào dữ liệu (đi qua đúng bộ chuẩn hoá/chống trùng như dán tay). <b>Cấu hình URL/token API farm ở tab ⚙️ Cài đặt (mục Tích hợp &amp; API)</b> — khi chưa cấu hình sẽ báo rõ. Ngoài ra script phía farm có thể tự push kết quả qua <code>POST /api/results/import</code> với header <code>X-Import-Token</code>.</p>
+    <div id="intFarmStatus" class="hint"></div>
+    <textarea id="farmTestIds" rows="5" placeholder="260706-01949&#10;260706-01950&#10;260707-02011"></textarea>
+    <div class="form-row">
+      <button class="btn-primary" id="btnFarmFetch">⬇️ Fetch kết quả từ farm</button>
+      <span id="farmFetchMsg"></span>
+    </div>
+    <div id="farmFetchErrors"></div>
+  </div>
+
+  <div class="card">
+    <h3>🏢 Hệ thống công ty — tổng TC cần script</h3>
+    <p class="hint">Nguồn <b>tổng số test case cần viết script</b> (con số động; TC status <b>SKIP</b> không tính vào tổng; <b>Performed</b> = đã hoàn thành bên hệ thống công ty). Khi có API sẽ bấm Sync tự động; tạm thời dùng ô paste tay bên dưới (mỗi dòng: <code>TC_ID⇥Status</code> hoặc <code>TC_ID⇥Status⇥Item</code>, copy từ Excel; thiếu Status → mặc định "Not Performed").</p>
+    <div id="intCompanyStatus" class="hint"></div>
+    <div class="form-row">
+      <button class="btn-primary" id="btnCompanySync">🔄 Sync từ API công ty</button>
+      <span id="companySyncMsg"></span>
+    </div>
+    <textarea id="companyPasteArea" rows="6" placeholder="Browser_000117&#9;Performed&#10;Browser_000118&#9;Not Performed&#10;Weather_A135&#9;SKIP"></textarea>
+    <div class="form-row">
+      <button class="btn-secondary" id="btnCompanyManual">📥 Nhập tay danh sách TC (thay toàn bộ)</button>
+      <span id="companyManualMsg"></span>
+    </div>
+    <p class="hint" id="companyCacheSummary"></p>
+  </div>
+
+  <div class="card">
+    <h3>🐙 GitHub repo script (nhánh main)</h3>
+    <p class="hint">Danh sách <b>file script thực tế</b> trên nhánh main — dùng để đối chiếu script DONE đã có file thật chưa. Cấu hình <code>owner/repo</code> + token ở tab ⚙️ Cài đặt; hoặc paste tay output của <code>git ls-tree -r main --name-only</code> (mỗi dòng 1 đường dẫn file). Đường dẫn thư mục script của từng Item cấu hình ở <b>Cài đặt → Danh sách Test Suite</b>.</p>
+    <div id="intGithubStatus" class="hint"></div>
+    <div class="form-row">
+      <button class="btn-primary" id="btnGithubSync">🔄 Sync từ GitHub API</button>
+      <span id="githubSyncMsg"></span>
+    </div>
+    <textarea id="githubPasteArea" rows="6" placeholder="Internet/Browser_000117.py&#10;Internet/Browser_000118.py&#10;Weather/Weather_A135.py"></textarea>
+    <div class="form-row">
+      <button class="btn-secondary" id="btnGithubManual">📥 Nhập tay danh sách file (thay toàn bộ)</button>
+      <span id="githubManualMsg"></span>
+    </div>
+  </div>
+
+  <div class="card wide">
+    <h3>🔍 Đối chiếu 3 chiều: DONE ↔ Công ty (Performed) ↔ File trên GitHub</h3>
+    <p class="hint">Mỗi script <b>DONE</b> trên hệ thống phải: (1) có status <b>Performed</b> bên hệ thống công ty, và (2) có <b>file script thật</b> trên nhánh main (đúng thư mục của Item nếu đã cấu hình đường dẫn). Dòng lệch = cần xử lý.</p>
+    <div class="form-row">
+      <button class="btn-primary" id="btnReconcile">🔍 Chạy đối chiếu</button>
+      <label class="ns-inline" style="margin-left:10px"><input type="checkbox" id="reconcileOnlyDiff"> Chỉ hiện dòng lệch</label>
+      <span id="reconcileMsg"></span>
+    </div>
+    <div class="kpi-row" id="reconcileKpiRow"></div>
+    <table id="reconcileTable" class="data-table">
+      <thead>
+        <tr>
+          <th>Kết quả</th><th>TC ID</th><th>Item</th><th>Member</th><th>Ngày DONE</th>
+          <th>Status công ty</th><th>File trên GitHub</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div id="reconcileReverse" class="hint"></div>
+  </div>
+
+</section>
+
 <!-- ============ SETTINGS ============ -->
 <section id="tab-settings" class="tab-panel">
   <div class="card narrow">
@@ -473,16 +597,100 @@ Browser_000202&#9;tuyen.bv1"></textarea>
     </div>
   </div>
 
+  <div class="card narrow">
+    <h3>🎯 Tiêu chí &amp; KPI</h3>
+    <p class="hint"><b>Exit criteria</b>: script chỉ tính "Done" khi mọi model pass đủ N cycle liên tiếp gần nhất (N=1 = hành vi cũ, chỉ xét cycle mới nhất). <b>Flaky</b>: script đổi pass↔fail ≥ số lần cấu hình trong cửa sổ N cycle gần nhất. <b>Loại script mới</b>: &gt;0 sẽ thêm KPI "Pass rate (bỏ script mới)" không tính script trong N cycle đầu của nó.</p>
+    <div class="form-grid">
+      <label>Done = pass liên tiếp (cycle)
+        <input type="number" id="sExitCriteria" min="1" max="10" step="1">
+      </label>
+      <label>Cửa sổ xét Flaky (cycle)
+        <input type="number" id="sFlakyWindow" min="2" max="20" step="1">
+      </label>
+      <label>Số lần đổi tối thiểu → Flaky
+        <input type="number" id="sFlakyFlips" min="1" max="10" step="1">
+      </label>
+      <label>Loại script mới khỏi pass rate (cycle đầu, 0 = tắt)
+        <input type="number" id="sExcludeNew" min="0" max="10" step="1">
+      </label>
+    </div>
+    <div class="form-row">
+      <button class="btn-primary" id="btnSaveCriteria">Lưu</button>
+      <span id="criteriaMsg"></span>
+    </div>
+  </div>
+
+  <div class="card wide">
+    <h3>🔗 Tích hợp &amp; API</h3>
+    <p class="hint">Điền khi có tài liệu API từ công ty. Token đã lưu hiển thị dạng <code>********</code> — để nguyên nghĩa là <b>không đổi</b>, gõ giá trị mới để thay. URL farm có thể chứa <code>{test_id}</code> làm chỗ chèn Test ID (không có thì Test ID được nối vào cuối URL).</p>
+    <div class="form-grid">
+      <label>URL API farm (lấy kết quả theo Test ID)
+        <input type="text" id="sFarmUrl" placeholder="VD: http://farm.company.com/api/results/{test_id}">
+      </label>
+      <label>Token API farm
+        <input type="text" id="sFarmToken" placeholder="(chưa đặt)" autocomplete="off">
+      </label>
+      <label>URL API hệ thống công ty (danh sách TC)
+        <input type="text" id="sCompanyUrl" placeholder="VD: http://tcms.company.com/api/testcases">
+      </label>
+      <label>Token API hệ thống công ty
+        <input type="text" id="sCompanyToken" placeholder="(chưa đặt)" autocomplete="off">
+      </label>
+      <label>GitHub repo (owner/repo)
+        <input type="text" id="sGithubRepo" placeholder="VD: company/qa-scripts">
+      </label>
+      <label>GitHub branch
+        <input type="text" id="sGithubBranch" placeholder="main">
+      </label>
+      <label>GitHub token (repo private)
+        <input type="text" id="sGithubToken" placeholder="(chưa đặt)" autocomplete="off">
+      </label>
+      <label>GitHub API base <span class="hint" style="font-weight:normal">(đổi nếu dùng GitHub Enterprise)</span>
+        <input type="text" id="sGithubApiBase" placeholder="https://api.github.com">
+      </label>
+      <label>Import token <span class="hint" style="font-weight:normal">(cho script farm push qua /api/results/import)</span>
+        <input type="text" id="sImportToken" placeholder="(chưa đặt)" autocomplete="off">
+      </label>
+    </div>
+    <div class="form-row">
+      <button class="btn-primary" id="btnSaveIntegrations">Lưu cấu hình tích hợp</button>
+      <span id="integrationsMsg"></span>
+    </div>
+  </div>
+
+  <div class="card narrow">
+    <h3>💾 Sao lưu dữ liệu</h3>
+    <p class="hint">Hệ thống tự backup <b>tracker.db + users.db</b> vào thư mục <code>backups/&lt;ngày&gt;/</code> mỗi ngày một lần (kiểm tra mỗi 30 phút khi server chạy), giữ tối đa số bản theo cấu hình. Có thể backup ngay bằng nút bên dưới.</p>
+    <div id="backupStatusBox" class="hint">—</div>
+    <div class="form-grid">
+      <label>Bật backup tự động
+        <select id="sBackupEnabled">
+          <option value="1">Bật</option>
+          <option value="0">Tắt</option>
+        </select>
+      </label>
+      <label>Giữ tối đa (bản gần nhất)
+        <input type="number" id="sBackupRetention" min="1" max="365" step="1">
+      </label>
+    </div>
+    <div class="form-row">
+      <button class="btn-primary" id="btnSaveBackupCfg">Lưu</button>
+      <button class="btn-secondary" id="btnBackupNow">💾 Backup ngay</button>
+      <span id="backupMsg"></span>
+    </div>
+  </div>
+
   <div class="lists-grid">
     <div class="card">
       <h3>📦 Danh sách Test Suite</h3>
+      <p class="hint"><b>Đường dẫn script</b> = thư mục chứa script của Item này trên repo GitHub (nhánh main) — dùng khi đối chiếu 3 chiều ở tab 🔗 Đồng bộ. VD: <code>Internet/scripts</code>. Để trống = tìm file trên toàn repo.</p>
       <div class="form-row">
         <input type="text" id="newSuiteName" placeholder="Tên test suite mới">
         <button class="btn-primary" id="btnAddSuite">+ Thêm</button>
       </div>
       <input type="text" class="table-filter" data-target="suiteListTable" placeholder="🔍 Lọc...">
       <table class="data-table" id="suiteListTable">
-        <thead><tr><th>Tên</th><th style="width:140px">Hành động</th></tr></thead>
+        <thead><tr><th>Tên</th><th>Đường dẫn script (GitHub)</th><th style="width:200px">Hành động</th></tr></thead>
         <tbody></tbody>
       </table>
       <span id="suiteListMsg" class="hint"></span>

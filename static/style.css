@@ -199,7 +199,24 @@ main { padding: 20px; max-width: 1400px; margin: 0 auto; }
 .tag-P1 { background: #e67e22; }
 .tag-P2 { background: #f1c40f; color: #333; }
 .tag-P3 { background: #3498db; }
+.tag-Verify { background: #9b59b6; }
 .tag-Done { background: #2ecc71; }
+.tag-flaky { background: #9b59b6; }
+
+/* Preview markdown bao cao (tab 📤 Báo cáo) */
+.report-pre {
+  background: #f8f9fa;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 18px;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 620px;
+  overflow: auto;
+}
 
 .hint { font-size: 12px; color: var(--muted); margin-top: -6px; margin-bottom: 12px; }
 

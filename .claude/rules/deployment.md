@@ -9,23 +9,18 @@ Trong `app.py`:
 - **`DEFAULT_RESET_PASSWORD = "abc123"`**: mật khẩu mặc định reset tài khoản + auto-create owner
 - **`app.secret_key`**: Flask session encryption key (hardcode)
 
-**Khuyến cáo**: app không có authentication system thực thụ (README ghi rõ). Nếu sau này cần production-grade auth → tạo issue riêng.
+Trong `tracker.db` (bảng settings, mới 2026-07-12): token API farm/công ty/GitHub + `import_token` lưu **plaintext trong DB** (nhất quán với stance hardcode hiện tại). API `GET /api/settings` trả về dạng mask `********`; POST giá trị mask = giữ nguyên token cũ.
 
-## .gitignore (khi khởi tạo git)
+## .gitignore hiện tại
 
 ```
 __pycache__/
 *.pyc
-*.egg-info/
-.env
-.vscode/
-
-# Live data files — KHÔNG commit
-tracker.db
-users.db
+.claude/settings.local.json
+backups/          # snapshot DB hằng ngày — không commit
 ```
 
-**Quyết định trước khi commit**: tracker.db chứa dữ liệu sản xuất → hỏi người dùng commit hay gitignore.
+⚠️ **`tracker.db` và `users.db` hiện VẪN đang được git track và push lên GitHub** (users.db chứa password hash). Đề xuất C3 (gỡ bằng `git rm --cached` + gitignore) đã được nêu trong `docs/dexuatcaitien.md` nhưng chủ dự án quyết định **để sau** (2026-07-12). Khi thực hiện: bản cũ vẫn còn trong lịch sử git — cân nhắc đổi mật khẩu mặc định sau đó.
 
 ## Chạy
 
@@ -36,8 +31,9 @@ python app.py        # 0.0.0.0:5000
 
 - Không có build step, không có test runner
 - Không có linter/formatter setup
-- Database (tracker.db, users.db) tạo tự động lần đầu
-- Production: nên dùng WSGI server (gunicorn, etc), không dùng Flask dev server
+- Database (tracker.db, users.db) tạo tự động lần đầu; backup tự động vào `backups/` (daemon thread trong app, không cần cron)
+- Chủ dự án chọn giữ Flask dev server đơn giản (không cài thêm WSGI server) — HTTP outbound dùng `urllib` stdlib, không thêm pip package
+- **Restart server để áp dụng code mới**: server production chạy nền trên port 5000 — sau khi sửa code phải kill process cũ rồi `python app.py` lại (migration tự chạy)
 
 ## Cập nhật code
 
@@ -48,7 +44,7 @@ python app.py        # 0.0.0.0:5000
 
 ## Đặc điểm hiện tại
 
-- Single file `app.py` (~3300 dòng): tất cả routes, business logic, DB helpers
-- No external API calls (tự chứa toàn bộ logic)
-- LAN-only (không qua internet)
-- ~8 tabs UI, vài trăm scripts/owners dữ liệu
+- Single file `app.py` (~4600 dòng): tất cả routes, business logic, DB helpers, integrations, reports, backup
+- Outbound API (mới 2026-07-12, qua `_http_json()` urllib): farm API (fetch kết quả theo Test ID), API hệ thống công ty (danh sách TC), GitHub API (git trees). **Adapter farm/công ty là stub chờ tài liệu API** — cấu hình URL/token trong tab Cài đặt; fallback paste tay dùng được ngay
+- Script phía farm có thể push kết quả: `POST /api/results/import` + header `X-Import-Token` (token đặt trong Cài đặt)
+- LAN-only (không qua internet), 10 tabs UI, ~1200 scripts / 60 tài khoản dữ liệu thật

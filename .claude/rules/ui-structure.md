@@ -5,7 +5,7 @@
 - **`/login`** (`templates/login.html`): Form đăng nhập (username, password). Chuyển `/` nếu thành công.
 - **`/register`** (`templates/register.html`): Form đăng ký (username = active owner, password tuỳ ý). Chỉ chấp nhận owner tồn tại.
 - **`/`** (`templates/index.html`): Tab UI chính (dashboard, nhập kết quả, ghi nhận fix, bảng ưu tiên, so sánh cycle, theo dõi fix, cài đặt). Redirect `/login` nếu chưa auth.
-- **`/admin/<ADMIN_SECRET_KEY>`** (`templates/admin.html`): Tab CRUD admin (Cycle Results, Script viết mới, Fix Log, Assignments, **Tài khoản**, **Owner & Team**). Không yêu cầu login (gate bằng URL key).
+- **`/admin/<ADMIN_SECRET_KEY>`** (`templates/admin.html`): Tab CRUD admin (Cycle Results, Script viết mới, Fix Log, Assignments, **Tài khoản**, **Owner & Team**, **Audit Log**). Không yêu cầu login (gate bằng URL key).
 
 ## Main App (`index.html` + `app.js`)
 
@@ -35,28 +35,33 @@ initAuthUI();        // wire Đổi MK modal, Đăng xuất
 - Button: `#btnDoChangePw`
 - Gọi `POST /api/auth/change-password` → `{current, new}`
 
-### Tabs (8 cái)
+### Tabs (10 cái)
 
 | ID | Tên | Route & Gating | Nội dung |
 |----|-----|---|---|
-| dashboard | Dashboard | GET `/api/dashboard` | Overview pass rate, script, cycle |
-| new-scripts | Script viết mới | POST `/api/new-scripts/*` + `@require_perm` | List, add, edit, delete |
+| dashboard | Dashboard | GET `/api/dashboard` | KPI (kèm flaky, Verify, coverage), Pareto ×2, leaderboard |
+| new-scripts | Script viết mới | POST `/api/new-scripts/*` + `@require_perm` | List, add, edit, bulk-assign |
 | input-results | Nhập kết quả | POST `/api/results` + `@require_perm` | Paste tab-delimited results |
-| input-fix | Ghi nhận Fix | POST `/api/fixes` + `@require_perm` | Paste tab-delimited fixes |
-| priority | Bảng ưu tiên | POST `/api/assignments` + `@require_perm` | Sort, assign owners |
-| cycle-compare | So sánh Cycle | GET `/api/cycle-matrix` | Matrix pass rate × item × cycle |
+| input-fix | Ghi nhận Fix | POST `/api/fixes` + `@require_perm` | Dropdown nhóm root cause + chi tiết |
+| priority | Bảng ưu tiên | POST `/api/assignments` + `@require_perm` | Sort, assign, cột Flaky + Reopen, tier Verify |
+| cycle-compare | So sánh Cycle | GET `/api/script-cycle-matrix` | Matrix pass rate × item × cycle |
 | fix-tracking | Theo dõi Fix | GET `/api/fix-tracking` | List fix + status + trend |
-| settings | Cài đặt | POST `/api/lists/*` + `@require_perm` | Owner, team, test suite, model, settings |
+| reports | 📤 Báo cáo (mới 2026-07-12) | GET `/api/report/daily|weekly` (login) | Sinh markdown daily/weekly + copy button (fallback execCommand cho LAN HTTP) |
+| integrations | 🔗 Đồng bộ (mới 2026-07-12) | POST `/api/integrations/*` + `@require_perm` | Farm fetch theo Test ID, sync/paste công ty + GitHub, đối chiếu 3 chiều |
+| settings | Cài đặt | POST `/api/lists/*`, `/api/settings` + `@require_perm` | Mục tiêu, tiêu chí & KPI, tích hợp & API (token mask), backup, danh mục (suite có cột Đường dẫn script) |
+
+Role user mặc định: KHÔNG có input-results, integrations, settings. Tab reports/integrations load on-demand — không nằm trong polling 15s.
 
 ## Admin App (`admin.html`)
 
-### Tabs (6 cái, lazy-load)
+### Tabs (7 cái, lazy-load)
 1. **Cycle Results**: search, edit, delete results
 2. **Script viết mới**: search, edit, delete, bulk import new scripts
 3. **Fix Log**: search, edit, delete, bulk import fixes
 4. **Assignments**: search, edit, delete, bulk import assignments
 5. **👥 Tài khoản**: list users, role dropdown, permission checkboxes, reset PW, toggle active, delete
 6. **🧑‍🤝‍🧑 Owner & Team**: list owners, add, rename, set team, deactivate, hard-delete
+7. **📜 Audit Log** (mới 2026-07-12): xem lịch sử thao tác (GET `/api/admin/audit-log?key=&q=&limit=`)
 
 Tất cả gated bằng `X-Admin-Key` header hoặc `?key=` query param.
 

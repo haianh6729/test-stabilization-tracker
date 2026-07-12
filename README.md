@@ -123,6 +123,26 @@ Nút "⬇️ Xuất Excel" ở tab Bảng ưu tiên tạo ra file `Test_Stabiliz
 
 Khác với bản Excel dùng công thức trước đây, mọi giá trị trong file này là **số liệu thực tế đã được tính sẵn** (không phải công thức) — nên mở bằng bất kỳ Excel/LibreOffice nào cũng đọc đúng ngay, không lo lỗi công thức. Nên xuất file này định kỳ (VD: cuối mỗi ngày/mỗi cycle) để lưu trữ báo cáo và làm phương án dự phòng: nếu máy chủ gặp sự cố, có thể tạm thời ghi tay vào 2 sheet History_Log/Daily_Fix_Log (đúng định dạng cột) rồi nhập lại vào hệ thống khi hoạt động trở lại.
 
+## Tự động hoá quản lý & báo cáo (mới 2026-07-12)
+
+### 📤 Tab Báo cáo — sinh báo cáo daily/weekly tự động
+Chọn ngày (hoặc tuần) → bấm "Tạo báo cáo" → hệ thống sinh **markdown hoàn chỉnh** từ dữ liệu thật, gồm đủ: pass rate từng Item × từng Model theo ≥3 cycle gần nhất (kèm Δ cải thiện) + pass rate chung, tỉ lệ lỗi liên quan môi trường (Infra/Device) theo cycle, tiến độ hoàn thành viết script, số script viết được & fix được (tổng + chi tiết từng người), và **ước lượng ngày hoàn thành dự án** theo tốc độ 7 ngày gần nhất so với deadline. Bấm "Copy markdown" rồi dán vào group chat/email — chỉ điền thêm nhận định và số liệu farm (điền tay).
+
+### 🔗 Tab Đồng bộ — tích hợp farm / hệ thống công ty / GitHub
+- **Test farm**: nhập danh sách Test ID → fetch kết quả qua API farm (cấu hình URL/token ở Cài đặt; *đang chờ tài liệu API — khi có chỉ cần cập nhật hàm `normalize_farm_rows()`*). Ngoài ra script phía farm có thể tự push kết quả qua `POST /api/results/import` với header `X-Import-Token`.
+- **Hệ thống công ty**: nguồn **tổng số TC cần script (con số động — TC bị SKIP không tính)**. Sync qua API (chờ tài liệu) hoặc paste tay `TC_ID⇥Status` mỗi dòng. Dashboard hiện khối "Tiến độ viết script x/y (%)" theo từng Item.
+- **GitHub repo script**: sync danh sách file nhánh main qua GitHub API, hoặc paste output `git ls-tree -r main --name-only`. Đường dẫn thư mục script của từng Item cấu hình ở Cài đặt → Danh sách Test Suite.
+- **Đối chiếu 3 chiều**: mỗi script DONE phải có status **Performed** bên hệ thống công ty VÀ có **file script thật** trên nhánh main (đúng thư mục Item). Bảng đối chiếu chỉ ra từng dòng lệch + chiều ngược (Performed bên công ty nhưng chưa ghi DONE).
+
+### 🎯 Tiêu chí chất lượng mới (cấu hình ở Cài đặt)
+- **Exit criteria**: script chỉ tính **Done** khi mọi model pass đủ **N cycle liên tiếp** (mặc định 2). Script hết lỗi nhưng chưa đủ chuỗi → tier **"Verify" (đang xác minh)** — không tính "còn lỗi" (không làm phồng số phải fix) nhưng cũng chưa tính Done. Đặt N=1 để trở về hành vi cũ.
+- **Flaky**: script đổi pass↔fail ≥2 lần trong 5 cycle gần nhất được gắn tag 🌀 Flaky (KPI riêng trên Dashboard + cột Reopen ở Bảng ưu tiên) — xử lý riêng thay vì fix lặp lại.
+- **Root cause chuẩn hoá**: form Ghi nhận Fix bắt buộc chọn **nhóm nguyên nhân** (Locator/UI change, Timing/Sync, Test data, Infra/Device, App bug, Script logic, Khác) + mô tả chi tiết → Pareto chính xác, tách được lỗi farm khỏi lỗi script. Fix cũ đã được tự phân nhóm bằng heuristic (sửa được ở trang admin).
+
+### 💾 Backup tự động & 📜 Audit log
+- Mỗi ngày hệ thống tự snapshot `tracker.db` + `users.db` vào `backups/<ngày>/` (giữ 30 bản gần nhất, kỹ thuật sqlite backup an toàn với WAL). Backup tay + cấu hình ở tab Cài đặt.
+- Mọi thao tác sửa/xoá (trang admin, danh mục, settings, sync, backup) được ghi vào **Audit Log** — xem ở trang admin, tab 📜.
+
 ## Lưu ý về bảo mật
 
 - **Login system**: Hệ thống hiện có session-based login với 3 roles + per-tab permissions. Cần đăng nhập để truy cập main app.
@@ -136,7 +156,7 @@ Dữ liệu nằm trong 2 file SQLite:
 - **`tracker.db`** — dữ liệu nghiệp vụ (results, fixes, assignments, owners, models, test suites, v.v.)
 - **`users.db`** — tài khoản + mật khẩu hash
 
-Muốn backup, chỉ cần copy cả 2 file này.
+Hệ thống **tự backup hằng ngày** vào thư mục `backups/<ngày>/` (giữ 30 bản gần nhất) — xem/chạy tay ở tab Cài đặt, mục 💾 Sao lưu. Muốn backup thủ công ngoài hệ thống: copy cả 2 file khi server đã tắt (server đang chạy WAL — dùng nút Backup ngay thay vì copy tay).
 Muốn xuất dữ liệu ra Excel để lưu trữ hoặc gửi báo cáo: dùng nút "Xuất Excel" ở tab Bảng ưu tiên.
 
 ## Giới hạn cần biết
@@ -144,8 +164,9 @@ Muốn xuất dữ liệu ra Excel để lưu trữ hoặc gửi báo cáo: dùn
 - Đây là server chạy trên 1 máy cá nhân (không phải server doanh nghiệp) — phù hợp cho team ~20 người dùng nội bộ trong giờ làm việc, dữ liệu chỉ tồn tại khi máy bạn bật và server đang chạy.
 - Nếu cần dùng lâu dài/ổn định hơn (chạy 24/7, nhiều người dùng hơn, hoặc truy cập từ ngoài văn phòng), nên cân nhắc host trên 1 máy chủ nội bộ cố định hoặc dịch vụ cloud nhỏ (VD: PythonAnywhere, Render, VPS nội bộ công ty) — mã nguồn hiện tại vẫn dùng được, chỉ cần deploy đúng cách.
 - Dashboard tự refresh mỗi 15 giây (gần-real-time), không phải cập nhật tức thời từng giây.
-- Hệ thống đơn file `app.py` (~3300 dòng) — dễ bảo trì + tuỳ chỉnh nhưng không hỗ trợ architecture phức tạp.
+- Hệ thống đơn file `app.py` (~4600 dòng) — dễ bảo trì + tuỳ chỉnh nhưng không hỗ trợ architecture phức tạp.
 - Không có unit test hay CI/CD — test tay qua UI hoặc curl endpoint.
+- Kết nối API farm / hệ thống công ty đang là **khung chờ tài liệu API**: giao diện, cấu hình, luồng xử lý đã xong; khi có tài liệu chỉ cần viết hàm chuyển đổi dữ liệu (~20–50 dòng mỗi adapter). Trước đó dùng chế độ paste tay ở tab 🔗 Đồng bộ.
 
 ## Công nghệ
 
@@ -153,4 +174,5 @@ Muốn xuất dữ liệu ra Excel để lưu trữ hoặc gửi báo cáo: dùn
 - **Frontend**: HTML/CSS/JS thuần (ES6+, no framework)
 - **Export**: openpyxl
 - **Dependencies**: chỉ 2 package chính (`Flask`, `openpyxl`)
-- **Không có**: Node/npm, build step, database ORM, email/SMS, external API calls
+- **Outbound API** (mới 2026-07-12): farm API, API hệ thống công ty, GitHub API — qua `urllib` stdlib, không thêm package
+- **Không có**: Node/npm, build step, database ORM, email/SMS

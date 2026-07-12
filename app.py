@@ -9,7 +9,15 @@ import io
 import csv
 import re
 import functools
-from datetime import datetime, date
+import json
+import os
+import shutil
+import threading
+import time
+import urllib.request
+import urllib.error
+import urllib.parse
+from datetime import datetime, date, timedelta
 from flask import Flask, request, jsonify, render_template, send_file, g, session, redirect
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -27,11 +35,11 @@ DEFAULT_RESET_PASSWORD = "abc123"
 # ------------------------------------------------------------------
 ALL_TABS = [
     "dashboard", "new-scripts", "input-results", "input-fix",
-    "priority", "cycle-compare", "fix-tracking", "settings",
+    "priority", "cycle-compare", "fix-tracking", "reports", "integrations", "settings",
 ]
-# Quyen mac dinh cho user thuong: moi tab TRU Nhap ket qua & Cai dat.
+# Quyen mac dinh cho user thuong: moi tab TRU Nhap ket qua, Dong bo & Cai dat.
 USER_DEFAULT_TABS = [
-    "dashboard", "new-scripts", "input-fix", "priority", "cycle-compare", "fix-tracking",
+    "dashboard", "new-scripts", "input-fix", "priority", "cycle-compare", "fix-tracking", "reports",
 ]
 NS_EXTRA_PERMS = ["ns-assign", "ns-edit"]  # quyen rieng cho tab new-scripts, khong phai tab
 ALL_PERMS = ALL_TABS + NS_EXTRA_PERMS
@@ -41,6 +49,55 @@ ROLE_DEFAULT_PERMS = {
     "user": list(USER_DEFAULT_TABS),
 }
 BOOTSTRAP_ADMIN = "anh.hh"  # tai khoan admin khoi tao mac dinh
+
+# Nhom nguyen nhan goc CHUAN cho form Ghi nhan Fix (dropdown) - theo chien luoc quan ly.
+# "Infra/Device" = loi moi truong/farm, KHONG phai loi script -> tach rieng trong bao cao.
+ROOT_CAUSE_GROUPS = [
+    "Locator/UI change", "Timing/Sync", "Test data",
+    "Infra/Device", "App bug", "Script logic", "Khác",
+]
+
+# Cac setting nhay cam (token/API key): GET /api/settings tra ve mask, POST bo qua gia tri mask.
+SENSITIVE_SETTINGS = {"farm_api_token", "company_api_token", "github_token", "import_token"}
+SETTINGS_MASK = "********"
+
+# Trang thai ben he thong cong ty duoc coi la "da hoan thanh script" (so sanh lowercase).
+# Cap nhat khi co tai lieu API that neu he thong dung tu khac.
+COMPANY_PERFORMED_STATES = {"performed"}
+
+BACKUP_DIR = "backups"
+
+
+# Keyword heuristic de suy NHOM nguyen nhan tu root_cause free text (fix cu / admin bulk
+# import khong co dropdown). Uu tien prefix "<Group> - " (convention team da dung), roi
+# keyword; khong khop gi -> "Khác".
+_ROOT_CAUSE_GROUP_KEYWORDS = [
+    ("Locator/UI change", r"locator|xpath|element|resource[- ]?id|\bui\b|id đổi|doi id|selector"),
+    ("Timing/Sync", r"wait|timing|sleep|time\s*out|timeout|sync|race|delay|cho\b|chậm"),
+    ("Test data", r"test\s*data|du lieu|dữ liệu|account|tai khoan|tài khoản|het han|hết hạn|data\b"),
+    ("Infra/Device", r"infra|device|farm|wifi|\bstp\b|mang\b|mạng|network|treo|disconnect|not free|adb"),
+    ("App bug", r"app\s*bug|loi app|lỗi app|issue app|bug app|app issue"),
+    ("Script logic", r"script|logic|import|exception|traceback|code|hàm|ham\b"),
+]
+
+
+def classify_root_cause_group(text):
+    """Suy nhom nguyen nhan chuan (ROOT_CAUSE_GROUPS) tu root_cause free text."""
+    s = str(text or "").strip()
+    if not s:
+        return "Khác"
+    low = s.lower()
+    # 1) Prefix "<Group> - chi tiet" (hoac "<Group>:") theo convention docs
+    for grp in ROOT_CAUSE_GROUPS:
+        g = grp.lower()
+        if low == g or low.startswith(g + " -") or low.startswith(g + "-") or low.startswith(g + ":"):
+            return grp
+    # 2) Keyword heuristic
+    for grp, pat in _ROOT_CAUSE_GROUP_KEYWORDS:
+        if re.search(pat, low, re.I):
+            return grp
+    return "Khác"
+
 
 app = Flask(__name__)
 # Session cookie (dang nhap). Hardcode cung mo hinh secret hien co (LAN noi bo).
@@ -160,16 +217,64 @@ def init_db():
             created_at TEXT DEFAULT (datetime('now'))
         );
 
+        -- Cache danh sach test case tu HE THONG CONG TY (nguon tong so TC can script,
+        -- status SKIP khong tinh vao tong). source='api' (tu sync) hoac 'manual' (paste tay).
+        CREATE TABLE IF NOT EXISTS company_testcases (
+            tc_id TEXT PRIMARY KEY,
+            item TEXT,
+            status TEXT,
+            raw TEXT,
+            source TEXT,
+            synced_at TEXT DEFAULT (datetime('now'))
+        );
+
+        -- Cache danh sach file script tren nhanh main cua repo GitHub (doi chieu 3 chieu).
+        CREATE TABLE IF NOT EXISTS repo_files (
+            path TEXT PRIMARY KEY,
+            source TEXT,
+            synced_at TEXT DEFAULT (datetime('now'))
+        );
+
+        -- Audit log: ai lam gi luc nao (mutation o admin page, danh muc, sync, backup).
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts TEXT DEFAULT (datetime('now')),
+            username TEXT,
+            action TEXT,
+            target TEXT,
+            detail TEXT
+        );
+
         CREATE INDEX IF NOT EXISTS idx_results_lookup ON results(test_suite, test_case, model, cycle);
         CREATE INDEX IF NOT EXISTS idx_results_cycle ON results(cycle);
         CREATE INDEX IF NOT EXISTS idx_fixes_owner ON fixes(owner);
         CREATE INDEX IF NOT EXISTS idx_assignments_owner ON assignments(owner);
+        CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts);
         """
     )
     defaults = {
         "target_pass_rate": "0.88",
         "deadline_date": "",
         "project_start_date": date.today().isoformat(),
+        # --- Tich hop (dien URL/token khi co tai lieu API; de trong = chua cau hinh) ---
+        "farm_api_url": "",
+        "farm_api_token": "",
+        "import_token": "",
+        "company_api_url": "",
+        "company_api_token": "",
+        "github_api_base": "https://api.github.com",
+        "github_repo": "",       # dang owner/repo
+        "github_branch": "main",
+        "github_token": "",
+        # --- Tieu chi & KPI ---
+        "flaky_window": "5",             # so cycle gan nhat de xet flaky
+        "flaky_min_flips": "2",          # so lan doi pass<->fail toi thieu de coi la flaky
+        "exit_criteria_cycles": "2",     # Done = pass N cycle lien tiep tren moi model
+        "exclude_new_scripts_cycles": "0",  # >0: them pass rate phu loai script moi N cycle dau
+        # --- Backup ---
+        "backup_enabled": "1",
+        "backup_retention": "30",
+        "last_backup_date": "",
     }
     for k, v in defaults.items():
         conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
@@ -195,6 +300,8 @@ def init_db():
         "ALTER TABLE results ADD COLUMN team TEXT",
         "ALTER TABLE owners ADD COLUMN team TEXT",
         "ALTER TABLE fixes ADD COLUMN root_cause TEXT",
+        "ALTER TABLE fixes ADD COLUMN root_cause_group TEXT",
+        "ALTER TABLE test_suites ADD COLUMN script_path TEXT DEFAULT ''",
     ):
         try:
             conn.execute(stmt)
@@ -299,6 +406,16 @@ def init_db():
         """
     )
 
+    # Migration: backfill root_cause_group cho cac fix cu (free text) bang heuristic
+    # classify_root_cause_group(). Chi chay 1 lan cho moi dong (WHERE group IS NULL),
+    # KHONG sua text goc. Dong bi phan loai sai co the sua lai qua admin Fix Log.
+    for r in conn.execute(
+        "SELECT id, root_cause FROM fixes WHERE root_cause_group IS NULL "
+        "AND root_cause IS NOT NULL AND root_cause != ''"
+    ).fetchall():
+        conn.execute("UPDATE fixes SET root_cause_group=? WHERE id=?",
+                     (classify_root_cause_group(r["root_cause"]), r["id"]))
+
     conn.commit()
     conn.close()
 
@@ -355,14 +472,24 @@ def init_users_db():
             (",".join(ROLE_DEFAULT_PERMS["admin"]), BOOTSTRAP_ADMIN),
         )
     conn.commit()
-    # Backfill: dam bao moi tai khoan admin/moderator co du quyen ns-assign/ns-edit,
-    # khong ghi de cac permission tuy chinh khac ho dang co (tai khoan tao truoc khi them
-    # 2 quyen nay se khong tu dong co, vi permissions luu cung tai thoi diem tao).
-    for username, permissions in conn.execute(
-        "SELECT username, permissions FROM users WHERE role IN ('admin','moderator')"
+    # Backfill: dam bao tai khoan cu co du cac quyen MOI theo role (permissions luu CSV
+    # snapshot tai thoi diem tao nen quyen them ve sau khong tu co). CHI APPEND quyen
+    # thieu, khong ghi de/xoa permission tuy chinh ho dang co.
+    #   - admin/moderator: ns-assign/ns-edit + tab moi reports/integrations
+    #   - user: tab moi reports
+    _role_backfill = {
+        "admin": set(NS_EXTRA_PERMS) | {"reports", "integrations"},
+        "moderator": set(NS_EXTRA_PERMS) | {"reports", "integrations"},
+        "user": {"reports"},
+    }
+    for username, role, permissions in conn.execute(
+        "SELECT username, role, permissions FROM users"
     ).fetchall():
+        ensure = _role_backfill.get(role)
+        if not ensure:
+            continue
         current = set(perms_to_list(permissions))
-        missing = set(NS_EXTRA_PERMS) - current
+        missing = ensure - current
         if missing:
             conn.execute("UPDATE users SET permissions=? WHERE username=?",
                          (",".join(sorted(current | missing)), username))
@@ -441,6 +568,66 @@ def perm_error(tab):
     if tab not in u["permissions"]:
         return jsonify({"error": f"Bạn không có quyền dùng chức năng này ({tab})."}), 403
     return None
+
+
+def log_audit(db, action, target="", detail=""):
+    """Ghi 1 dong audit_log (ai / lam gi / len cai gi / chi tiet). KHONG commit -
+    di cung transaction cua mutation goi no (caller commit). An toan goi trong
+    request context; ngoai request (backup thread) truyen username qua detail."""
+    username = "(anonymous)"
+    try:
+        u = current_user()
+        if u:
+            username = u["username"]
+        elif request.headers.get("X-Admin-Key"):
+            username = "admin-key"
+        elif request.headers.get("X-Import-Token"):
+            username = "import-token"
+    except RuntimeError:
+        username = "(system)"  # ngoai request context (backup daemon...)
+    db.execute(
+        "INSERT INTO audit_log (username, action, target, detail) VALUES (?,?,?,?)",
+        (username, action, str(target or ""), str(detail or "")),
+    )
+
+
+def _http_json(url, token="", method="GET", payload=None, timeout=15):
+    """Goi HTTP JSON ra ngoai (farm API / he thong cong ty / GitHub) bang urllib stdlib.
+    Tra ve object da parse JSON; nem RuntimeError voi message tieng Viet de hien thang
+    len UI khi loi (khong ket noi duoc / HTTP status loi / body khong phai JSON)."""
+    headers = {"User-Agent": "test-stabilization-tracker", "Accept": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    body = None
+    if payload is not None:
+        body = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=body, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"API trả về HTTP {e.code} ({e.reason}) — kiểm tra URL/token trong Cài đặt.")
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"Không kết nối được tới API ({e.reason}) — kiểm tra URL/mạng.")
+    except TimeoutError:
+        raise RuntimeError(f"API không phản hồi sau {timeout}s (timeout).")
+    try:
+        return json.loads(raw)
+    except ValueError:
+        raise RuntimeError("API trả về dữ liệu không phải JSON — kiểm tra lại URL endpoint.")
+
+
+def get_setting(db, key, default=""):
+    row = db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    return row["value"] if row and row["value"] is not None else default
+
+
+def get_setting_int(db, key, default):
+    try:
+        return int(float(get_setting(db, key, str(default)) or default))
+    except (ValueError, TypeError):
+        return default
 
 
 def classify_result(state):
@@ -551,6 +738,121 @@ def compute_cycle_trend(db):
         })
         prev_fail, prev_rate = fail_count, rate
     return trend
+
+
+def compute_fix_root_cause_pareto(db, date_from=None, date_to=None):
+    """Pareto theo NHOM nguyen nhan DA XAC NHAN khi fix (fixes.root_cause_group) - khac
+    voi compute_root_cause_pareto (bucket description cua ket qua Fail = 'dang fail vi gi').
+    Loc theo fix_date [date_from, date_to] neu truyen. Tra ve list nhu pareto kia."""
+    q = "SELECT root_cause_group, COUNT(*) c FROM fixes WHERE root_cause_group IS NOT NULL AND root_cause_group != ''"
+    args = []
+    if date_from:
+        q += " AND fix_date >= ?"
+        args.append(date_from)
+    if date_to:
+        q += " AND fix_date <= ?"
+        args.append(date_to)
+    q += " GROUP BY root_cause_group ORDER BY c DESC"
+    rows = db.execute(q, args).fetchall()
+    total = sum(r["c"] for r in rows)
+    out, cum = [], 0
+    for r in rows:
+        pct = (r["c"] / total) if total else 0
+        cum += pct
+        out.append({"group": r["root_cause_group"], "count": r["c"], "pct": pct, "cum_pct": cum})
+    return out
+
+
+def compute_adjusted_trend(db, exclude_n):
+    """Pass rate theo cycle nhung LOAI cac dong cua script dang trong exclude_n cycle DAU
+    TIEN cua chinh no (script moi chua on dinh khong keo tut pass rate chung - B2).
+    Tra ve {cycle: pass_rate_or_None}."""
+    rows = db.execute(
+        """
+        SELECT test_suite, test_case, cycle, COUNT(*) as total,
+               SUM(CASE WHEN LOWER(TRIM(state)) IN ('pass','check','manual check') THEN 1 ELSE 0 END) as pass_like,
+               SUM(CASE WHEN LOWER(TRIM(state))='na' THEN 1 ELSE 0 END) as na
+        FROM results GROUP BY test_suite, test_case, cycle
+        """
+    ).fetchall()
+    first_cycle = {}
+    for r in rows:
+        k = (r["test_suite"], r["test_case"])
+        first_cycle[k] = min(first_cycle.get(k, r["cycle"]), r["cycle"])
+    agg = {}
+    for r in rows:
+        k = (r["test_suite"], r["test_case"])
+        if r["cycle"] < first_cycle[k] + exclude_n:
+            continue  # script con "moi" tai cycle nay -> loai khoi pass rate dieu chinh
+        a = agg.setdefault(r["cycle"], {"total": 0, "pass": 0, "na": 0})
+        a["total"] += r["total"]
+        a["pass"] += r["pass_like"]
+        a["na"] += r["na"]
+    out = {}
+    for cyc, a in agg.items():
+        denom = a["total"] - a["na"]
+        out[cyc] = (a["pass"] / denom) if denom > 0 else None
+    return out
+
+
+def compute_coverage(db):
+    """Tien do phu script so voi TONG DONG tu he thong cong ty (cache company_testcases).
+    total_needed = so TC status != SKIP. done = so TC DONE trong new_scripts VA nam trong
+    danh sach can lam (khong SKIP ben cong ty). DONE ngoai danh sach -> out_of_plan.
+    Cache rong -> {"configured": False} (KHONG fallback ve con so cung nao)."""
+    comp_rows = db.execute("SELECT tc_id, item, status, synced_at FROM company_testcases").fetchall()
+    done_rows = db.execute("SELECT tc_id, item FROM new_scripts WHERE status='DONE'").fetchall()
+    if not comp_rows:
+        return {"configured": False, "done_recorded": len(done_rows)}
+
+    def norm(tc):
+        return str(tc or "").strip().lower()
+
+    needed = {}   # tc_id_norm -> item
+    skip_ids = set()
+    for r in comp_rows:
+        item = (r["item"] or "").strip() or item_from_tc_id(r["tc_id"]) or "Unknown"
+        if (r["status"] or "").strip().upper() == "SKIP":
+            skip_ids.add(norm(r["tc_id"]))
+        else:
+            needed[norm(r["tc_id"])] = item
+
+    done_in_plan = set()
+    out_of_plan = []
+    done_by_item = {}
+    for r in done_rows:
+        key = norm(r["tc_id"])
+        if key in needed:
+            done_in_plan.add(key)
+            it = needed[key]
+            done_by_item[it] = done_by_item.get(it, 0) + 1
+        else:
+            out_of_plan.append(r["tc_id"])  # bi SKIP ben cong ty hoac khong co trong danh sach
+
+    needed_by_item = {}
+    for it in needed.values():
+        needed_by_item[it] = needed_by_item.get(it, 0) + 1
+
+    by_item = [
+        {
+            "item": it, "needed": n, "done": done_by_item.get(it, 0),
+            "pct": (done_by_item.get(it, 0) / n) if n else 0,
+        }
+        for it, n in sorted(needed_by_item.items())
+    ]
+    total_needed = len(needed)
+    done_n = len(done_in_plan)
+    synced_at = max((r["synced_at"] or "" for r in comp_rows), default="")
+    return {
+        "configured": True,
+        "total_needed": total_needed,
+        "skip": len(skip_ids),
+        "done": done_n,
+        "pct": (done_n / total_needed) if total_needed else 0,
+        "out_of_plan": len(out_of_plan),
+        "by_item": by_item,
+        "synced_at": synced_at,
+    }
 
 
 def compute_script_cycle_matrix(db, group_by_model=False):
@@ -969,10 +1271,19 @@ def api_latest_cycle():
 @app.route("/api/lists", methods=["GET"])
 def api_lists():
     db = get_db()
-    test_suites = [r["name"] for r in db.execute("SELECT name FROM test_suites ORDER BY name")]
+    suite_rows = db.execute("SELECT name, script_path FROM test_suites ORDER BY name").fetchall()
+    test_suites = [r["name"] for r in suite_rows]
+    # Kem script_path (duong dan thu muc script tren repo GitHub) cho bang Cai dat + doi chieu.
+    test_suites_detail = [{"name": r["name"], "script_path": r["script_path"] or ""} for r in suite_rows]
     models = get_models_list(db)
     owners = [dict(r) for r in db.execute("SELECT name, active, team FROM owners ORDER BY name")]
-    return jsonify({"test_suites": test_suites, "models": models, "owners": owners})
+    return jsonify({
+        "test_suites": test_suites,
+        "test_suites_detail": test_suites_detail,
+        "models": models,
+        "owners": owners,
+        "root_cause_groups": ROOT_CAUSE_GROUPS,
+    })
 
 
 @app.route("/api/lists/test_suites", methods=["POST"])
@@ -984,6 +1295,7 @@ def add_test_suite():
         return jsonify({"error": "Ten khong duoc rong"}), 400
     db = get_db()
     db.execute("INSERT OR IGNORE INTO test_suites (name) VALUES (?)", (name,))
+    log_audit(db, "lists.suite_add", target=name)
     db.commit()
     return jsonify({"status": "ok"})
 
@@ -997,6 +1309,7 @@ def edit_test_suite(old_name):
         if used:
             return jsonify({"error": f"Khong the xoa: da co {used} ket qua dung Test suite nay. Doi ten thay vi xoa."}), 400
         db.execute("DELETE FROM test_suites WHERE name=?", (old_name,))
+        log_audit(db, "lists.suite_delete", target=old_name)
         db.commit()
         return jsonify({"status": "deleted"})
     data = request.get_json(force=True)
@@ -1008,8 +1321,24 @@ def edit_test_suite(old_name):
     db.execute("INSERT OR IGNORE INTO test_suites (name) VALUES (?)", (new_name,))
     db.execute("UPDATE results SET test_suite=? WHERE test_suite=?", (new_name, old_name))
     db.execute("UPDATE fixes SET test_suite=? WHERE test_suite=?", (new_name, old_name))
+    log_audit(db, "lists.suite_rename", target=old_name, detail=f"-> {new_name}")
     db.commit()
     return jsonify({"status": "renamed", "affected_results": db.total_changes})
+
+
+@app.route("/api/lists/test_suites/<path:name>/path", methods=["PUT"])
+@require_perm("settings")
+def set_suite_script_path(name):
+    """Gan/cap nhat duong dan thu muc script cua 1 Item tren repo GitHub (nhanh main).
+    Dung khi doi chieu 3 chieu: file script cua Item phai nam trong thu muc nay."""
+    data = request.get_json(force=True)
+    script_path = (data.get("script_path") or "").strip().strip("/")
+    db = get_db()
+    db.execute("INSERT OR IGNORE INTO test_suites (name) VALUES (?)", (name,))
+    db.execute("UPDATE test_suites SET script_path=? WHERE name=?", (script_path, name))
+    log_audit(db, "lists.suite_path", target=name, detail=script_path)
+    db.commit()
+    return jsonify({"status": "ok", "script_path": script_path})
 
 
 @app.route("/api/lists/models", methods=["POST"])
@@ -1022,6 +1351,7 @@ def add_model():
     db = get_db()
     max_order = db.execute("SELECT MAX(sort_order) m FROM models").fetchone()["m"] or 0
     db.execute("INSERT OR IGNORE INTO models (name, sort_order) VALUES (?, ?)", (name, max_order + 1))
+    log_audit(db, "lists.model_add", target=name)
     db.commit()
     return jsonify({"status": "ok"})
 
@@ -1035,6 +1365,7 @@ def edit_model(old_name):
         if used:
             return jsonify({"error": f"Khong the xoa: da co {used} ket qua dung Model nay. Doi ten (thay the) thay vi xoa."}), 400
         db.execute("DELETE FROM models WHERE name=?", (old_name,))
+        log_audit(db, "lists.model_delete", target=old_name)
         db.commit()
         return jsonify({"status": "deleted"})
     data = request.get_json(force=True)
@@ -1047,6 +1378,7 @@ def edit_model(old_name):
     db.execute("INSERT OR IGNORE INTO models (name, sort_order) VALUES (?, ?)", (new_name, order))
     db.execute("UPDATE results SET model=? WHERE model=?", (new_name, old_name))
     db.execute("UPDATE fixes SET model_fixed=? WHERE model_fixed=?", (new_name, old_name))
+    log_audit(db, "lists.model_rename", target=old_name, detail=f"-> {new_name}")
     db.commit()
     return jsonify({"status": "renamed (thay the model cu bang model moi, giu nguyen lich su ket qua)"})
 
@@ -1061,6 +1393,7 @@ def owner_op_add(db, name, team):
     db.execute("INSERT OR IGNORE INTO owners (name, active, team) VALUES (?, 1, ?)", (name, team))
     if team:
         db.execute("UPDATE owners SET team=? WHERE name=?", (team, name))
+    log_audit(db, "owner.add", target=name, detail=f"team={team}")
     db.commit()
     # Tao tai khoan mat dinh cho owner moi (neu chua co)
     udb = get_users_db()
@@ -1072,6 +1405,7 @@ def owner_op_add(db, name, team):
 def owner_op_set_team(db, name, team):
     db.execute("INSERT OR IGNORE INTO owners (name, active) VALUES (?, 1)", (name,))
     db.execute("UPDATE owners SET team=? WHERE name=?", (team, name))
+    log_audit(db, "owner.set_team", target=name, detail=f"team={team}")
     db.commit()
     return {"status": "ok", "team": team}, 200
 
@@ -1087,6 +1421,7 @@ def owner_op_rename(db, old_name, new_name):
     db.execute("INSERT OR IGNORE INTO owners (name, active, team) VALUES (?, ?, ?)", (new_name, old_active, old_team))
     db.execute("UPDATE fixes SET owner=? WHERE owner=?", (new_name, old_name))
     db.execute("UPDATE assignments SET owner=? WHERE owner=?", (new_name, old_name))
+    log_audit(db, "owner.rename", target=old_name, detail=f"-> {new_name}")
     db.commit()
     # Dong bo: doi ten tai khoan tuong ung (neu co) de username khong lech voi owner.
     udb = get_users_db()
@@ -1100,6 +1435,7 @@ def owner_op_rename(db, old_name, new_name):
 def owner_op_deactivate(db, name):
     # Soft-delete (deactivate) de giu lich su fix; dong bo vo hieu hoa tai khoan.
     db.execute("UPDATE owners SET active=0 WHERE name=?", (name,))
+    log_audit(db, "owner.deactivate", target=name)
     db.commit()
     udb = get_users_db()
     udb.execute("UPDATE users SET active=0 WHERE username=?", (name,))
@@ -1115,6 +1451,7 @@ def owner_op_hard_delete(db, name):
     if refs:
         return {"error": f"Khong the xoa han: owner con {refs} tham chieu (ket qua/fix/assignment). Dung 'Ngung hoat dong' thay the."}, 400
     db.execute("DELETE FROM owners WHERE name=?", (name,))
+    log_audit(db, "owner.hard_delete", target=name)
     db.commit()
     udb = get_users_db()
     udb.execute("DELETE FROM users WHERE username=?", (name,))
@@ -1163,17 +1500,31 @@ def api_settings():
         if err:
             return err
         data = request.get_json(force=True)
+        changed = []
         for k, v in data.items():
             if k == "_owner":
+                continue
+            # Token nhay cam: client gui lai gia tri mask nghia la "khong doi" -> bo qua.
+            if k in SENSITIVE_SETTINGS and str(v) == SETTINGS_MASK:
                 continue
             db.execute(
                 "INSERT INTO settings (key, value) VALUES (?, ?) "
                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                 (k, str(v)),
             )
+            changed.append(k)
+        if changed:
+            log_audit(db, "settings.update", detail="keys: " + ", ".join(sorted(changed)))
         db.commit()
     rows = db.execute("SELECT key, value FROM settings").fetchall()
-    return jsonify({r["key"]: r["value"] for r in rows})
+    out = {}
+    for r in rows:
+        # Khong tra token plaintext ve moi client dang nhap - mask neu da co gia tri.
+        if r["key"] in SENSITIVE_SETTINGS and r["value"]:
+            out[r["key"]] = SETTINGS_MASK
+        else:
+            out[r["key"]] = r["value"]
+    return jsonify(out)
 
 
 # ------------------------------------------------------------------
@@ -1385,37 +1736,26 @@ def api_bulk_assign_new_scripts():
 # ------------------------------------------------------------------
 # Results (History_Log equivalent)
 # ------------------------------------------------------------------
-@app.route("/api/results", methods=["POST"])
-@require_perm("input-results")
-def api_add_results():
-    """
-    Accepts either:
-    { "rows": [ {cycle, cycle_date, test_id, model, test_suite, test_case, state, description, author, team}, ... ], "created_by": "name" }
+def insert_result_rows(db, rows, created_by):
+    """Chen danh sach row ket qua vao bang results (logic dung chung cho paste UI,
+    /api/results/import va farm fetch). Moi row: {cycle_date?, test_id, model, test_suite,
+    test_case, state, description?, author?, team?}.
 
-    test_suite/test_case duoc gui len o dang tho (co the la duong dan day du, ten file
-    .ts/.py, hoac bi dien nham) - server tu trich xuat lai ten chuan:
-      - test_case: lay basename, bo duoi ".py"
-      - test_suite: uu tien suy tu tien to ten test_case (Browser/Internet->Internet,
-        Keyboard/SKBD->Keyboard, Weather->Weather, Wallpaper->Wallpaper, SM->SamsungMember,
-        Reminder->Reminder, NowBrief->Now-brief), fallback parse cot tho neu khong khop.
-    State "RUNNING" (chua chay xong) se bi bo qua, khong luu vao database.
-    Neu co "author": tu dong dang ky owner + gan author do lam nguoi "dang phu trach"
-    (assignment) cho script trong Bang uu tien - ghi de moi lan nhap moi (phan anh dung
-    ai vua cham vao script nay gan nhat), khong anh huong lich su fix (Daily_Fix_Log).
+    KHONG commit va KHONG recompute_cycles - caller tu lam sau khi chen xong.
+    Tra ve dict {inserted, skipped_running, skipped_duplicate, duplicates, errors, warnings}.
     """
-    payload = request.get_json(force=True)
-    rows = payload.get("rows", [])
-    u = current_user()
-    created_by = str(payload.get("created_by") or "").strip() or (u["username"] if u else "(unknown)")
-    if not rows:
-        return jsonify({"error": "No rows provided"}), 400
+    min_row = db.execute(
+        "SELECT MIN(cycle_date) d FROM results WHERE cycle_date IS NOT NULL AND cycle_date != ''"
+    ).fetchone()
+    existing_min_date = min_row["d"] if min_row else None
 
-    db = get_db()
     inserted = 0
     skipped_running = 0
     skipped_duplicate = 0
     errors = []
     duplicates = []
+    warnings = []
+    backdated = False
     for i, row in enumerate(rows):
         try:
             model = normalize_model_name(str(row["model"]).strip())
@@ -1451,6 +1791,8 @@ def api_add_results():
             # Cycle_date uu tien suy tu ngay ma hoa trong Test ID (VD 260706-... -> 2026-07-06);
             # neu Test ID khong ma hoa ngay thi dung ngay chay nguoi dung nhap (fallback).
             cycle_date = extract_date_from_test_id(test_id) or str(row.get("cycle_date") or date.today().isoformat())
+            if existing_min_date and cycle_date < existing_min_date:
+                backdated = True
             # Cycle (so thu tu) se duoc danh so lai theo ngay o cuoi ham -> dat tam 0.
             cycle = 0
             author = str(row.get("author") or "").strip()
@@ -1480,16 +1822,53 @@ def api_add_results():
             inserted += 1
         except Exception as e:
             errors.append({"row_index": i, "error": str(e), "row": row})
-    # Danh so lai cycle theo ngay sau khi da chen xong (moi ngay = 1 cycle, tang dan).
-    recompute_cycles(db)
-    db.commit()
-    return jsonify({
+
+    if backdated and inserted:
+        warnings.append(
+            "Có kết quả với ngày SỚM HƠN dữ liệu hiện có — toàn bộ số cycle sẽ được đánh lại "
+            "theo ngày, các fix đã ghi 'fixed_after_cycle' có thể lệch số cycle. Kiểm tra lại tab Theo dõi Fix."
+        )
+    return {
         "inserted": inserted,
         "skipped_running": skipped_running,
         "skipped_duplicate": skipped_duplicate,
         "duplicates": duplicates,
         "errors": errors,
-    })
+        "warnings": warnings,
+    }
+
+
+@app.route("/api/results", methods=["POST"])
+@require_perm("input-results")
+def api_add_results():
+    """
+    Accepts:
+    { "rows": [ {cycle, cycle_date, test_id, model, test_suite, test_case, state, description, author, team}, ... ], "created_by": "name" }
+
+    test_suite/test_case duoc gui len o dang tho (co the la duong dan day du, ten file
+    .ts/.py, hoac bi dien nham) - server tu trich xuat lai ten chuan:
+      - test_case: lay basename, bo duoi ".py"
+      - test_suite: uu tien suy tu tien to ten test_case (Browser/Internet->Internet,
+        Keyboard/SKBD->Keyboard, Weather->Weather, Wallpaper->Wallpaper, SM->SamsungMember,
+        Reminder->Reminder, NowBrief->Now-brief), fallback parse cot tho neu khong khop.
+    State "RUNNING" (chua chay xong) se bi bo qua, khong luu vao database.
+    Neu co "author": tu dong dang ky owner + gan author do lam nguoi "dang phu trach"
+    (assignment) cho script trong Bang uu tien - ghi de moi lan nhap moi (phan anh dung
+    ai vua cham vao script nay gan nhat), khong anh huong lich su fix (Daily_Fix_Log).
+    """
+    payload = request.get_json(force=True)
+    rows = payload.get("rows", [])
+    u = current_user()
+    created_by = str(payload.get("created_by") or "").strip() or (u["username"] if u else "(unknown)")
+    if not rows:
+        return jsonify({"error": "No rows provided"}), 400
+
+    db = get_db()
+    summary = insert_result_rows(db, rows, created_by)
+    # Danh so lai cycle theo ngay sau khi da chen xong (moi ngay = 1 cycle, tang dan).
+    recompute_cycles(db)
+    db.commit()
+    return jsonify(summary)
 
 
 @app.route("/api/results", methods=["GET"])
@@ -1509,14 +1888,26 @@ def api_get_results():
 @require_perm("input-fix")
 def api_add_fix():
     row = request.get_json(force=True)
-    # root_cause (nguyen nhan goc cua loi) la BAT BUOC - moi lan ghi nhan fix deu phai neu ro.
-    required = ["fix_date", "owner", "test_suite", "test_case", "model_fixed", "fixed_after_cycle", "root_cause"]
+    required = ["fix_date", "owner", "test_suite", "test_case", "model_fixed", "fixed_after_cycle"]
     for f in required:
         if not row.get(f) and row.get(f) != 0:
             return jsonify({"error": "Thieu truong bat buoc: " + f}), 400
+
+    # Root cause (BAT BUOC): uu tien dang chuan hoa {root_cause_group + root_cause_detail}
+    # tu dropdown (A3); van chap nhan root_cause free text cu (bulk import/script) -> tu suy
+    # group bang heuristic. Luon luu CA root_cause_group (cot moi) VA root_cause (text cu,
+    # compose "Group - detail") de moi consumer cu khong doi.
+    group = str(row.get("root_cause_group") or "").strip()
+    detail = str(row.get("root_cause_detail") or "").strip()
     root_cause = str(row.get("root_cause") or "").strip()
-    if not root_cause:
-        return jsonify({"error": "Root cause (nguyen nhan loi) la bat buoc, khong duoc de trong"}), 400
+    if group:
+        if group not in ROOT_CAUSE_GROUPS:
+            return jsonify({"error": "Nhóm nguyên nhân không hợp lệ. Chọn 1 trong: " + ", ".join(ROOT_CAUSE_GROUPS)}), 400
+        root_cause = f"{group} - {detail}" if detail else group
+    elif root_cause:
+        group = classify_root_cause_group(root_cause)
+    else:
+        return jsonify({"error": "Root cause (nguyên nhân lỗi) là bắt buộc — chọn nhóm nguyên nhân và mô tả chi tiết."}), 400
     db = get_db()
     owner_name = row["owner"].strip()
     test_suite = row["test_suite"].strip()
@@ -1535,8 +1926,8 @@ def api_add_fix():
     ).fetchone()
     if existing:
         db.execute(
-            "UPDATE fixes SET fix_date=?, note=?, root_cause=? WHERE id=?",
-            (row["fix_date"], note, root_cause, existing["id"]),
+            "UPDATE fixes SET fix_date=?, note=?, root_cause=?, root_cause_group=? WHERE id=?",
+            (row["fix_date"], note, root_cause, group, existing["id"]),
         )
         db.commit()
         return jsonify({
@@ -1545,9 +1936,9 @@ def api_add_fix():
         })
 
     db.execute(
-        "INSERT INTO fixes (fix_date, owner, test_suite, test_case, model_fixed, fixed_after_cycle, note, root_cause) "
-        "VALUES (?,?,?,?,?,?,?,?)",
-        (row["fix_date"], owner_name, test_suite, test_case, model_fixed, fixed_after_cycle, note, root_cause),
+        "INSERT INTO fixes (fix_date, owner, test_suite, test_case, model_fixed, fixed_after_cycle, note, root_cause, root_cause_group) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        (row["fix_date"], owner_name, test_suite, test_case, model_fixed, fixed_after_cycle, note, root_cause, group),
     )
     db.commit()
     return jsonify({"status": "ok"})
@@ -1628,6 +2019,7 @@ def compute_fix_tracking(db):
             "test_suite": suite, "test_case": case, "model_fixed": model_fixed,
             "fixed_after_cycle": after_cycle, "note": f["note"],
             "root_cause": (f["root_cause"] if "root_cause" in f.keys() else "") or "",
+            "root_cause_group": (f["root_cause_group"] if "root_cause_group" in f.keys() else "") or "",
             "status": status, "status_label": FIX_STATUS_LABEL[status],
             "next_cycle_after_fix": next_cycle,
             "runs_after": len(after_rows), "fails_after": n_fail_after,
@@ -1688,8 +2080,43 @@ def get_script_priority(db):
 
     fail_count = tổng số lần Fail của script này trên tất cả các model qua tất cả các cycle
     (không chỉ cycle gần nhất) — để owner biết bao nhiêu lần đã chạy xong Fail.
+
+    Exit criteria (B3): script chỉ "Done" khi MỌI model nó từng chạy đều Pass ở
+    N cycle gần nhất liên tiếp (N = setting exit_criteria_cycles, mặc định 2; model chạy
+    chưa đủ N lần -> chưa Done). Cycle mới nhất không fail nhưng chưa đạt N -> tier "Verify".
+
+    Flaky (A2): script đổi trạng thái pass<->fail >= flaky_min_flips lần trong
+    flaky_window cycle gần nhất mà nó CÓ CHẠY -> is_flaky. reopen_count = số lần
+    Pass->Fail trên toàn lịch sử (script "tái lỗi" sau khi đã xanh).
     """
     total_models = len(get_models_list(db)) or 5
+    exit_n = max(1, get_setting_int(db, "exit_criteria_cycles", 2))
+    flaky_window = max(2, get_setting_int(db, "flaky_window", 5))
+    flaky_min_flips = max(1, get_setting_int(db, "flaky_min_flips", 2))
+
+    # Chuoi verdict theo cycle cua tung (script, model) va tung script (gop moi model).
+    # Verdict cua 1 (model, cycle) = ket qua cua LAN CHAY CUOI CUNG trong cycle do
+    # (id lon nhat) - NHAT QUAN voi get_latest_status/tier cu: fail roi re-run pass
+    # trong cung cycle thi cycle do tinh Pass. (N=1 => Done trung khop hanh vi cu.)
+    # Dung chung cho ca exit criteria (per-model) lan flaky/reopen (per-script).
+    model_seq = {}   # (suite, case, model) -> [(cycle, fail_bool), ...] theo cycle tang dan
+    script_seq = {}  # (suite, case) -> {cycle: fail_bool}
+    for row in db.execute(
+        """
+        SELECT test_suite, test_case, model, cycle, result FROM (
+            SELECT *, ROW_NUMBER() OVER (
+                PARTITION BY test_suite, test_case, model, cycle
+                ORDER BY id DESC
+            ) as rn FROM results
+        ) WHERE rn = 1 ORDER BY cycle
+        """
+    ).fetchall():
+        failed = row["result"] == "Fail"
+        model_seq.setdefault((row["test_suite"], row["test_case"], row["model"]), []).append(
+            (row["cycle"], failed)
+        )
+        sc = script_seq.setdefault((row["test_suite"], row["test_case"]), {})
+        sc[row["cycle"]] = sc.get(row["cycle"], False) or failed
 
     # Tính tổng fail_count (tất cả rows Fail) VÀ số model KHÁC NHAU từng fail (độ rộng lỗi)
     # cho mỗi script — cả hai đều tính trên TẤT CẢ model & TẤT CẢ cycle đã chạy.
@@ -1734,7 +2161,15 @@ def get_script_priority(db):
         # để phản ánh ưu tiên fix ngay bây giờ
         fail_latest = sum(1 for res in a["models"].values() if res == "Fail")
         if fail_latest == 0:
-            tier = "Done"
+            # Exit criteria: moi model tung chay phai Pass >= exit_n cycle GAN NHAT lien tiep.
+            # Chua du du lieu / chua du chuoi pass -> "Verify" (dang xac minh, chua tinh Done).
+            meets_exit = True
+            for m in a["models"]:
+                seq = model_seq.get((suite, case, m), [])
+                if len(seq) < exit_n or any(failed for _cyc, failed in seq[-exit_n:]):
+                    meets_exit = False
+                    break
+            tier = "Done" if meets_exit else "Verify"
         elif fail_latest >= max(total_models - 1, 2):
             tier = "P0"
         elif fail_latest == max(total_models - 2, 1):
@@ -1750,6 +2185,17 @@ def get_script_priority(db):
         # Case vừa fail nhiều lần vừa fail trên nhiều model -> điểm cao nhất -> ưu tiên trước.
         priority_score = fail * breadth
         current_owner = assignments.get((suite, case)) or ""
+
+        # Flaky + reopen tu chuoi verdict theo cycle cua script (gop moi model)
+        verdicts = [failed for _cyc, failed in sorted(script_seq.get((suite, case), {}).items())]
+        flips_total = sum(1 for j in range(1, len(verdicts)) if verdicts[j] != verdicts[j - 1])
+        window = verdicts[-flaky_window:]
+        flip_count = sum(1 for j in range(1, len(window)) if window[j] != window[j - 1])
+        reopen_count = sum(
+            1 for j in range(1, len(verdicts)) if verdicts[j] and not verdicts[j - 1]
+        )  # số lần Pass -> Fail (tái lỗi)
+        is_flaky = flip_count >= flaky_min_flips
+
         out.append({
             "test_suite": suite, "test_case": case,
             "fail_count": fail,  # Tổng lần Fail qua tất cả cycle & model
@@ -1762,6 +2208,10 @@ def get_script_priority(db):
             "failing_models": failing_models,
             "current_owner": current_owner,
             "team": owner_team.get(current_owner, ""),  # Team (nhóm nhỏ) của người phụ trách
+            "is_flaky": is_flaky,
+            "flip_count": flip_count,       # số lần đổi pass<->fail trong flaky_window cycle gần nhất
+            "flips_total": flips_total,     # tổng số lần đổi trên toàn lịch sử
+            "reopen_count": reopen_count,   # số lần Pass->Fail toàn lịch sử (tái lỗi)
         })
     return out
 
@@ -1781,7 +2231,9 @@ def get_owner_stats(db, priority=None):
         if not r["owner"]:
             continue
         p = priority_map.get((r["test_suite"], r["test_case"]))
-        if p and p["priority_tier"] != "Done":
+        # Open workload = script DANG con loi that su (P0-P3); Verify khong tinh
+        # (khong can fix, chi cho du chuoi pass de len Done).
+        if p and p["priority_tier"] in ("P0", "P1", "P2", "P3"):
             open_workload[r["owner"]] = open_workload.get(r["owner"], 0) + 1
 
     owner_stats = []
@@ -1860,9 +2312,10 @@ def api_priority():
     db = get_db()
     data = get_script_priority(db)
     # Sắp xếp CHÍNH theo điểm ưu tiên (fail_count × breadth) giảm dần — case lỗi nhiều
-    # nhất & rộng nhất lên đầu. Done (hết lỗi) luôn xuống cuối. Rồi tie-break theo tổng fail.
+    # nhất & rộng nhất lên đầu. Done (hết lỗi) luôn xuống cuối, Verify (đang xác minh)
+    # ngay trên Done. Rồi tie-break theo tổng fail.
     data.sort(key=lambda x: (
-        1 if x["priority_tier"] == "Done" else 0,
+        {"Done": 2, "Verify": 1}.get(x["priority_tier"], 0),
         -x["priority_score"], -x["fail_count"],
         x["test_suite"], x["test_case"],
     ))
@@ -1879,7 +2332,7 @@ def api_script_cycle_matrix():
     db = get_db()
     group_by_model = request.args.get("by_model") in ("1", "true", "True")
     data = compute_script_cycle_matrix(db, group_by_model=group_by_model)
-    tier_order = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "Done": 4, "": 5}
+    tier_order = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "Verify": 4, "Done": 5, "": 6}
     trend_order = {"regressed": 0, "improved": 1, "unchanged": 2, "insufficient_data": 3}
     data["scripts"].sort(key=lambda s: (
         trend_order.get(s["overall_trend"], 9),
@@ -1984,6 +2437,7 @@ def api_handover():
             "UPDATE assignments SET owner=?, assigned_date=? WHERE test_suite=? AND test_case=?",
             (to_owner, date.today().isoformat(), suite, case),
         )
+    log_audit(db, "handover", target=from_owner, detail=f"-> {to_owner}, scripts={len(targets)}")
     db.commit()
     return jsonify({"status": "ok", "reassigned_count": len(targets), "scripts": [{"test_suite": s, "test_case": c} for s, c in targets]})
 
@@ -2021,28 +2475,34 @@ def api_dashboard():
 
     # ---- Priority tier distribution ----
     priority = get_script_priority(db)
-    tier_counts = {"P0": 0, "P1": 0, "P2": 0, "P3": 0, "Done": 0}
+    tier_counts = {"P0": 0, "P1": 0, "P2": 0, "P3": 0, "Verify": 0, "Done": 0}
     for p in priority:
         tier_counts[p["priority_tier"]] += 1
 
     # ---- Root cause pareto (đã GOM NHOM theo nguyên nhân, không group text thô) ----
     root_causes = compute_root_cause_pareto(db, limit=15)
+    # ---- Pareto theo nhóm nguyên nhân ĐÃ XÁC NHẬN từ fix log (A3) ----
+    fix_root_causes = compute_fix_root_cause_pareto(db)
 
     # ---- Owner stats (KPI leaderboard) ----
     owner_stats = get_owner_stats(db, priority)
 
     # ---- Test suite (item) stats ----
+    # "still_failing" = script DANG co loi (P0-P3). Verify (het loi nhung chua du chuoi
+    # pass) khong tinh vao "con loi" nhung cung chua tinh Done -> theo doi rieng.
     suite_rows = {}
     for p in priority:
-        s = suite_rows.setdefault(p["test_suite"], {"total": 0, "done": 0, "fail_scripts": 0})
+        s = suite_rows.setdefault(p["test_suite"], {"total": 0, "done": 0, "verify": 0, "fail_scripts": 0})
         s["total"] += 1
         if p["priority_tier"] == "Done":
             s["done"] += 1
+        elif p["priority_tier"] == "Verify":
+            s["verify"] += 1
         else:
             s["fail_scripts"] += 1
     suite_stats = [
         {"test_suite": k, "total_scripts": v["total"], "done": v["done"],
-         "still_failing": v["fail_scripts"],
+         "verify": v["verify"], "still_failing": v["fail_scripts"],
          "done_pct": (v["done"] / v["total"]) if v["total"] else 0}
         for k, v in suite_rows.items()
     ]
@@ -2054,7 +2514,10 @@ def api_dashboard():
     target_rate = float(settings.get("target_pass_rate") or 0.88)
     deadline = settings.get("deadline_date") or ""
     total_scripts = len(priority)
-    still_failing = sum(1 for p in priority if p["priority_tier"] != "Done")
+    # "Con loi" = dang co fail that su (P0-P3). Verify khong tinh (khong co gi de fix,
+    # chi cho du chuoi pass) -> khong lam phong fails_to_fix / required_rate_per_day.
+    still_failing = sum(1 for p in priority if p["priority_tier"] in ("P0", "P1", "P2", "P3"))
+    verify_count = tier_counts["Verify"]
     target_fail_allowed = int(total_scripts * (1 - target_rate))
     fails_to_fix = max(0, still_failing - target_fail_allowed)
     days_remaining = None
@@ -2069,6 +2532,22 @@ def api_dashboard():
             pass
 
     current_pass_rate = trend[-1]["pass_rate"] if trend else None
+
+    # ---- Flaky KPI (A2) ----
+    flaky_count = sum(1 for p in priority if p.get("is_flaky"))
+    flaky_rate = (flaky_count / total_scripts) if total_scripts else None
+
+    # ---- Pass rate điều chỉnh: loại script mới trong N cycle đầu (B2, tuỳ chọn) ----
+    exclude_n = get_setting_int(db, "exclude_new_scripts_cycles", 0)
+    current_pass_rate_adjusted = None
+    if exclude_n > 0 and trend:
+        adjusted = compute_adjusted_trend(db, exclude_n)
+        for t in trend:
+            t["pass_rate_adjusted"] = adjusted.get(t["cycle"])
+        current_pass_rate_adjusted = trend[-1].get("pass_rate_adjusted")
+
+    # ---- Coverage: tiến độ viết script so với tổng động từ hệ thống công ty (B2) ----
+    coverage = compute_coverage(db)
 
     # ---- Automated insights (rule-based) ----
     insights = []
@@ -2092,6 +2571,10 @@ def api_dashboard():
         insights.append(f"Nguyen nhan loi pho bien nhat: '{top['description']}' chiem {top['pct']*100:.1f}% tong so loi — nen fix goc va batch-verify cac script lien quan.")
     if tier_counts["P0"] > 0:
         insights.append(f"Co {tier_counts['P0']} script muc P0 (fail tren 4-5 model) — uu tien fix truoc vi anh huong rong nhat.")
+    if flaky_count:
+        insights.append(f"Co {flaky_count} script FLAKY (pass/fail xen ke) — nen xu ly rieng (them wait/sync, kiem tra locator) thay vi fix lap lai.")
+    if tier_counts["Verify"] > 0:
+        insights.append(f"Co {tier_counts['Verify']} script dang XAC MINH (het loi nhung chua du {get_setting_int(db, 'exit_criteria_cycles', 2)} cycle pass lien tiep) — theo doi them truoc khi tinh Done.")
     if required_rate is not None:
         # crude actual rate estimate from last 2 cycles
         actual_rate = None
@@ -2113,17 +2596,23 @@ def api_dashboard():
         "model_pass_rate": model_pass_rate,
         "tier_counts": tier_counts,
         "root_causes": root_causes,
+        "fix_root_causes": fix_root_causes,
         "owner_stats": owner_stats,
         "suite_stats": suite_stats,
+        "coverage": coverage,
         "kpi": {
             "total_scripts": total_scripts,
             "still_failing": still_failing,
             "current_pass_rate": current_pass_rate,
+            "current_pass_rate_adjusted": current_pass_rate_adjusted,
             "target_pass_rate": target_rate,
             "fails_to_fix": fails_to_fix,
             "days_remaining": days_remaining,
             "required_rate_per_day": required_rate,
             "latest_cycle": latest_cycle,
+            "flaky_count": flaky_count,
+            "flaky_rate": flaky_rate,
+            "verify_count": verify_count,
         },
         "insights": insights,
     })
@@ -2502,6 +2991,7 @@ def build_export_workbook(db):
         "P1": PatternFill("solid", fgColor="FFB86B"),
         "P2": PatternFill("solid", fgColor="FFE56B"),
         "P3": PatternFill("solid", fgColor="BFE3FF"),
+        "Verify": PatternFill("solid", fgColor="D6C9F0"),
         "Done": PatternFill("solid", fgColor="B6E7A0"),
     }
     RESULT_FILL = {
@@ -2550,7 +3040,7 @@ def build_export_workbook(db):
         pas = db.execute("SELECT COUNT(*) c FROM results WHERE model=? AND cycle=? AND result='Pass'", (m, latest_cycle)).fetchone()["c"]
         model_pass_rate[m] = (pas / tot) if tot else None
 
-    tier_counts = {"P0": 0, "P1": 0, "P2": 0, "P3": 0, "Done": 0}
+    tier_counts = {"P0": 0, "P1": 0, "P2": 0, "P3": 0, "Verify": 0, "Done": 0}
     for p in priority:
         tier_counts[p["priority_tier"]] += 1
 
@@ -2574,7 +3064,7 @@ def build_export_workbook(db):
     target_rate = float(settings.get("target_pass_rate") or 0.88)
     deadline = settings.get("deadline_date") or ""
     total_scripts = len(priority)
-    still_failing = sum(1 for p in priority if p["priority_tier"] != "Done")
+    still_failing = sum(1 for p in priority if p["priority_tier"] in ("P0", "P1", "P2", "P3"))
     current_pass_rate = trend[-1]["pass_rate"] if trend else None
 
     wb = Workbook()
@@ -2693,7 +3183,7 @@ def build_export_workbook(db):
         cell = ws.cell(row=tier_hr + 1, column=c)
         cell.fill = HEADER_FILL
         cell.font = HEADER_FONT
-    tier_order = ["P0", "P1", "P2", "P3", "Done"]
+    tier_order = ["P0", "P1", "P2", "P3", "Verify", "Done"]
     for i, t in enumerate(tier_order):
         row = tier_hr + 2 + i
         ws.cell(row=row, column=2, value=t)
@@ -2940,6 +3430,1050 @@ def build_export_workbook(db):
     return wb
 
 
+# ==================================================================
+# INTEGRATIONS: farm API / he thong cong ty / GitHub script repo
+# Cac adapter goi API ngoai deu la STUB cho toi khi co tai lieu API that
+# (bao loi ro rang khi chua cau hinh); fallback nhap tay hoat dong day du.
+# ==================================================================
+def normalize_farm_rows(test_id, payload):
+    """Chuyen JSON tra ve tu farm API thanh list row cho insert_result_rows().
+    STUB: cap nhat ham nay khi co tai lieu API farm (schema response) tu cong ty.
+    Row output can: {test_id, model, test_suite, test_case, state, description?, author?, team?}."""
+    raise ValueError(
+        "Chưa xác định schema API farm — cần cập nhật normalize_farm_rows() trong app.py "
+        "khi có tài liệu API từ công ty."
+    )
+
+
+def farm_fetch_results(db, test_ids):
+    """Goi farm API lay ket qua theo tung Test ID. Tra ve (rows, errors_per_test_id).
+    URL cau hinh o setting 'farm_api_url' — co the chua placeholder {test_id},
+    neu khong co thi Test ID duoc noi vao cuoi URL."""
+    url_tpl = get_setting(db, "farm_api_url").strip()
+    token = get_setting(db, "farm_api_token").strip()
+    if not url_tpl:
+        raise RuntimeError(
+            "Farm API chưa được cấu hình — điền 'URL API farm' trong tab Cài đặt (mục Tích hợp & API) trước."
+        )
+    all_rows, errors = [], []
+    for tid in test_ids:
+        try:
+            if "{test_id}" in url_tpl:
+                url = url_tpl.replace("{test_id}", urllib.parse.quote(str(tid)))
+            else:
+                url = url_tpl.rstrip("/") + "/" + urllib.parse.quote(str(tid))
+            payload = _http_json(url, token=token)
+            all_rows.extend(normalize_farm_rows(tid, payload))
+        except (RuntimeError, ValueError) as e:
+            errors.append({"test_id": tid, "error": str(e)})
+    return all_rows, errors
+
+
+@app.route("/api/results/import", methods=["POST"])
+def api_import_results():
+    """Import ket qua khong can browser session — de script phia farm push len tu dong.
+    Auth chap nhan 1 trong 3: (1) session dang nhap co quyen input-results,
+    (2) header X-Import-Token khop setting 'import_token' (phai dat truoc, khong rong),
+    (3) header X-Admin-Key. Body giong POST /api/results: {rows: [...], created_by}."""
+    db = get_db()
+    authed = False
+    u = current_user()
+    if u and "input-results" in u["permissions"]:
+        authed = True
+    if not authed:
+        tok = request.headers.get("X-Import-Token", "")
+        conf = get_setting(db, "import_token").strip()
+        if tok and conf and tok == conf:
+            authed = True
+    if not authed and request.headers.get("X-Admin-Key", "") == ADMIN_SECRET_KEY:
+        authed = True
+    if not authed:
+        return jsonify({"error": "Không có quyền import — cần đăng nhập (quyền input-results) hoặc header X-Import-Token hợp lệ."}), 401
+
+    payload = request.get_json(force=True)
+    rows = payload.get("rows", [])
+    if not rows:
+        return jsonify({"error": "No rows provided"}), 400
+    created_by = str(payload.get("created_by") or "").strip() or (u["username"] if u else "farm-import")
+    summary = insert_result_rows(db, rows, created_by)
+    recompute_cycles(db)
+    log_audit(db, "results.import", detail=f"inserted={summary['inserted']}, dup={summary['skipped_duplicate']}, errors={len(summary['errors'])}")
+    db.commit()
+    return jsonify(summary)
+
+
+@app.route("/api/integrations/farm/fetch", methods=["POST"])
+@require_perm("integrations")
+def api_farm_fetch():
+    """Fetch ket qua tu farm API theo danh sach Test ID roi chen vao results.
+    Body: {test_ids: [...]} hoac {test_ids: "chuoi cach nhau boi xuong dong/dau phay"}."""
+    data = request.get_json(force=True)
+    test_ids = data.get("test_ids") or []
+    if isinstance(test_ids, str):
+        test_ids = re.split(r"[\s,;]+", test_ids)
+    test_ids = [str(t).strip() for t in test_ids if str(t).strip()]
+    if not test_ids:
+        return jsonify({"error": "Chưa nhập Test ID nào."}), 400
+
+    db = get_db()
+    try:
+        rows, fetch_errors = farm_fetch_results(db, test_ids)
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 400
+
+    if rows:
+        u = current_user()
+        summary = insert_result_rows(db, rows, (u["username"] if u else "farm-fetch"))
+        recompute_cycles(db)
+    else:
+        summary = {"inserted": 0, "skipped_running": 0, "skipped_duplicate": 0,
+                   "duplicates": [], "errors": [], "warnings": []}
+    summary["fetch_errors"] = fetch_errors
+    summary["fetched_ok"] = len(test_ids) - len(fetch_errors)
+    log_audit(db, "integrations.farm_fetch",
+              detail=f"test_ids={len(test_ids)}, ok={summary['fetched_ok']}, inserted={summary['inserted']}")
+    db.commit()
+    return jsonify(summary)
+
+
+# ------------------------------------------------------------------
+# He thong cong ty: tong so test case can script (dong), status Performed/SKIP...
+# ------------------------------------------------------------------
+def company_fetch_testcases(db):
+    """Goi API he thong cong ty lay danh sach test case + status. STUB nhu farm.
+    Khi co tai lieu API: parse response thanh list {tc_id, status, item?, raw?}."""
+    url = get_setting(db, "company_api_url").strip()
+    token = get_setting(db, "company_api_token").strip()
+    if not url:
+        raise RuntimeError(
+            "API hệ thống công ty chưa được cấu hình — điền 'URL API hệ thống công ty' trong tab Cài đặt trước."
+        )
+    payload = _http_json(url, token=token)  # noqa: F841 - dung khi co schema that
+    raise RuntimeError(
+        "Chưa xác định schema API hệ thống công ty — cần cập nhật company_fetch_testcases() "
+        "trong app.py khi có tài liệu API. Tạm thời dùng ô 'Nhập tay danh sách TC' bên dưới."
+    )
+
+
+def _replace_company_testcases(db, rows, source):
+    """Full refresh cache company_testcases (snapshot moi thay toan bo snapshot cu)."""
+    db.execute("DELETE FROM company_testcases")
+    n = 0
+    for r in rows:
+        tc_id = str(r.get("tc_id") or "").strip()
+        if not tc_id:
+            continue
+        status = str(r.get("status") or "").strip() or "Not Performed"
+        item = str(r.get("item") or "").strip() or item_from_tc_id(tc_id) or "Unknown"
+        raw = str(r.get("raw") or "")
+        db.execute(
+            "INSERT OR REPLACE INTO company_testcases (tc_id, item, status, raw, source, synced_at) "
+            "VALUES (?,?,?,?,?, datetime('now'))",
+            (tc_id, item, status, raw, source),
+        )
+        n += 1
+    return n
+
+
+@app.route("/api/integrations/company/sync", methods=["POST"])
+@require_perm("integrations")
+def api_company_sync():
+    db = get_db()
+    try:
+        rows = company_fetch_testcases(db)
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 400
+    n = _replace_company_testcases(db, rows, "api")
+    log_audit(db, "integrations.company_sync", detail=f"synced={n}")
+    db.commit()
+    return jsonify({"status": "ok", "synced": n})
+
+
+@app.route("/api/integrations/company/manual", methods=["POST"])
+@require_perm("integrations")
+def api_company_manual():
+    """Fallback nhap tay: {rows: [{tc_id, status?, item?}], mode: "replace"|"merge"}.
+    replace (mac dinh) = thay toan bo snapshot cache; merge = upsert tung dong."""
+    data = request.get_json(force=True)
+    rows = data.get("rows") or []
+    mode = (data.get("mode") or "replace").strip().lower()
+    if not rows:
+        return jsonify({"error": "Không có dòng nào."}), 400
+    db = get_db()
+    if mode == "merge":
+        n = 0
+        for r in rows:
+            tc_id = str(r.get("tc_id") or "").strip()
+            if not tc_id:
+                continue
+            status = str(r.get("status") or "").strip() or "Not Performed"
+            item = str(r.get("item") or "").strip() or item_from_tc_id(tc_id) or "Unknown"
+            db.execute(
+                "INSERT OR REPLACE INTO company_testcases (tc_id, item, status, raw, source, synced_at) "
+                "VALUES (?,?,?,?, 'manual', datetime('now'))",
+                (tc_id, item, status, ""),
+            )
+            n += 1
+    else:
+        n = _replace_company_testcases(db, rows, "manual")
+    log_audit(db, "integrations.company_manual", detail=f"mode={mode}, imported={n}")
+    db.commit()
+    return jsonify({"status": "ok", "imported": n, "mode": mode})
+
+
+@app.route("/api/integrations/company/testcases")
+@require_login
+def api_company_testcases():
+    db = get_db()
+    rows = db.execute(
+        "SELECT tc_id, item, status, source, synced_at FROM company_testcases ORDER BY item, tc_id"
+    ).fetchall()
+    total = len(rows)
+    skip = sum(1 for r in rows if (r["status"] or "").strip().upper() == "SKIP")
+    performed = sum(1 for r in rows if (r["status"] or "").strip().lower() in COMPANY_PERFORMED_STATES)
+    synced_at = max((r["synced_at"] or "" for r in rows), default="")
+    return jsonify({
+        "summary": {"total": total, "total_needed": total - skip, "skip": skip,
+                    "performed": performed, "synced_at": synced_at},
+        "rows": [dict(r) for r in rows],
+    })
+
+
+# ------------------------------------------------------------------
+# GitHub script repo: danh sach file script tren nhanh main (doi chieu 3 chieu)
+# ------------------------------------------------------------------
+@app.route("/api/integrations/github/sync", methods=["POST"])
+@require_perm("integrations")
+def api_github_sync():
+    db = get_db()
+    repo = get_setting(db, "github_repo").strip()
+    branch = get_setting(db, "github_branch").strip() or "main"
+    token = get_setting(db, "github_token").strip()
+    base = get_setting(db, "github_api_base").strip() or "https://api.github.com"
+    if not repo or "/" not in repo:
+        return jsonify({"error": "GitHub repo chưa được cấu hình — điền 'owner/repo' trong tab Cài đặt (mục Tích hợp & API)."}), 400
+    url = f"{base.rstrip('/')}/repos/{repo}/git/trees/{urllib.parse.quote(branch)}?recursive=1"
+    try:
+        data = _http_json(url, token=token)
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 400
+    tree = data.get("tree") or []
+    paths = [t["path"] for t in tree
+             if t.get("type") == "blob" and str(t.get("path", "")).lower().endswith(".py")]
+    db.execute("DELETE FROM repo_files")
+    for p in paths:
+        db.execute(
+            "INSERT OR REPLACE INTO repo_files (path, source, synced_at) VALUES (?, 'api', datetime('now'))",
+            (p,),
+        )
+    truncated = bool(data.get("truncated"))
+    log_audit(db, "integrations.github_sync", detail=f"files={len(paths)}, truncated={truncated}")
+    db.commit()
+    out = {"status": "ok", "files": len(paths), "truncated": truncated}
+    if truncated:
+        out["warning"] = "GitHub trả về danh sách bị cắt (repo quá lớn) — kết quả đối chiếu có thể thiếu file."
+    return jsonify(out)
+
+
+@app.route("/api/integrations/github/manual", methods=["POST"])
+@require_perm("integrations")
+def api_github_manual():
+    """Fallback nhap tay: {paths: [...]} — paste output cua
+    `git ls-tree -r main --name-only` tu repo script."""
+    data = request.get_json(force=True)
+    paths = data.get("paths") or []
+    if isinstance(paths, str):
+        paths = paths.splitlines()
+    paths = [str(p).strip().replace("\\", "/").lstrip("/") for p in paths if str(p).strip()]
+    if not paths:
+        return jsonify({"error": "Không có đường dẫn file nào."}), 400
+    db = get_db()
+    db.execute("DELETE FROM repo_files")
+    for p in paths:
+        db.execute(
+            "INSERT OR REPLACE INTO repo_files (path, source, synced_at) VALUES (?, 'manual', datetime('now'))",
+            (p,),
+        )
+    log_audit(db, "integrations.github_manual", detail=f"files={len(paths)}")
+    db.commit()
+    return jsonify({"status": "ok", "imported": len(paths)})
+
+
+@app.route("/api/integrations/status")
+@require_login
+def api_integrations_status():
+    """Trang thai cau hinh + cache cua cac tich hop, cho tab Dong bo hien thi."""
+    db = get_db()
+    comp = db.execute(
+        "SELECT COUNT(*) c, MAX(synced_at) s, MAX(source) src FROM company_testcases"
+    ).fetchone()
+    gh = db.execute("SELECT COUNT(*) c, MAX(synced_at) s, MAX(source) src FROM repo_files").fetchone()
+    return jsonify({
+        "farm_configured": bool(get_setting(db, "farm_api_url").strip()),
+        "company_configured": bool(get_setting(db, "company_api_url").strip()),
+        "github_configured": bool(get_setting(db, "github_repo").strip()),
+        "import_token_set": bool(get_setting(db, "import_token").strip()),
+        "company_cache": {"rows": comp["c"], "synced_at": comp["s"] or "", "source": comp["src"] or ""},
+        "github_cache": {"files": gh["c"], "synced_at": gh["s"] or "", "source": gh["src"] or ""},
+    })
+
+
+@app.route("/api/integrations/reconcile")
+@require_login
+def api_reconcile():
+    """Doi chieu 3 chieu: new_scripts DONE <-> status Performed ben he thong cong ty
+    <-> file script ton tai tren nhanh main cua repo GitHub (dung thu muc cua Item neu
+    Item da cau hinh script_path)."""
+    db = get_db()
+    comp_status = {}
+    comp_synced = ""
+    for r in db.execute("SELECT tc_id, status, synced_at FROM company_testcases").fetchall():
+        comp_status[str(r["tc_id"]).strip().lower()] = (r["status"] or "").strip()
+        comp_synced = max(comp_synced, r["synced_at"] or "")
+    has_company = bool(comp_status)
+
+    stem_index = {}  # ten file (bo .py, lowercase) -> [duong dan day du]
+    gh_synced = ""
+    n_files = 0
+    for r in db.execute("SELECT path, synced_at FROM repo_files").fetchall():
+        n_files += 1
+        gh_synced = max(gh_synced, r["synced_at"] or "")
+        base = r["path"].rsplit("/", 1)[-1]
+        stem = base[:-3] if base.lower().endswith(".py") else base
+        stem_index.setdefault(stem.lower(), []).append(r["path"])
+    has_github = n_files > 0
+
+    suite_paths = {
+        r["name"]: (r["script_path"] or "").strip().strip("/")
+        for r in db.execute("SELECT name, script_path FROM test_suites").fetchall()
+    }
+
+    rows_out = []
+    n_ok = n_missing_company = n_wrong_company = n_missing_github = 0
+    done_ids = set()
+    for r in db.execute(
+        "SELECT tc_id, item, member, team, status, completed_date FROM new_scripts "
+        "WHERE status='DONE' ORDER BY item, tc_id"
+    ).fetchall():
+        tc_norm = str(r["tc_id"]).strip().lower()
+        done_ids.add(tc_norm)
+        company_status = comp_status.get(tc_norm)
+        company_ok = bool(company_status) and company_status.lower() in COMPANY_PERFORMED_STATES
+        if has_company:
+            if company_status is None:
+                n_missing_company += 1
+            elif not company_ok:
+                n_wrong_company += 1
+        sp = suite_paths.get(r["item"], "")
+        matched_path = None
+        for p in stem_index.get(tc_norm, []):
+            if not sp or p.lower().startswith(sp.lower() + "/"):
+                matched_path = p
+                break
+        github_ok = matched_path is not None
+        if has_github and not github_ok:
+            n_missing_github += 1
+        ok = (company_ok or not has_company) and (github_ok or not has_github)
+        if ok and (has_company or has_github):
+            n_ok += 1
+        rows_out.append({
+            "tc_id": r["tc_id"], "item": r["item"], "member": r["member"] or "",
+            "team": r["team"] or "", "completed_date": r["completed_date"] or "",
+            "company_status": company_status,
+            "company_ok": company_ok if has_company else None,
+            "github_ok": github_ok if has_github else None,
+            "matched_path": matched_path,
+            "path_configured": bool(sp),
+            "ok": ok,
+        })
+
+    # Chieu nguoc: cong ty bao Performed nhung he thong chua ghi DONE (top 50)
+    performed_not_done = []
+    if has_company:
+        for tc_norm, status in comp_status.items():
+            if status.lower() in COMPANY_PERFORMED_STATES and tc_norm not in done_ids:
+                performed_not_done.append(tc_norm)
+                if len(performed_not_done) >= 50:
+                    break
+
+    return jsonify({
+        "summary": {
+            "total_done": len(rows_out),
+            "ok_all": n_ok,
+            "missing_company": n_missing_company,
+            "wrong_company_status": n_wrong_company,
+            "missing_github": n_missing_github,
+            "has_company_data": has_company,
+            "has_github_data": has_github,
+            "company_synced_at": comp_synced,
+            "github_synced_at": gh_synced,
+            "github_files": n_files,
+        },
+        "rows": rows_out,
+        "company_performed_not_done": performed_not_done,
+    })
+
+
+# ==================================================================
+# REPORTS: sinh markdown bao cao ngay/tuan theo mau docs/maubaocao.md
+# ==================================================================
+def _pct(x, digits=1):
+    return f"{x * 100:.{digits}f}%" if x is not None else "…"
+
+
+def _num(x):
+    return str(x) if x is not None else "…"
+
+
+def _suite_model_report_table(db, cycle_nums):
+    """Bang markdown: pass rate tung Item x tung Model + dong tong tung Item + TONG CHUNG,
+    theo tung cycle trong cycle_nums (>=3 cycle gan nhat), kem delta dau-cuoi."""
+    data = compute_suite_model_matrix(db)
+    cyc_dates = {c["cycle"]: (c["cycle_date"] or "") for c in data["cycles"]}
+    sel = [c for c in cycle_nums if c in cyc_dates]
+    if not sel:
+        return "_Chưa có dữ liệu kết quả._"
+
+    def fmt_cell(cell):
+        return _pct(cell["pass_rate"]) if cell else "—"
+
+    header = "| Item | Model | " + " | ".join(
+        f"C{c} ({cyc_dates[c][5:] if cyc_dates[c] else ''})" for c in sel
+    ) + " | Δ |"
+    sep = "|" + "---|" * (len(sel) + 3)
+    lines = [header, sep]
+
+    # Gom row theo item de tinh dong tong tung item
+    by_item = {}
+    for row in data["rows"]:
+        by_item.setdefault(row["test_suite"], []).append(row)
+
+    def delta_str(first_rate, last_rate):
+        if first_rate is None or last_rate is None:
+            return "…"
+        d = (last_rate - first_rate) * 100
+        arrow = "▲" if d > 0 else ("▼" if d < 0 else "=")
+        return f"{arrow}{abs(d):.1f}%"
+
+    for item in sorted(by_item.keys()):
+        rows = by_item[item]
+        # tung model
+        for row in sorted(rows, key=lambda r: r["model"]):
+            cells = [row["by_cycle"].get(c) for c in sel]
+            rates = [c["pass_rate"] if c else None for c in cells]
+            first = next((x for x in rates if x is not None), None)
+            last = next((x for x in reversed(rates) if x is not None), None)
+            lines.append(
+                f"| {item} | {row['model']} | " + " | ".join(fmt_cell(c) for c in cells)
+                + f" | {delta_str(first, last)} |"
+            )
+        # dong tong cua item (gop moi model)
+        agg_cells = []
+        for c in sel:
+            tot = pas = na = 0
+            found = False
+            for row in rows:
+                cell = row["by_cycle"].get(c)
+                if cell:
+                    found = True
+                    tot += cell["total"]
+                    pas += cell["pass_count"]
+                    na += cell["na_count"]
+            denom = tot - na
+            agg_cells.append({"pass_rate": (pas / denom) if (found and denom > 0) else None} if found else None)
+        rates = [c["pass_rate"] if c else None for c in agg_cells]
+        first = next((x for x in rates if x is not None), None)
+        last = next((x for x in reversed(rates) if x is not None), None)
+        lines.append(
+            f"| **{item}** | **Tổng** | " + " | ".join(f"**{fmt_cell(c)}**" for c in agg_cells)
+            + f" | **{delta_str(first, last)}** |"
+        )
+
+    # TONG CHUNG tren tat ca ket qua
+    overall_cells = [data["overall_by_cycle"].get(c) for c in sel]
+    rates = [c["pass_rate"] if c else None for c in overall_cells]
+    first = next((x for x in rates if x is not None), None)
+    last = next((x for x in reversed(rates) if x is not None), None)
+    lines.append(
+        "| **TỔNG CHUNG** | **Tất cả** | " + " | ".join(f"**{fmt_cell(c)}**" for c in overall_cells)
+        + f" | **{delta_str(first, last)}** |"
+    )
+    return "\n".join(lines)
+
+
+def _env_fail_by_cycle(db, cycle_nums):
+    """{cycle: {fail, env, rate}} — so loi lien quan MOI TRUONG (nhom 'Hạ tầng:' tu
+    summarize_root_cause) tren tong fail cua tung cycle."""
+    out = {c: {"fail": 0, "env": 0} for c in cycle_nums}
+    if not cycle_nums:
+        return out
+    qmarks = ",".join("?" * len(cycle_nums))
+    for r in db.execute(
+        f"SELECT cycle, description, state FROM results WHERE result='Fail' AND cycle IN ({qmarks})",
+        list(cycle_nums),
+    ).fetchall():
+        d = out[r["cycle"]]
+        d["fail"] += 1
+        if summarize_root_cause(r["description"], r["state"]).startswith("Hạ tầng"):
+            d["env"] += 1
+    for c, d in out.items():
+        d["rate"] = (d["env"] / d["fail"]) if d["fail"] else None
+    return out
+
+
+def _person_count_table(db, table, person_col, date_col, date_from, date_to, extra_where=""):
+    """Bang markdown dem so dong theo nguoi trong khoang ngay [date_from, date_to]."""
+    rows = db.execute(
+        f"SELECT COALESCE(NULLIF(TRIM({person_col}), ''), '(không rõ)') person, COUNT(*) c "
+        f"FROM {table} WHERE {date_col} >= ? AND {date_col} <= ? {extra_where} "
+        f"GROUP BY person ORDER BY c DESC, person",
+        (date_from, date_to),
+    ).fetchall()
+    total = sum(r["c"] for r in rows)
+    if not rows:
+        return 0, 0, "_Không có._"
+    lines = ["| Người | Số lượng |", "|---|---|"]
+    for r in rows:
+        lines.append(f"| {r['person']} | {r['c']} |")
+    return total, len(rows), "\n".join(lines)
+
+
+def _velocity_last7(db, table, date_col, extra_where=""):
+    """Toc do trung binh (dong/ngay) trong 7 ngay gan nhat theo date_col."""
+    since = (date.today() - timedelta(days=6)).isoformat()
+    n = db.execute(
+        f"SELECT COUNT(*) c FROM {table} WHERE {date_col} >= ? AND {date_col} <= ? {extra_where}",
+        (since, date.today().isoformat()),
+    ).fetchone()["c"]
+    return n / 7.0
+
+
+def _eta_section(db, kpi, coverage):
+    """Muc 'Uoc luong hoan thanh du an' — 2 duong: stabilization (fix) va viet moi."""
+    lines = []
+    today = date.today()
+    deadline = get_setting(db, "deadline_date").strip()
+    fix_speed = _velocity_last7(db, "fixes", "fix_date")
+    write_speed = _velocity_last7(db, "new_scripts", "completed_date", "AND status='DONE'")
+
+    eta_dates = []
+    # (a) stabilization: so script con phai fix de dat target / toc do fix
+    fails_to_fix = kpi.get("fails_to_fix")
+    if fails_to_fix is not None:
+        if fails_to_fix <= 0:
+            lines.append("- **Stabilization**: đã đạt mục tiêu pass rate hiện tại ✅")
+        elif fix_speed > 0:
+            days = int(fails_to_fix / fix_speed + 0.999)
+            eta = today + timedelta(days=days)
+            eta_dates.append(eta)
+            lines.append(
+                f"- **Stabilization**: còn {fails_to_fix} script phải fix ÷ tốc độ {fix_speed:.1f} fix/ngày "
+                f"(TB 7 ngày) → dự kiến đạt target **{eta.strftime('%d/%m/%Y')}** (~{days} ngày)"
+            )
+        else:
+            lines.append(f"- **Stabilization**: còn {fails_to_fix} script phải fix — không ước lượng được (không có fix nào trong 7 ngày qua)")
+    # (b) viet moi: TC con thieu / toc do viet
+    if coverage.get("configured"):
+        remaining = coverage["total_needed"] - coverage["done"]
+        if remaining <= 0:
+            lines.append("- **Viết mới**: đã phủ đủ số TC cần script ✅")
+        elif write_speed > 0:
+            days = int(remaining / write_speed + 0.999)
+            eta = today + timedelta(days=days)
+            eta_dates.append(eta)
+            lines.append(
+                f"- **Viết mới**: còn {remaining} TC ÷ tốc độ {write_speed:.1f} script/ngày (TB 7 ngày) "
+                f"→ dự kiến phủ xong **{eta.strftime('%d/%m/%Y')}** (~{days} ngày)"
+            )
+        else:
+            lines.append(f"- **Viết mới**: còn {remaining} TC — không ước lượng được (không có script DONE nào trong 7 ngày qua)")
+    else:
+        lines.append("- **Viết mới**: chưa đồng bộ hệ thống công ty — chưa xác định được tổng TC cần làm")
+
+    if eta_dates:
+        eta_all = max(eta_dates)
+        line = f"- **ETA hoàn thành toàn dự án (theo tiến độ hiện tại): {eta_all.strftime('%d/%m/%Y')}**"
+        if deadline:
+            try:
+                dl = date.fromisoformat(deadline)
+                diff = (dl - eta_all).days
+                line += f" — deadline {dl.strftime('%d/%m/%Y')}: " + (
+                    f"**kịp, dư {diff} ngày** ✅" if diff >= 0 else f"**trễ ~{-diff} ngày** ⚠️"
+                )
+            except ValueError:
+                pass
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _report_kpis(db, priority=None):
+    """Cac con so dieu hanh dung chung cho ca 2 bao cao (giong logic /api/dashboard)."""
+    if priority is None:
+        priority = get_script_priority(db)
+    settings = {r["key"]: r["value"] for r in db.execute("SELECT key, value FROM settings")}
+    target_rate = float(settings.get("target_pass_rate") or 0.88)
+    total_scripts = len(priority)
+    still_failing = sum(1 for p in priority if p["priority_tier"] in ("P0", "P1", "P2", "P3"))
+    fails_to_fix = max(0, still_failing - int(total_scripts * (1 - target_rate)))
+    days_remaining = required_rate = None
+    deadline = settings.get("deadline_date") or ""
+    if deadline:
+        try:
+            days_remaining = (date.fromisoformat(deadline) - date.today()).days
+            if days_remaining and days_remaining > 0:
+                required_rate = fails_to_fix / days_remaining
+        except ValueError:
+            pass
+    tier_counts = {"P0": 0, "P1": 0, "P2": 0, "P3": 0, "Verify": 0, "Done": 0}
+    for p in priority:
+        tier_counts[p["priority_tier"]] += 1
+    return {
+        "target_rate": target_rate, "total_scripts": total_scripts,
+        "still_failing": still_failing, "fails_to_fix": fails_to_fix,
+        "days_remaining": days_remaining, "required_rate_per_day": required_rate,
+        "tier_counts": tier_counts, "deadline": deadline,
+        "flaky_count": sum(1 for p in priority if p.get("is_flaky")),
+    }
+
+
+def build_daily_report(db, date_str=None):
+    """Markdown bao cao NGAY theo mau docs/maubaocao.md + 5 muc bat buoc."""
+    trend = compute_cycle_trend(db)
+    if not trend:
+        return None, "Chưa có dữ liệu kết quả nào trong hệ thống."
+    if date_str:
+        entry = next((t for t in trend if t["cycle_date"] == date_str), None)
+        if entry is None:
+            return None, f"Không có cycle nào chạy ngày {date_str}."
+    else:
+        entry = trend[-1]
+        date_str = entry["cycle_date"]
+    idx = trend.index(entry)
+    prev = trend[idx - 1] if idx > 0 else None
+
+    priority = get_script_priority(db)
+    kpi = _report_kpis(db, priority)
+    coverage = compute_coverage(db)
+    try:
+        d_disp = date.fromisoformat(date_str).strftime("%d/%m/%Y")
+    except (ValueError, TypeError):
+        d_disp = date_str
+
+    md = [f"# [Stabilization Daily] Cycle {entry['cycle']} — {d_disp}", ""]
+
+    # ---- 1. Ket qua cycle hom nay ----
+    md += ["## 1. Kết quả cycle hôm nay", "", "| Chỉ số | Hôm nay | Cycle trước | Δ |", "|---|---|---|---|"]
+    def _delta(cur, prv, pct=False, invert=False):
+        if cur is None or prv is None:
+            return "…"
+        d = cur - prv
+        good = (d <= 0) if invert else (d >= 0)
+        arrow = "▲" if d > 0 else ("▼" if d < 0 else "=")
+        mark = "🙂" if good and d != 0 else ("⚠️" if d != 0 else "")
+        val = f"{abs(d)*100:.1f}%" if pct else f"{abs(d)}"
+        return f"{arrow}{val} {mark}".strip()
+    md.append(f"| Pass rate | {_pct(entry['pass_rate'])} | {_pct(prev['pass_rate']) if prev else '…'} | {_delta(entry['pass_rate'], prev['pass_rate'] if prev else None, pct=True)} |")
+    md.append(f"| Tổng lượt chạy | {entry['total']} | {prev['total'] if prev else '…'} | |")
+    md.append(f"| Số lỗi (fail) trong cycle | {entry['fail_count']} | {prev['fail_count'] if prev else '…'} | {_delta(entry['fail_count'], prev['fail_count'] if prev else None, invert=True)} |")
+    md.append(f"| Script còn lỗi (hiện tại) | {kpi['still_failing']} / {kpi['total_scripts']} | | |")
+    md.append(f"| P0 (fail diện rộng) | {kpi['tier_counts']['P0']} | | |")
+    md.append(f"| Đang xác minh (Verify) | {kpi['tier_counts']['Verify']} | | |")
+    md.append(f"| Script flaky | {kpi['flaky_count']} | | |")
+    md.append("")
+
+    # ---- 2. Pass rate Item x Model (>=3 cycle gan nhat) ----
+    recent_cycles = [t["cycle"] for t in trend[:idx + 1]][-3:]
+    md += [f"## 2. Pass rate Item × Model ({len(recent_cycles)} cycle gần nhất)", "",
+           _suite_model_report_table(db, recent_cycles), ""]
+
+    # ---- 3. Loi lien quan moi truong ----
+    env = _env_fail_by_cycle(db, recent_cycles)
+    md += ["## 3. Lỗi liên quan môi trường (Infra/Device)", "",
+           "| Cycle | Tổng fail | Fail do môi trường | Tỉ lệ |", "|---|---|---|---|"]
+    for c in recent_cycles:
+        d = env[c]
+        md.append(f"| C{c} | {d['fail']} | {d['env']} | {_pct(d['rate'])} |")
+    md.append("")
+
+    # ---- 4. Fix trong ngay + verify fix cycle truoc ----
+    n_fix, n_fixers, fix_table = _person_count_table(db, "fixes", "owner", "fix_date", date_str, date_str)
+    md += [f"## 4. Fix trong ngày: **{n_fix}** fix (bởi {n_fixers} người)", "", fix_table, ""]
+    if prev:
+        tracking = compute_fix_tracking(db)
+        counts = {"verified": 0, "regressed": 0, "still_failing": 0, "pending": 0}
+        attention = []
+        for f in tracking:
+            if f["fixed_after_cycle"] == prev["cycle"]:
+                counts[f["status"]] += 1
+                if f["status"] in ("still_failing", "regressed"):
+                    attention.append(f"`{f['test_case']}` — {f['owner']} ({f['status_label']})")
+        md += [f"**Verify fix của cycle trước (C{prev['cycle']})**: "
+               f"✅ hết lỗi: {counts['verified']} · ⚠️ hết rồi fail lại: {counts['regressed']} · "
+               f"❌ chưa hết lỗi: {counts['still_failing']} · ⏳ chờ dữ liệu: {counts['pending']}", ""]
+        if attention:
+            md += ["Cần chú ý:", *[f"- {a}" for a in attention], ""]
+
+    # ---- 5. Script viet moi trong ngay ----
+    n_new, n_writers, new_table = _person_count_table(
+        db, "new_scripts", "member", "completed_date", date_str, date_str, "AND status='DONE'")
+    md += [f"## 5. Script viết mới trong ngày: **{n_new}** script DONE (bởi {n_writers} người)", "", new_table, ""]
+
+    # ---- 6. Tien do viet script (coverage) ----
+    md += ["## 6. Tiến độ hoàn thành viết script", ""]
+    if coverage.get("configured"):
+        md.append(f"**Coverage: {coverage['done']}/{coverage['total_needed']} ({_pct(coverage['pct'])})** "
+                  f"(SKIP bên hệ thống công ty: {coverage['skip']} — không tính vào tổng; "
+                  f"đồng bộ lúc: {coverage['synced_at'] or '…'})")
+        md += ["", "| Item | Cần | Done | % |", "|---|---|---|---|"]
+        for it in coverage["by_item"]:
+            md.append(f"| {it['item']} | {it['needed']} | {it['done']} | {_pct(it['pct'])} |")
+    else:
+        md.append(f"_Chưa đồng bộ hệ thống công ty — chưa xác định tổng TC cần script. "
+                  f"Hiện đã ghi nhận {coverage.get('done_recorded', 0)} script DONE trên hệ thống._")
+    md.append("")
+
+    # ---- 7. Nhan dinh & toc do ----
+    md += ["## 7. Nhận định & tốc độ", ""]
+    model_rows = db.execute(
+        "SELECT model, COUNT(*) t, SUM(CASE WHEN result='Pass' THEN 1 ELSE 0 END) p "
+        "FROM results WHERE cycle=? GROUP BY model", (entry["cycle"],),
+    ).fetchall()
+    worst = min(((r["p"] / r["t"], r["model"]) for r in model_rows if r["t"]), default=None)
+    if worst:
+        md.append(f"- Model yếu nhất cycle này: **{worst[1]}** ({_pct(worst[0])}) — lỗi device hay lỗi script?")
+    pareto = compute_root_cause_pareto(db, limit=3)
+    if pareto:
+        md.append(f"- Nguyên nhân lỗi phổ biến nhất (mọi cycle): **{pareto[0]['description']}** ({pareto[0]['count']} lỗi, {_pct(pareto[0]['pct'])})")
+    fix_speed = _velocity_last7(db, "fixes", "fix_date")
+    req = kpi["required_rate_per_day"]
+    if req is not None:
+        verdict = "ĐỦ ✅" if fix_speed >= req else "THIẾU ⚠️"
+        md.append(f"- Tốc độ fix thực tế (TB 7 ngày): **{fix_speed:.1f} fix/ngày** vs cần thiết **{req:.1f}/ngày** → {verdict}")
+    else:
+        md.append(f"- Tốc độ fix thực tế (TB 7 ngày): **{fix_speed:.1f} fix/ngày** (chưa đặt deadline để so với tốc độ cần thiết)")
+    md.append("")
+
+    # ---- 8. Uoc luong hoan thanh ----
+    md += ["## 8. Ước lượng hoàn thành dự án", "", _eta_section(db, kpi, coverage), ""]
+
+    # ---- 9. Test farm (dien tay) ----
+    md += ["## 9. Test farm (điền tay)", "",
+           "| Chỉ số | Giá trị | Ghi chú |", "|---|---|---|",
+           "| Device hoạt động / tổng | …/… | |",
+           "| Run hoàn thành / dự kiến | …/… | |",
+           "| Kết quả RUNNING còn sót | … | |",
+           "| Sự cố hạ tầng trong ngày | … | |", ""]
+
+    # ---- 10. Ke hoach mai ----
+    top_assigned = [p for p in priority if p["priority_tier"] in ("P0", "P1")]
+    top_assigned.sort(key=lambda p: (-p["priority_score"], p["test_case"]))
+    md += ["## 10. Kế hoạch ngày mai", ""]
+    if top_assigned:
+        for p in top_assigned[:10]:
+            owner = p["current_owner"] or "(chưa gán)"
+            md.append(f"- [{p['priority_tier']}] `{p['test_case']}` ({p['test_suite']}) — {owner}")
+        if len(top_assigned) > 10:
+            md.append(f"- … và {len(top_assigned) - 10} script P0/P1 khác (xem Bảng ưu tiên)")
+    else:
+        md.append("- Không còn script P0/P1 🎉")
+    md += ["", "## 11. Blocker cần hỗ trợ", "", "- …", ""]
+
+    return "\n".join(md), None
+
+
+def build_weekly_report(db, week_str=None):
+    """Markdown bao cao TUAN (ISO week 'YYYY-Wnn') theo mau docs/maubaocao.md + 5 muc bat buoc."""
+    if week_str:
+        m = re.match(r"^(\d{4})-W(\d{1,2})$", week_str.strip())
+        if not m:
+            return None, "Định dạng tuần không hợp lệ — dùng YYYY-Wnn (VD 2026-W28)."
+        year, wk = int(m.group(1)), int(m.group(2))
+    else:
+        iso = date.today().isocalendar()
+        year, wk = iso[0], iso[1]
+        week_str = f"{year}-W{wk:02d}"
+    try:
+        monday = date.fromisocalendar(year, wk, 1)
+    except ValueError:
+        return None, f"Tuần {week_str} không hợp lệ."
+    sunday = monday + timedelta(days=6)
+    prev_monday = monday - timedelta(days=7)
+    prev_sunday = monday - timedelta(days=1)
+
+    trend = compute_cycle_trend(db)
+    in_week = [t for t in trend if t["cycle_date"] and monday.isoformat() <= t["cycle_date"] <= sunday.isoformat()]
+    in_prev = [t for t in trend if t["cycle_date"] and prev_monday.isoformat() <= t["cycle_date"] <= prev_sunday.isoformat()]
+    if not in_week:
+        return None, f"Không có cycle nào chạy trong tuần {week_str} ({monday.strftime('%d/%m')}–{sunday.strftime('%d/%m')})."
+
+    priority = get_script_priority(db)
+    kpi = _report_kpis(db, priority)
+    coverage = compute_coverage(db)
+    first, last = in_week[0], in_week[-1]
+    prev_last = in_prev[-1] if in_prev else None
+
+    md = [f"# [Stabilization Weekly] Tuần {wk} ({monday.strftime('%d/%m')}–{sunday.strftime('%d/%m/%Y')}) — Cycle {first['cycle']}–{last['cycle']}", ""]
+
+    # ---- 1. Tom tat dieu hanh ----
+    n_fix_week = db.execute("SELECT COUNT(*) c FROM fixes WHERE fix_date>=? AND fix_date<=?",
+                            (monday.isoformat(), sunday.isoformat())).fetchone()["c"]
+    n_new_week = db.execute("SELECT COUNT(*) c FROM new_scripts WHERE status='DONE' AND completed_date>=? AND completed_date<=?",
+                            (monday.isoformat(), sunday.isoformat())).fetchone()["c"]
+    dl_txt = ""
+    if kpi["deadline"]:
+        dl_txt = f", deadline {kpi['deadline']}" + (f" (còn {kpi['days_remaining']} ngày)" if kpi["days_remaining"] is not None else "")
+    md += ["## 1. Tóm tắt điều hành", "",
+           f"- Pass rate: **{_pct(first['pass_rate'])} → {_pct(last['pass_rate'])}** trong tuần "
+           f"(mục tiêu ≥{_pct(kpi['target_rate'], 0)}{dl_txt})",
+           f"- Đã ghi nhận **{n_fix_week} fix** và **{n_new_week} script viết mới (DONE)** trong tuần",
+           f"- Script còn lỗi: **{kpi['still_failing']}/{kpi['total_scripts']}** · P0: {kpi['tier_counts']['P0']} · Flaky: {kpi['flaky_count']}",
+           "- _{Nhận định 1 câu: đúng tiến độ / chậm, vì sao — điền tay}_", ""]
+
+    # ---- 2. Chi so chinh vs muc tieu ----
+    n_fix_prev = db.execute("SELECT COUNT(*) c FROM fixes WHERE fix_date>=? AND fix_date<=?",
+                            (prev_monday.isoformat(), prev_sunday.isoformat())).fetchone()["c"]
+    days_week = max(1, len(in_week))
+    md += ["## 2. Chỉ số chính vs mục tiêu", "",
+           "| Chỉ số | Tuần trước | Tuần này | Mục tiêu |", "|---|---|---|---|",
+           f"| Pass rate (cycle cuối tuần) | {_pct(prev_last['pass_rate']) if prev_last else '…'} | {_pct(last['pass_rate'])} | ≥{_pct(kpi['target_rate'], 0)} |",
+           f"| Số lỗi cycle cuối tuần | {prev_last['fail_count'] if prev_last else '…'} | {last['fail_count']} | ↓ |",
+           f"| Script còn lỗi (hiện tại) | | {kpi['still_failing']} | ↓ |",
+           f"| Script phải fix thêm để đạt target | | {kpi['fails_to_fix']} | 0 |",
+           f"| Tốc độ fix cần thiết | | {kpi['required_rate_per_day']:.1f}/ngày | |" if kpi["required_rate_per_day"] is not None else "| Tốc độ fix cần thiết | | … (chưa đặt deadline) | |",
+           f"| Tốc độ fix thực tế | {n_fix_prev / 7:.1f}/ngày | {n_fix_week / days_week:.1f}/ngày | ≥ cần thiết |",
+           f"| P0 / P1 | | {kpi['tier_counts']['P0']} / {kpi['tier_counts']['P1']} | P0 = 0 |",
+           f"| Tiến độ viết mới | | {coverage['done']}/{coverage['total_needed']} ({_pct(coverage['pct'])}) | theo kế hoạch |" if coverage.get("configured") else "| Tiến độ viết mới | | chưa đồng bộ hệ thống công ty | |",
+           ""]
+
+    # ---- 3. Pass rate Item x Model theo cycle trong tuan (>=3 cycle) ----
+    week_cycles = [t["cycle"] for t in in_week]
+    if len(week_cycles) < 3:
+        all_cycles = [t["cycle"] for t in trend if t["cycle"] <= last["cycle"]]
+        week_cycles = all_cycles[-3:]
+    md += [f"## 3. Pass rate Item × Model ({len(week_cycles)} cycle)", "",
+           _suite_model_report_table(db, week_cycles), ""]
+
+    # ---- 4. Loi moi truong trong tuan ----
+    env = _env_fail_by_cycle(db, week_cycles)
+    tot_fail = sum(d["fail"] for d in env.values())
+    tot_env = sum(d["env"] for d in env.values())
+    md += ["## 4. Lỗi liên quan môi trường (Infra/Device)", "",
+           "| Cycle | Tổng fail | Fail do môi trường | Tỉ lệ |", "|---|---|---|---|"]
+    for c in week_cycles:
+        d = env[c]
+        md.append(f"| C{c} | {d['fail']} | {d['env']} | {_pct(d['rate'])} |")
+    md.append(f"| **Cả tuần** | **{tot_fail}** | **{tot_env}** | **{_pct((tot_env / tot_fail) if tot_fail else None)}** |")
+    md.append("")
+
+    # ---- 5. Theo 7 app (suite) ----
+    suite_rows = {}
+    for p in priority:
+        s = suite_rows.setdefault(p["test_suite"], {"total": 0, "done": 0, "verify": 0, "fail": 0})
+        s["total"] += 1
+        if p["priority_tier"] == "Done":
+            s["done"] += 1
+        elif p["priority_tier"] == "Verify":
+            s["verify"] += 1
+        else:
+            s["fail"] += 1
+    md += ["## 5. Theo từng app / test suite", "",
+           "| App/Suite | Tổng script | Done | Đang xác minh | Còn lỗi | Done % |", "|---|---|---|---|---|---|"]
+    for name in sorted(suite_rows, key=lambda k: suite_rows[k]["done"] / suite_rows[k]["total"] if suite_rows[k]["total"] else 0):
+        s = suite_rows[name]
+        md.append(f"| {name} | {s['total']} | {s['done']} | {s['verify']} | {s['fail']} | {_pct(s['done'] / s['total'] if s['total'] else None)} |")
+    md.append("")
+
+    # ---- 6. Root cause Pareto (nhom da xac nhan tu fix log, top 5) ----
+    fix_pareto = compute_fix_root_cause_pareto(db, monday.isoformat(), sunday.isoformat())
+    md += ["## 6. Root cause Pareto tuần này (từ fix log, top 5)", ""]
+    if fix_pareto:
+        md += ["| Nhóm nguyên nhân | Số fix | % | Hành động tuần sau |", "|---|---|---|---|"]
+        for g in fix_pareto[:5]:
+            md.append(f"| {g['group']} | {g['count']} | {_pct(g['pct'])} | _(điền tay)_ |")
+    else:
+        md.append("_Chưa có fix nào ghi nhóm nguyên nhân trong tuần._")
+    md.append("")
+
+    # ---- 7. San luong tung nguoi trong tuan ----
+    n_fix, n_fixers, fix_table = _person_count_table(db, "fixes", "owner", "fix_date",
+                                                     monday.isoformat(), sunday.isoformat())
+    n_new, n_writers, new_table = _person_count_table(db, "new_scripts", "member", "completed_date",
+                                                      monday.isoformat(), sunday.isoformat(), "AND status='DONE'")
+    md += [f"## 7. Sản lượng trong tuần", "",
+           f"**Fix: {n_fix}** (bởi {n_fixers} người)", "", fix_table, "",
+           f"**Script viết mới DONE: {n_new}** (bởi {n_writers} người)", "", new_table, ""]
+
+    # ---- 8. Chat luong fix & team ----
+    tracking = compute_fix_tracking(db)
+    n_verified = sum(1 for f in tracking if f["status"] == "verified")
+    n_regressed = sum(1 for f in tracking if f["status"] == "regressed")
+    reopen_rate = (n_regressed / (n_verified + n_regressed)) if (n_verified + n_regressed) else None
+    owner_stats = get_owner_stats(db, priority)
+    overloaded = [o for o in owner_stats if o["open_workload"] > 10]
+    md += ["## 8. Chất lượng fix & team", "",
+           f"- Reopen rate (hết rồi fail lại): **{_pct(reopen_rate)}** (mục tiêu ≤10%) — ✅ {n_verified} verified / ⚠️ {n_regressed} regressed",
+           ]
+    if owner_stats:
+        best = owner_stats[0]
+        md.append(f"- Owner dẫn đầu resolution: **{best['owner']}** ({_pct(best['resolution_rate'])} resolution, {best['distinct_scripts_fully_resolved']} script hết lỗi hẳn)")
+    if overloaded:
+        md.append("- Quá tải (Open Workload > 10): " + ", ".join(f"{o['owner']} ({o['open_workload']})" for o in overloaded))
+    md.append("")
+
+    # ---- 9. Uoc luong hoan thanh ----
+    md += ["## 9. Ước lượng hoàn thành dự án", "", _eta_section(db, kpi, coverage), ""]
+
+    # ---- 10. Farm tuan (dien tay) + rui ro ----
+    md += ["## 10. Test farm trong tuần (điền tay)", "",
+           "| Chỉ số | Giá trị | Tuần trước |", "|---|---|---|",
+           "| Device availability trung bình | …% | |",
+           "| Cycle chạy trọn vẹn / kế hoạch | …/… | |",
+           f"| % fail do Infra/Device | {_pct((tot_env / tot_fail) if tot_fail else None)} | |",
+           "| Sự cố lớn + thời gian khắc phục | | |", "",
+           "## 11. Rủi ro & đề xuất", "", "- …", ""]
+
+    return "\n".join(md), None
+
+
+@app.route("/api/report/daily")
+@require_login
+def api_report_daily():
+    db = get_db()
+    date_str = (request.args.get("date") or "").strip() or None
+    md, err = build_daily_report(db, date_str)
+    if err:
+        return jsonify({"error": err}), 404
+    return jsonify({"markdown": md, "meta": {"type": "daily", "date": date_str}})
+
+
+@app.route("/api/report/weekly")
+@require_login
+def api_report_weekly():
+    db = get_db()
+    week_str = (request.args.get("week") or "").strip() or None
+    md, err = build_weekly_report(db, week_str)
+    if err:
+        return jsonify({"error": err}), 404
+    return jsonify({"markdown": md, "meta": {"type": "weekly", "week": week_str}})
+
+
+# ==================================================================
+# BACKUP: snapshot hang ngay tracker.db + users.db vao backups/YYYY-MM-DD/
+# (sqlite3 backup API - an toan voi WAL; daemon thread, khong can cron ngoai)
+# ==================================================================
+_backup_thread_started = False
+
+
+def perform_backup(reason="auto"):
+    """Snapshot 2 file DB vao backups/<today>/. Dung sqlite3 backup API (WAL-safe).
+    Chay duoc ca ngoai request context (daemon thread) - tu mo connection rieng.
+    Tra ve dict tom tat."""
+    today = date.today().isoformat()
+    target_dir = os.path.join(BACKUP_DIR, today)
+    os.makedirs(target_dir, exist_ok=True)
+    files = []
+    for src_path in (DB_PATH, USERS_DB_PATH):
+        if not os.path.exists(src_path):
+            continue
+        dst_path = os.path.join(target_dir, os.path.basename(src_path))
+        src = sqlite3.connect(src_path)
+        dst = sqlite3.connect(dst_path)
+        try:
+            with dst:
+                src.backup(dst)
+        finally:
+            dst.close()
+            src.close()
+        files.append({"file": os.path.basename(src_path), "size": os.path.getsize(dst_path)})
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute("SELECT value FROM settings WHERE key='backup_retention'").fetchone()
+        try:
+            retention = max(1, int(row["value"])) if row and row["value"] else 30
+        except (ValueError, TypeError):
+            retention = 30
+        deleted = []
+        if os.path.isdir(BACKUP_DIR):
+            dirs = sorted(d for d in os.listdir(BACKUP_DIR)
+                          if re.match(r"^\d{4}-\d{2}-\d{2}$", d) and os.path.isdir(os.path.join(BACKUP_DIR, d)))
+            while len(dirs) > retention:
+                oldest = dirs.pop(0)
+                shutil.rmtree(os.path.join(BACKUP_DIR, oldest), ignore_errors=True)
+                deleted.append(oldest)
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('last_backup_date', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (today,))
+        conn.execute(
+            "INSERT INTO audit_log (username, action, target, detail) VALUES (?,?,?,?)",
+            ("(system)", "backup.run", today, f"reason={reason}, files={len(files)}, deleted_old={len(deleted)}"))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"backup_dir": target_dir, "files": files, "deleted_old": deleted, "kept": retention}
+
+
+def backup_daemon():
+    """Vong lap nen: moi 30 phut kiem tra hom nay da backup chua (theo setting
+    last_backup_date); chua thi backup. Khong bao gio de exception giet thread."""
+    while True:
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.row_factory = sqlite3.Row
+            try:
+                vals = {r["key"]: r["value"] for r in conn.execute(
+                    "SELECT key, value FROM settings WHERE key IN ('backup_enabled','last_backup_date')")}
+            finally:
+                conn.close()
+            enabled = (vals.get("backup_enabled") or "1") != "0"
+            last = vals.get("last_backup_date") or ""
+            if enabled and last < date.today().isoformat():
+                perform_backup("auto")
+                print(f"[backup] Da backup tu dong vao {BACKUP_DIR}/{date.today().isoformat()}")
+        except Exception as e:
+            print(f"[backup] Loi backup tu dong: {e}")
+        time.sleep(1800)
+
+
+def start_backup_daemon():
+    global _backup_thread_started
+    if _backup_thread_started:
+        return
+    _backup_thread_started = True
+    threading.Thread(target=backup_daemon, daemon=True).start()
+
+
+@app.route("/api/backup/run", methods=["POST"])
+@require_perm("settings")
+def api_backup_run():
+    try:
+        out = perform_backup("manual")
+    except Exception as e:
+        return jsonify({"error": f"Backup thất bại: {e}"}), 500
+    return jsonify({"status": "ok", **out})
+
+
+@app.route("/api/backup/status")
+@require_login
+def api_backup_status():
+    db = get_db()
+    backups = []
+    if os.path.isdir(BACKUP_DIR):
+        for d in sorted(os.listdir(BACKUP_DIR), reverse=True):
+            full = os.path.join(BACKUP_DIR, d)
+            if not (re.match(r"^\d{4}-\d{2}-\d{2}$", d) and os.path.isdir(full)):
+                continue
+            fs = [{"file": f, "size": os.path.getsize(os.path.join(full, f))} for f in sorted(os.listdir(full))]
+            backups.append({"dir": d, "files": fs})
+    return jsonify({
+        "enabled": get_setting(db, "backup_enabled", "1") != "0",
+        "retention": get_setting_int(db, "backup_retention", 30),
+        "last_backup_date": get_setting(db, "last_backup_date", ""),
+        "backups": backups,
+    })
+
+
 # ------------------------------------------------------------------
 # Admin Dashboard - Management Panel
 # ------------------------------------------------------------------
@@ -3016,6 +4550,7 @@ def admin_update_result(result_id):
     query = f"UPDATE results SET {', '.join(updates)} WHERE id=?"
     db.execute(query, values)
     recompute_cycles(db)  # danh so lai cycle theo ngay sau khi sua
+    log_audit(db, "admin.result.update", target=f"results#{result_id}", detail=", ".join(sorted(k for k in data)))
     db.commit()
 
     return jsonify({"status": "updated"})
@@ -3030,6 +4565,7 @@ def admin_delete_result(result_id):
     db = get_db()
     db.execute("DELETE FROM results WHERE id=?", (result_id,))
     recompute_cycles(db)  # danh so lai cycle theo ngay sau khi xoa (co the mat het 1 ngay)
+    log_audit(db, "admin.result.delete", target=f"results#{result_id}")
     db.commit()
 
     return jsonify({"status": "deleted"})
@@ -3111,6 +4647,7 @@ def admin_update_new_script(sid):
 
     values.append(sid)
     db.execute(f"UPDATE new_scripts SET {', '.join(updates)} WHERE id=?", values)
+    log_audit(db, "admin.new_script.update", target=f"new_scripts#{sid}", detail=", ".join(sorted(k for k in data)))
     db.commit()
     return jsonify({"status": "updated"})
 
@@ -3122,6 +4659,7 @@ def admin_delete_new_script(sid):
         return jsonify({"error": "Unauthorized"}), 403
     db = get_db()
     db.execute("DELETE FROM new_scripts WHERE id=?", (sid,))
+    log_audit(db, "admin.new_script.delete", target=f"new_scripts#{sid}")
     db.commit()
     return jsonify({"status": "deleted"})
 
@@ -3150,6 +4688,7 @@ def admin_bulk_new_scripts():
             continue
         insert_new_script_row(db, row)
         inserted += 1
+    log_audit(db, "admin.new_script.bulk", detail=f"inserted={inserted}, errors={len(errors)}")
     db.commit()
     return jsonify({"inserted": inserted, "errors": errors})
 
@@ -3196,15 +4735,18 @@ def admin_create_fix():
             return jsonify({"error": f"Thiếu trường bắt buộc: {f}"}), 400
 
     db = get_db()
+    root_cause = data.get("root_cause", "").strip()
+    group = str(data.get("root_cause_group") or "").strip() or classify_root_cause_group(root_cause)
     db.execute(
-        """INSERT INTO fixes (fix_date, owner, test_suite, test_case, model_fixed, fixed_after_cycle, note, root_cause)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO fixes (fix_date, owner, test_suite, test_case, model_fixed, fixed_after_cycle, note, root_cause, root_cause_group)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             data["fix_date"], data["owner"].strip(), data["test_suite"].strip(), data["test_case"].strip(),
             normalize_model_name(data["model_fixed"].strip()), int(data["fixed_after_cycle"]),
-            data.get("note", "").strip(), data.get("root_cause", "").strip(),
+            data.get("note", "").strip(), root_cause, group,
         )
     )
+    log_audit(db, "admin.fix.create", target=data["test_case"].strip())
     db.commit()
     return jsonify({"status": "created"})
 
@@ -3218,7 +4760,7 @@ def admin_update_fix(fix_id):
     data = request.get_json(force=True)
     db = get_db()
 
-    allowed_fields = ["fix_date", "owner", "test_suite", "test_case", "model_fixed", "fixed_after_cycle", "note", "root_cause"]
+    allowed_fields = ["fix_date", "owner", "test_suite", "test_case", "model_fixed", "fixed_after_cycle", "note", "root_cause", "root_cause_group"]
     updates = []
     values = []
     for field in allowed_fields:
@@ -3231,12 +4773,18 @@ def admin_update_fix(fix_id):
             updates.append(f"{field}=?")
             values.append(val)
 
+    # Sua root_cause text ma khong gui kem group -> tinh lai group theo text moi.
+    if "root_cause" in data and "root_cause_group" not in data:
+        updates.append("root_cause_group=?")
+        values.append(classify_root_cause_group(str(data["root_cause"] or "")))
+
     if not updates:
         return jsonify({"error": "No fields to update"}), 400
 
     values.append(fix_id)
     query = f"UPDATE fixes SET {', '.join(updates)} WHERE id=?"
     db.execute(query, values)
+    log_audit(db, "admin.fix.update", target=f"fixes#{fix_id}", detail=", ".join(sorted(k for k in data)))
     db.commit()
 
     return jsonify({"status": "updated"})
@@ -3250,6 +4798,7 @@ def admin_delete_fix(fix_id):
 
     db = get_db()
     db.execute("DELETE FROM fixes WHERE id=?", (fix_id,))
+    log_audit(db, "admin.fix.delete", target=f"fixes#{fix_id}")
     db.commit()
 
     return jsonify({"status": "deleted"})
@@ -3285,10 +4834,12 @@ def validate_fix_row(db, data):
     except (ValueError, TypeError):
         return None, "Fixed after cycle phải là số nguyên."
 
+    group = str(data.get("root_cause_group") or "").strip() or classify_root_cause_group(root_cause)
     return {
         "fix_date": fix_date, "owner": owner, "test_suite": test_suite, "test_case": test_case,
         "model_fixed": model_fixed, "fixed_after_cycle": fixed_after_cycle,
         "note": str(data.get("note") or "").strip(), "root_cause": root_cause,
+        "root_cause_group": group,
     }, None
 
 
@@ -3322,18 +4873,19 @@ def admin_bulk_fixes():
         ).fetchone()
         if existing:
             db.execute(
-                "UPDATE fixes SET fix_date=?, note=?, root_cause=? WHERE id=?",
-                (row["fix_date"], row["note"], row["root_cause"], existing["id"]),
+                "UPDATE fixes SET fix_date=?, note=?, root_cause=?, root_cause_group=? WHERE id=?",
+                (row["fix_date"], row["note"], row["root_cause"], row["root_cause_group"], existing["id"]),
             )
             updated += 1
         else:
             db.execute(
-                "INSERT INTO fixes (fix_date, owner, test_suite, test_case, model_fixed, fixed_after_cycle, note, root_cause) "
-                "VALUES (?,?,?,?,?,?,?,?)",
+                "INSERT INTO fixes (fix_date, owner, test_suite, test_case, model_fixed, fixed_after_cycle, note, root_cause, root_cause_group) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
                 (row["fix_date"], row["owner"], row["test_suite"], row["test_case"], row["model_fixed"],
-                 row["fixed_after_cycle"], row["note"], row["root_cause"]),
+                 row["fixed_after_cycle"], row["note"], row["root_cause"], row["root_cause_group"]),
             )
             inserted += 1
+    log_audit(db, "admin.fix.bulk", detail=f"inserted={inserted}, updated={updated}, errors={len(errors)}")
     db.commit()
     return jsonify({"inserted": inserted, "updated": updated, "errors": errors})
 
@@ -3384,6 +4936,7 @@ def admin_update_assignment(rowid):
         "UPDATE assignments SET owner=?, assigned_date=? WHERE rowid=?",
         (owner, assigned_date, rowid),
     )
+    log_audit(db, "admin.assignment.update", target=f"{row['test_suite']}/{row['test_case']}", detail=f"owner={owner}")
     db.commit()
     return jsonify({"status": "updated"})
 
@@ -3395,6 +4948,7 @@ def admin_delete_assignment(rowid):
         return jsonify({"error": "Unauthorized"}), 403
     db = get_db()
     db.execute("DELETE FROM assignments WHERE rowid=?", (rowid,))
+    log_audit(db, "admin.assignment.delete", target=f"assignments#{rowid}")
     db.commit()
     return jsonify({"status": "deleted"})
 
@@ -3431,6 +4985,7 @@ def admin_bulk_assignments():
             (test_suite, test_case, owner, assigned_date),
         )
         upserted += 1
+    log_audit(db, "admin.assignment.bulk", detail=f"upserted={upserted}, errors={len(errors)}")
     db.commit()
     return jsonify({"upserted": upserted, "errors": errors})
 
@@ -3491,6 +5046,9 @@ def admin_update_user(username):
         udb.execute("UPDATE users SET active=? WHERE username=?",
                     (1 if data["active"] else 0, username))
     udb.commit()
+    db = get_db()
+    log_audit(db, "user.update", target=username, detail=", ".join(sorted(k for k in data)))
+    db.commit()
     return jsonify({"status": "updated"})
 
 
@@ -3504,6 +5062,9 @@ def admin_reset_password(username):
     udb.execute("UPDATE users SET password_hash=? WHERE username=?",
                 (generate_password_hash(DEFAULT_RESET_PASSWORD), username))
     udb.commit()
+    db = get_db()
+    log_audit(db, "user.reset_password", target=username)
+    db.commit()
     return jsonify({"status": "reset", "default_password": DEFAULT_RESET_PASSWORD})
 
 
@@ -3521,7 +5082,36 @@ def admin_delete_user(username):
         return jsonify({"error": "Chỉ xoá được tài khoản đã ngừng hoạt động. Hãy vô hiệu hoá trước."}), 400
     udb.execute("DELETE FROM users WHERE username=?", (username,))
     udb.commit()
+    db = get_db()
+    log_audit(db, "user.delete", target=username)
+    db.commit()
     return jsonify({"status": "deleted"})
+
+
+# ------------------------------------------------------------------
+# Admin: Audit log viewer (B5) - xem lich su thao tac nguy hiem.
+# ------------------------------------------------------------------
+@app.route("/api/admin/audit-log", methods=["GET"])
+def admin_get_audit_log():
+    if not _admin_key_ok_get():
+        return jsonify({"error": "Unauthorized"}), 403
+    db = get_db()
+    limit = min(int(request.args.get("limit", 200)), 2000)
+    q = request.args.get("q", "").strip()
+    if q:
+        like = f"%{q}%"
+        rows = db.execute(
+            "SELECT id, ts, username, action, target, detail FROM audit_log "
+            "WHERE username LIKE ? OR action LIKE ? OR target LIKE ? OR detail LIKE ? "
+            "ORDER BY id DESC LIMIT ?",
+            (like, like, like, like, limit),
+        ).fetchall()
+    else:
+        rows = db.execute(
+            "SELECT id, ts, username, action, target, detail FROM audit_log ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return jsonify([dict(r) for r in rows])
 
 
 # ------------------------------------------------------------------
@@ -3570,6 +5160,7 @@ def admin_edit_owner(old_name):
     # PUT: rename hoac reactivate (active=1).
     if data.get("reactivate"):
         db.execute("UPDATE owners SET active=1 WHERE name=?", (old_name,))
+        log_audit(db, "owner.reactivate", target=old_name)
         db.commit()
         return jsonify({"status": "reactivated"})
     body, code = owner_op_rename(db, old_name, (data.get("new_name") or "").strip())
@@ -3579,6 +5170,7 @@ def admin_edit_owner(old_name):
 if __name__ == "__main__":
     init_db()
     init_users_db()
+    start_backup_daemon()  # backup tu dong hang ngay (daemon thread, khong can cron)
     print("=" * 60)
     print(" Test Stabilization Tracker dang chay!")
     print(" May nay:        http://localhost:5000")

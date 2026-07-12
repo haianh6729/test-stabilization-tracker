@@ -57,6 +57,7 @@ function initTabs() {
       if (btn.dataset.tab === "fix-tracking") { loadFixTracking(); }
       if (btn.dataset.tab === "input-fix") { loadFailingScripts(); }
       if (btn.dataset.tab === "new-scripts") { loadNewScripts(); }
+      if (btn.dataset.tab === "integrations") { loadIntegrationsStatus(); }
     });
   });
 }
@@ -148,6 +149,8 @@ async function fetchReferenceData() {
   state.models = models;
   state.owners = owners;
   state.scripts = scripts;
+  state.lists = lists;
+  state.rootCauseGroups = lists.root_cause_groups || [];
   return { models, owners, scripts, latest, lists };
 }
 
@@ -167,6 +170,15 @@ function renderReferenceData({ models, owners, scripts, latest, lists }) {
 
   // Fixed_after_cycle mặc định = cycle gần nhất (sẽ được ghi đè khi chọn script fail).
   if ($("#fCycle")) $("#fCycle").value = latest.latest_cycle || 1;
+
+  // Dropdown nhóm nguyên nhân gốc (chuẩn hoá A3) — giữ lựa chọn hiện tại khi rebuild.
+  const rcSel = $("#fRootCauseGroup");
+  if (rcSel && state.rootCauseGroups.length) {
+    const prev = rcSel.value;
+    rcSel.innerHTML = `<option value="">— Chọn nhóm nguyên nhân —</option>` +
+      state.rootCauseGroups.map((g) => `<option value="${g}">${g}</option>`).join("");
+    if (prev && state.rootCauseGroups.includes(prev)) rcSel.value = prev;
+  }
 
   const today = new Date().toISOString().slice(0, 10);
   if (!$("#fDate").value) $("#fDate").value = today;
@@ -195,9 +207,18 @@ function renderKPIs(d) {
   const k = d.kpi;
   let html = "";
   html += kpiCard("Pass Rate hiện tại", fmtPct(k.current_pass_rate));
+  if (k.current_pass_rate_adjusted !== null && k.current_pass_rate_adjusted !== undefined) {
+    html += kpiCard("Pass Rate (bỏ script mới)", fmtPct(k.current_pass_rate_adjusted));
+  }
   html += kpiCard("Mục tiêu", fmtPct(k.target_pass_rate));
   html += kpiCard("Tổng số script", k.total_scripts);
   html += kpiCard("Script còn lỗi", k.still_failing, k.still_failing > 0 ? "warn" : "good");
+  if (d.tier_counts && d.tier_counts.Verify) {
+    html += kpiCard("Đang xác minh", d.tier_counts.Verify, "warn");
+  }
+  if (k.flaky_count !== null && k.flaky_count !== undefined) {
+    html += kpiCard("🌀 Flaky", `${k.flaky_count} (${fmtPct(k.flaky_rate)})`, k.flaky_count > 0 ? "warn" : "good");
+  }
   html += kpiCard("Cycle hiện tại", k.latest_cycle);
   if (k.days_remaining !== null && k.days_remaining !== undefined) {
     html += kpiCard("Số ngày còn lại", k.days_remaining, k.days_remaining < 7 ? "bad" : "");
@@ -206,6 +227,37 @@ function renderKPIs(d) {
     html += kpiCard("Cần fix / ngày", k.required_rate_per_day.toFixed(1), "warn");
   }
   $("#kpiRow").innerHTML = html;
+}
+
+// ---------------- Dashboard: coverage (hệ thống công ty) + Pareto fix-group ----------------
+function renderCoverage(cov) {
+  const box = $("#coverageBox");
+  const table = $("#coverageTable");
+  if (!box) return;
+  if (!cov || !cov.configured) {
+    box.innerHTML = `<span style="color:#e67e22">⚠️ Chưa đồng bộ hệ thống công ty — chưa xác định tổng TC cần script.</span>
+      ${cov && cov.done_recorded ? `<br><span class="hint">Hiện đã ghi nhận <b>${cov.done_recorded}</b> script DONE trên hệ thống này.</span>` : ""}`;
+    if (table) table.style.display = "none";
+    return;
+  }
+  const color = cov.pct >= 0.85 ? "#1e8449" : (cov.pct >= 0.5 ? "#e67e22" : "#c0392b");
+  box.innerHTML = `<div style="font-size:20px; font-weight:bold; color:${color}">
+      ${cov.done} / ${cov.total_needed} (${fmtPct(cov.pct)})</div>
+    <span class="hint">SKIP bên công ty: ${cov.skip} (không tính vào tổng)${cov.out_of_plan ? ` · DONE ngoài kế hoạch: ${cov.out_of_plan}` : ""} · Đồng bộ: ${cov.synced_at || "—"}</span>`;
+  if (table) {
+    table.style.display = "";
+    table.querySelector("tbody").innerHTML = (cov.by_item || []).map((it) => `
+      <tr><td>${it.item}</td><td>${it.needed}</td><td>${it.done}</td><td><b>${fmtPct(it.pct)}</b></td></tr>
+    `).join("") || `<tr><td colspan="4" style="color:#999">—</td></tr>`;
+  }
+}
+
+function renderFixPareto(rows) {
+  const tbody = $("#fixParetoTable tbody");
+  if (!tbody) return;
+  tbody.innerHTML = (rows || []).map((g) => `
+    <tr><td>${g.group}</td><td>${g.count}</td><td>${fmtPct(g.pct)}</td><td>${fmtPct(g.cum_pct)}</td></tr>
+  `).join("") || `<tr><td colspan="4" style="color:#999">Chưa có fix nào ghi nhóm nguyên nhân.</td></tr>`;
 }
 
 function renderInsights(insights) {
@@ -275,8 +327,8 @@ function renderCharts(d) {
 
   // Tier distribution
   destroyChart("tier");
-  const tierLabels = ["P0", "P1", "P2", "P3", "Done"];
-  const tierColors = ["#e74c3c", "#e67e22", "#f1c40f", "#3498db", "#2ecc71"];
+  const tierLabels = ["P0", "P1", "P2", "P3", "Verify", "Done"];
+  const tierColors = ["#e74c3c", "#e67e22", "#f1c40f", "#3498db", "#9b59b6", "#2ecc71"];
   state.charts.tier = new Chart($("#chartTier"), {
     type: "doughnut",
     data: {
@@ -583,7 +635,7 @@ function renderOwnerTable(owner_stats) {
 function renderSuiteTable(suite_stats) {
   const tbody = $("#suiteTable tbody");
   if (!suite_stats.length) {
-    tbody.innerHTML = `<tr><td colspan="5" style="color:#999">Chưa có dữ liệu.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="color:#999">Chưa có dữ liệu.</td></tr>`;
     return;
   }
   tbody.innerHTML = suite_stats.map((s) => `
@@ -591,6 +643,7 @@ function renderSuiteTable(suite_stats) {
       <td>${s.test_suite}</td>
       <td>${s.total_scripts}</td>
       <td>${s.done}</td>
+      <td>${s.verify ?? 0}</td>
       <td>${s.still_failing}</td>
       <td>${fmtPct(s.done_pct)}</td>
     </tr>
@@ -602,6 +655,8 @@ async function refreshDashboard() {
     const d = await api("/api/dashboard");
     renderKPIs(d);
     renderInsights(d.insights);
+    renderCoverage(d.coverage);
+    renderFixPareto(d.fix_root_causes);
     // Biểu đồ tách riêng: nếu Chart.js lỗi cũng KHÔNG chặn bảng số liệu bên dưới render.
     try { renderCharts(d); } catch (e) { console.error("Chart render failed:", e); }
     renderOwnerTable(d.owner_stats);
@@ -814,6 +869,7 @@ const ENHANCED_TABLE_IDS = [
   "passRateTable", "ownerTable", "suiteTable",
   "cycleMatrixTable", "fixTrackingTable", "newScriptsTable",
   "suiteListTable", "modelListTable", "ownerListTable",
+  "reconcileTable",
 ];
 
 function initTableTools() {
@@ -1057,7 +1113,8 @@ function initInputFix() {
       test_case: $("#fCase").value.trim(),
       model_fixed: $("#fModel").value,
       fixed_after_cycle: parseInt($("#fCycle").value, 10),
-      root_cause: $("#fRootCause").value.trim(),
+      root_cause_group: $("#fRootCauseGroup") ? $("#fRootCauseGroup").value : "",
+      root_cause_detail: $("#fRootCause").value.trim(),
       note: $("#fNote").value.trim(),
     };
     const msg = $("#fixMsg");
@@ -1066,10 +1123,10 @@ function initInputFix() {
       msg.className = "msg-err";
       return;
     }
-    if (!payload.root_cause) {
-      msg.textContent = "⚠️ Bắt buộc nhập Root cause (nguyên nhân gốc của lỗi) trước khi ghi nhận fix.";
+    if (!payload.root_cause_group) {
+      msg.textContent = "⚠️ Bắt buộc chọn Nhóm nguyên nhân gốc trước khi ghi nhận fix.";
       msg.className = "msg-err";
-      $("#fRootCause").focus();
+      $("#fRootCauseGroup").focus();
       return;
     }
     try {
@@ -1080,6 +1137,7 @@ function initInputFix() {
         msg.textContent = "✅ Đã ghi nhận fix. Xem tab '🔬 Theo dõi Fix' để kiểm tra kết quả lần chạy sau.";
       }
       msg.className = "msg-ok";
+      if ($("#fRootCauseGroup")) $("#fRootCauseGroup").value = "";
       $("#fRootCause").value = "";
       $("#fNote").value = "";
       await loadReferenceData();
@@ -1501,7 +1559,8 @@ async function loadPriority() {
 function renderPriorityTableHead() {
   const baseCols = [
     ["rank", "#"], ["test_suite", "Test suite"], ["test_case", "Test Case"],
-    ["priority_tier", "Tier"], ["priority_score", "Điểm ưu tiên"],
+    ["priority_tier", "Tier"], ["is_flaky", "Flaky"], ["reopen_count", "Reopen"],
+    ["priority_score", "Điểm ưu tiên"],
     ["fail_count", "Tổng Fail"], ["fail_model_breadth", "Số model fail"],
     ["current_owner", "Đang phụ trách"], ["team", "Team"],
     ["pass_count", "Pass hiện tại"], ["not_run_count", "NotRun"],
@@ -1550,6 +1609,7 @@ function modelBadge(result) {
 function priorityCellValue(r, key) {
   if (key.startsWith("model_")) return r.model_detail[key.slice(6)] || "—";
   if (key === "current_owner") return r.current_owner || "(chưa gán)";
+  if (key === "is_flaky") return r.is_flaky ? "Flaky" : "";
   return r[key];
 }
 
@@ -1576,7 +1636,7 @@ function renderPriorityTable() {
     if (av > bv) return 1 * dir;
     return 0;
   });
-  const ncols = 12 + state.models.length + 1;
+  const ncols = 14 + state.models.length + 1;
   $("#priorityTable tbody").innerHTML = rows.map((r) => {
     let modelCells = state.models.map((m) => `<td>${modelBadge(r.model_detail[m])}</td>`).join("");
     return `
@@ -1585,6 +1645,8 @@ function renderPriorityTable() {
       <td>${r.test_suite}</td>
       <td>${r.test_case}</td>
       <td><span class="tag tag-${r.priority_tier}">${r.priority_tier}</span></td>
+      <td>${r.is_flaky ? `<span class="tag tag-flaky" title="Đổi pass/fail ${r.flip_count} lần trong cửa sổ cycle gần nhất">🌀 Flaky</span>` : '<span style="color:#bbb">—</span>'}</td>
+      <td>${r.reopen_count > 0 ? `<b style="color:#e67e22">${r.reopen_count}</b>` : (r.reopen_count ?? 0)}</td>
       <td><b style="color:#c0392b">${r.priority_score}</b></td>
       <td>${r.fail_count}</td>
       <td>${r.fail_model_breadth}</td>
@@ -1777,7 +1839,7 @@ function initPriorityTable() {
 // ---------------- Settings & Master Lists ----------------
 async function loadLists() {
   const lists = await api("/api/lists");
-  renderSuiteList(lists.test_suites);
+  renderSuiteList(lists.test_suites_detail || (lists.test_suites || []).map((n) => ({ name: n, script_path: "" })));
   renderModelList(lists.models);
   renderOwnerList(lists.owners);
   reapplyAllTableFilters();
@@ -1786,15 +1848,17 @@ async function loadLists() {
 function renderSuiteList(suites) {
   const tbody = $("#suiteListTable tbody");
   if (!suites.length) {
-    tbody.innerHTML = `<tr><td colspan="2" style="color:#999">Chưa có test suite nào.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="3" style="color:#999">Chưa có test suite nào.</td></tr>`;
     return;
   }
   tbody.innerHTML = suites.map((s) => `
     <tr>
-      <td>${s}</td>
+      <td>${s.name}</td>
+      <td>${s.script_path ? `<code>${escAttr(s.script_path)}</code>` : '<span style="color:#bbb">(toàn repo)</span>'}</td>
       <td>
-        <button class="btn-tiny rename" data-action="rename-suite" data-name="${s}">Đổi tên</button>
-        <button class="btn-tiny danger" data-action="delete-suite" data-name="${s}">Xoá</button>
+        <button class="btn-tiny rename" data-action="set-suite-path" data-name="${s.name}" data-path="${escAttr(s.script_path || "")}">Đổi đường dẫn</button>
+        <button class="btn-tiny rename" data-action="rename-suite" data-name="${s.name}">Đổi tên</button>
+        <button class="btn-tiny danger" data-action="delete-suite" data-name="${s.name}">Xoá</button>
       </td>
     </tr>
   `).join("");
@@ -1842,6 +1906,10 @@ async function handleListAction(action, name, extra) {
       const nt = prompt(`Đặt Team cho "${name}" (nhóm nhỏ, VD tên team-lead). Để trống = xoá team:`, extra || "");
       if (nt === null) return;
       await api(`/api/lists/owners/${encodeURIComponent(name)}/team`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ team: nt.trim() }) });
+    } else if (action === "set-suite-path") {
+      const np = prompt(`Đường dẫn thư mục script của Item "${name}" trên repo GitHub (nhánh main).\nVD: Internet/scripts — để trống = tìm file trên toàn repo:`, extra || "");
+      if (np === null) return;
+      await api(`/api/lists/test_suites/${encodeURIComponent(name)}/path`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ script_path: np.trim() }) });
     } else if (action === "rename-suite") {
       const nn = prompt(`Đổi tên test suite "${name}" thành:`, name);
       if (!nn || nn === name) return;
@@ -1916,7 +1984,7 @@ function initListsManagement() {
   document.body.addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-action]");
     if (!btn) return;
-    handleListAction(btn.dataset.action, btn.dataset.name, btn.dataset.team);
+    handleListAction(btn.dataset.action, btn.dataset.name, btn.dataset.team ?? btn.dataset.path);
   });
 }
 
@@ -1975,9 +2043,354 @@ async function initSettings() {
     }
   });
 
+  // ----- Tiêu chí & KPI (exit criteria / flaky / loại script mới) -----
+  if ($("#sExitCriteria")) {
+    $("#sExitCriteria").value = s.exit_criteria_cycles || "2";
+    $("#sFlakyWindow").value = s.flaky_window || "5";
+    $("#sFlakyFlips").value = s.flaky_min_flips || "2";
+    $("#sExcludeNew").value = s.exclude_new_scripts_cycles || "0";
+    $("#btnSaveCriteria")?.addEventListener("click", async () => {
+      const msg = $("#criteriaMsg");
+      try {
+        await api("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+          exit_criteria_cycles: $("#sExitCriteria").value || "2",
+          flaky_window: $("#sFlakyWindow").value || "5",
+          flaky_min_flips: $("#sFlakyFlips").value || "2",
+          exclude_new_scripts_cycles: $("#sExcludeNew").value || "0",
+        }) });
+        msg.textContent = "Đã lưu — Dashboard/Bảng ưu tiên sẽ tính lại theo tiêu chí mới.";
+        msg.className = "msg-ok";
+        await loadPriority();
+        renderPriorityTable();
+        await refreshDashboard();
+      } catch (e) { msg.textContent = "Lỗi: " + e.message; msg.className = "msg-err"; }
+    });
+  }
+
+  // ----- Tích hợp & API (token đã set hiển thị ******** — giữ nguyên = không đổi) -----
+  if ($("#sFarmUrl")) {
+    $("#sFarmUrl").value = s.farm_api_url || "";
+    $("#sFarmToken").value = s.farm_api_token || "";
+    $("#sCompanyUrl").value = s.company_api_url || "";
+    $("#sCompanyToken").value = s.company_api_token || "";
+    $("#sGithubRepo").value = s.github_repo || "";
+    $("#sGithubBranch").value = s.github_branch || "main";
+    $("#sGithubToken").value = s.github_token || "";
+    $("#sGithubApiBase").value = s.github_api_base || "https://api.github.com";
+    $("#sImportToken").value = s.import_token || "";
+    $("#btnSaveIntegrations")?.addEventListener("click", async () => {
+      const msg = $("#integrationsMsg");
+      try {
+        await api("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+          farm_api_url: $("#sFarmUrl").value.trim(),
+          farm_api_token: $("#sFarmToken").value.trim(),
+          company_api_url: $("#sCompanyUrl").value.trim(),
+          company_api_token: $("#sCompanyToken").value.trim(),
+          github_repo: $("#sGithubRepo").value.trim(),
+          github_branch: $("#sGithubBranch").value.trim() || "main",
+          github_token: $("#sGithubToken").value.trim(),
+          github_api_base: $("#sGithubApiBase").value.trim() || "https://api.github.com",
+          import_token: $("#sImportToken").value.trim(),
+        }) });
+        msg.textContent = "Đã lưu cấu hình tích hợp.";
+        msg.className = "msg-ok";
+      } catch (e) { msg.textContent = "Lỗi: " + e.message; msg.className = "msg-err"; }
+    });
+  }
+
+  // ----- Backup -----
+  if ($("#sBackupEnabled")) {
+    $("#sBackupEnabled").value = (s.backup_enabled || "1") === "0" ? "0" : "1";
+    $("#sBackupRetention").value = s.backup_retention || "30";
+    loadBackupStatus();
+    $("#btnSaveBackupCfg")?.addEventListener("click", async () => {
+      const msg = $("#backupMsg");
+      try {
+        await api("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+          backup_enabled: $("#sBackupEnabled").value,
+          backup_retention: $("#sBackupRetention").value || "30",
+        }) });
+        msg.textContent = "Đã lưu cấu hình backup.";
+        msg.className = "msg-ok";
+        loadBackupStatus();
+      } catch (e) { msg.textContent = "Lỗi: " + e.message; msg.className = "msg-err"; }
+    });
+    $("#btnBackupNow")?.addEventListener("click", async () => {
+      const msg = $("#backupMsg");
+      msg.textContent = "Đang backup..."; msg.className = "";
+      try {
+        const res = await api("/api/backup/run", { method: "POST" });
+        msg.textContent = `✅ Đã backup vào ${res.backup_dir} (${(res.files || []).length} file).`;
+        msg.className = "msg-ok";
+        loadBackupStatus();
+      } catch (e) { msg.textContent = "Lỗi: " + e.message; msg.className = "msg-err"; }
+    });
+  }
+
   initListsManagement();
   await loadLists();
   await initHandover();
+}
+
+async function loadBackupStatus() {
+  const box = $("#backupStatusBox");
+  if (!box) return;
+  try {
+    const st = await api("/api/backup/status");
+    const n = (st.backups || []).length;
+    const latest = n ? st.backups[0].dir : "—";
+    box.innerHTML = `Trạng thái: <b>${st.enabled ? "🟢 Bật" : "🔴 Tắt"}</b> · Backup gần nhất: <b>${st.last_backup_date || "chưa có"}</b> · Đang giữ <b>${n}</b> bản (mới nhất: ${latest}) · Giữ tối đa ${st.retention} bản.`;
+  } catch (e) {
+    box.textContent = "Không tải được trạng thái backup: " + e.message;
+  }
+}
+
+// ---------------- Reports (📤 Báo cáo) ----------------
+function initReports() {
+  const typeSel = $("#rpType");
+  if (!typeSel) return;
+  if ($("#rpDate") && !$("#rpDate").value) $("#rpDate").value = new Date().toISOString().slice(0, 10);
+  typeSel.addEventListener("change", () => {
+    const weekly = typeSel.value === "weekly";
+    $("#rpDateWrap").style.display = weekly ? "none" : "";
+    $("#rpWeekWrap").style.display = weekly ? "" : "none";
+  });
+
+  $("#btnGenReport").addEventListener("click", async () => {
+    const msg = $("#rpMsg");
+    msg.textContent = "Đang tạo báo cáo..."; msg.className = "";
+    try {
+      let url;
+      if (typeSel.value === "weekly") {
+        const wk = $("#rpWeek").value;
+        url = "/api/report/weekly" + (wk ? `?week=${encodeURIComponent(wk)}` : "");
+      } else {
+        const d = $("#rpDate").value;
+        url = "/api/report/daily" + (d ? `?date=${encodeURIComponent(d)}` : "");
+      }
+      const res = await api(url);
+      state.lastReport = res.markdown;
+      const pre = $("#reportPreview");
+      pre.textContent = res.markdown;
+      pre.style.display = "";
+      $("#btnCopyReport").style.display = "";
+      msg.textContent = "✅ Đã tạo báo cáo — bấm Copy markdown rồi dán vào chat/email.";
+      msg.className = "msg-ok";
+    } catch (e) {
+      msg.textContent = "Lỗi: " + e.message;
+      msg.className = "msg-err";
+      $("#reportPreview").style.display = "none";
+      $("#btnCopyReport").style.display = "none";
+    }
+  });
+
+  $("#btnCopyReport").addEventListener("click", async () => {
+    const text = state.lastReport || "";
+    const msg = $("#rpMsg");
+    let ok = false;
+    // navigator.clipboard chỉ có ở secure context (localhost/https) — LAN HTTP phải fallback.
+    try {
+      if (navigator.clipboard) { await navigator.clipboard.writeText(text); ok = true; }
+    } catch (e) { ok = false; }
+    if (!ok) {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      ta.remove();
+    }
+    msg.textContent = ok ? "📋 Đã copy markdown vào clipboard." : "Không copy tự động được — bôi đen nội dung bên dưới và Ctrl+C.";
+    msg.className = ok ? "msg-ok" : "msg-err";
+  });
+}
+
+// ---------------- Integrations (🔗 Đồng bộ) ----------------
+async function loadIntegrationsStatus() {
+  try {
+    const st = await api("/api/integrations/status");
+    const farm = $("#intFarmStatus");
+    if (farm) farm.innerHTML = st.farm_configured
+      ? "🟢 Farm API: đã cấu hình URL."
+      : "🟡 Farm API: <b>chưa cấu hình</b> — điền URL/token ở tab ⚙️ Cài đặt (mục Tích hợp & API).";
+    const comp = $("#intCompanyStatus");
+    if (comp) comp.innerHTML =
+      (st.company_configured ? "🟢 API công ty: đã cấu hình. " : "🟡 API công ty: <b>chưa cấu hình</b> — dùng paste tay bên dưới. ") +
+      (st.company_cache.rows
+        ? `Cache hiện có <b>${st.company_cache.rows}</b> TC (nguồn: ${st.company_cache.source}, lúc: ${st.company_cache.synced_at}).`
+        : "Cache đang trống.");
+    const gh = $("#intGithubStatus");
+    if (gh) gh.innerHTML =
+      (st.github_configured ? "🟢 GitHub: đã cấu hình repo. " : "🟡 GitHub: <b>chưa cấu hình repo</b> — dùng paste tay bên dưới. ") +
+      (st.github_cache.files
+        ? `Cache hiện có <b>${st.github_cache.files}</b> file (nguồn: ${st.github_cache.source}, lúc: ${st.github_cache.synced_at}).`
+        : "Cache đang trống.");
+  } catch (e) {
+    console.error("integrations status:", e);
+  }
+}
+
+// Parse paste hệ thống công ty: mỗi dòng "TC_ID⇥Status" hoặc "TC_ID⇥Status⇥Item" (tab/phẩy).
+function parseCompanyPaste(text) {
+  const rows = [];
+  for (const line of (text || "").split(/\r?\n/)) {
+    const parts = line.split(/\t|,/).map((p) => p.trim());
+    if (!parts[0]) continue;
+    if (/^(tc\s*.?id|test\s*case)/i.test(parts[0])) continue; // header
+    rows.push({ tc_id: parts[0], status: parts[1] || "", item: parts[2] || "" });
+  }
+  return rows;
+}
+
+function renderReconcile() {
+  const data = state.reconcile;
+  if (!data) return;
+  const s = data.summary;
+  $("#reconcileKpiRow").innerHTML =
+    kpiCard("Script DONE", s.total_done) +
+    kpiCard("✅ Khớp cả 3 chiều", s.ok_all, s.ok_all === s.total_done ? "good" : "") +
+    (s.has_company_data
+      ? kpiCard("⚠️ Không có bên công ty", s.missing_company, s.missing_company ? "warn" : "good") +
+        kpiCard("⚠️ Chưa Performed", s.wrong_company_status, s.wrong_company_status ? "warn" : "good")
+      : kpiCard("Công ty", "chưa có dữ liệu")) +
+    (s.has_github_data
+      ? kpiCard("❌ Thiếu file GitHub", s.missing_github, s.missing_github ? "bad" : "good")
+      : kpiCard("GitHub", "chưa có dữ liệu"));
+
+  const onlyDiff = $("#reconcileOnlyDiff")?.checked;
+  const rows = (data.rows || []).filter((r) => !onlyDiff || !r.ok);
+  $("#reconcileTable tbody").innerHTML = rows.map((r) => {
+    const okTag = r.ok
+      ? `<span class="tag" style="background:#2ecc71">✅ OK</span>`
+      : `<span class="tag" style="background:#e74c3c">✗ Lệch</span>`;
+    let compCell;
+    if (!s.has_company_data) compCell = '<span style="color:#bbb">(chưa có dữ liệu)</span>';
+    else if (r.company_status === null || r.company_status === undefined) compCell = '<span class="tag" style="background:#e74c3c">không có trong DS</span>';
+    else if (r.company_ok) compCell = `<span class="tag" style="background:#2ecc71">${escAttr(r.company_status)}</span>`;
+    else compCell = `<span class="tag" style="background:#e67e22">${escAttr(r.company_status)}</span>`;
+    let ghCell;
+    if (!s.has_github_data) ghCell = '<span style="color:#bbb">(chưa có dữ liệu)</span>';
+    else if (r.github_ok) ghCell = `<span class="tag" style="background:#2ecc71" title="${escAttr(r.matched_path || "")}">✅ có file</span> <span class="hint">${escAttr(r.matched_path || "")}</span>`;
+    else ghCell = `<span class="tag" style="background:#e74c3c">❌ thiếu file</span>${r.path_configured ? "" : ' <span class="hint">(Item chưa cấu hình đường dẫn — tìm toàn repo)</span>'}`;
+    return `<tr>
+      <td>${okTag}</td>
+      <td>${escAttr(r.tc_id)}</td>
+      <td>${escAttr(r.item)}</td>
+      <td>${escAttr(r.member)}</td>
+      <td>${escAttr(r.completed_date)}</td>
+      <td>${compCell}</td>
+      <td>${ghCell}</td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="7" style="color:#999">${onlyDiff ? "Không có dòng lệch nào 🎉" : "Chưa có script DONE nào."}</td></tr>`;
+
+  const rev = $("#reconcileReverse");
+  if (rev) {
+    const list = data.company_performed_not_done || [];
+    rev.innerHTML = list.length
+      ? `⚠️ <b>Chiều ngược</b>: ${list.length}${list.length >= 50 ? "+" : ""} TC bên công ty đã <b>Performed</b> nhưng hệ thống này chưa ghi DONE: <code>${list.slice(0, 15).map(escAttr).join(", ")}</code>${list.length > 15 ? " …" : ""}`
+      : (s.has_company_data ? "✅ Không có TC nào Performed bên công ty mà thiếu DONE ở đây." : "");
+  }
+}
+
+function initIntegrations() {
+  if (!$("#btnFarmFetch")) return;
+
+  $("#btnFarmFetch").addEventListener("click", async () => {
+    const msg = $("#farmFetchMsg");
+    const ids = $("#farmTestIds").value.trim();
+    if (!ids) { msg.textContent = "Nhập ít nhất 1 Test ID."; msg.className = "msg-err"; return; }
+    msg.textContent = "Đang fetch từ farm..."; msg.className = "";
+    $("#farmFetchErrors").innerHTML = "";
+    try {
+      const res = await api("/api/integrations/farm/fetch", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ test_ids: ids }),
+      });
+      let text = `✅ Fetch OK ${res.fetched_ok} Test ID — đã lưu ${res.inserted} dòng kết quả.`;
+      if (res.skipped_duplicate) text += ` (${res.skipped_duplicate} dòng trùng bỏ qua)`;
+      if (res.warnings && res.warnings.length) text += " ⚠️ " + res.warnings.join(" ");
+      msg.textContent = text;
+      msg.className = (res.fetch_errors || []).length ? "msg-err" : "msg-ok";
+      if ((res.fetch_errors || []).length) {
+        $("#farmFetchErrors").innerHTML = `<p class="hint" style="color:#c0392b">Lỗi theo Test ID:</p><ul class="hint">` +
+          res.fetch_errors.map((e) => `<li><code>${escAttr(e.test_id)}</code>: ${escAttr(e.error)}</li>`).join("") + "</ul>";
+      }
+      if (res.inserted) { await loadReferenceData(); await refreshDashboard(); }
+    } catch (e) {
+      msg.textContent = "Lỗi: " + e.message; msg.className = "msg-err";
+    }
+  });
+
+  $("#btnCompanySync").addEventListener("click", async () => {
+    const msg = $("#companySyncMsg");
+    msg.textContent = "Đang sync..."; msg.className = "";
+    try {
+      const res = await api("/api/integrations/company/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      msg.textContent = `✅ Đã đồng bộ ${res.synced} TC từ hệ thống công ty.`;
+      msg.className = "msg-ok";
+      await loadIntegrationsStatus();
+      await refreshDashboard();
+    } catch (e) { msg.textContent = "Lỗi: " + e.message; msg.className = "msg-err"; }
+  });
+
+  $("#btnCompanyManual").addEventListener("click", async () => {
+    const msg = $("#companyManualMsg");
+    const rows = parseCompanyPaste($("#companyPasteArea").value);
+    if (!rows.length) { msg.textContent = "Không nhận diện được dòng nào."; msg.className = "msg-err"; return; }
+    if (!confirm(`Thay TOÀN BỘ danh sách TC công ty trong cache bằng ${rows.length} dòng vừa dán?`)) return;
+    try {
+      const res = await api("/api/integrations/company/manual", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows, mode: "replace" }),
+      });
+      msg.textContent = `✅ Đã nhập ${res.imported} TC (thay toàn bộ cache).`;
+      msg.className = "msg-ok";
+      $("#companyPasteArea").value = "";
+      await loadIntegrationsStatus();
+      await refreshDashboard();
+    } catch (e) { msg.textContent = "Lỗi: " + e.message; msg.className = "msg-err"; }
+  });
+
+  $("#btnGithubSync").addEventListener("click", async () => {
+    const msg = $("#githubSyncMsg");
+    msg.textContent = "Đang sync từ GitHub..."; msg.className = "";
+    try {
+      const res = await api("/api/integrations/github/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      msg.textContent = `✅ Đã đồng bộ ${res.files} file script từ GitHub.` + (res.warning ? " ⚠️ " + res.warning : "");
+      msg.className = "msg-ok";
+      await loadIntegrationsStatus();
+    } catch (e) { msg.textContent = "Lỗi: " + e.message; msg.className = "msg-err"; }
+  });
+
+  $("#btnGithubManual").addEventListener("click", async () => {
+    const msg = $("#githubManualMsg");
+    const paths = $("#githubPasteArea").value.split(/\r?\n/).map((p) => p.trim()).filter(Boolean);
+    if (!paths.length) { msg.textContent = "Không có đường dẫn nào."; msg.className = "msg-err"; return; }
+    if (!confirm(`Thay TOÀN BỘ danh sách file GitHub trong cache bằng ${paths.length} file vừa dán?`)) return;
+    try {
+      const res = await api("/api/integrations/github/manual", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paths }),
+      });
+      msg.textContent = `✅ Đã nhập ${res.imported} file (thay toàn bộ cache).`;
+      msg.className = "msg-ok";
+      $("#githubPasteArea").value = "";
+      await loadIntegrationsStatus();
+    } catch (e) { msg.textContent = "Lỗi: " + e.message; msg.className = "msg-err"; }
+  });
+
+  $("#btnReconcile").addEventListener("click", async () => {
+    const msg = $("#reconcileMsg");
+    msg.textContent = "Đang đối chiếu..."; msg.className = "";
+    try {
+      state.reconcile = await api("/api/integrations/reconcile");
+      renderReconcile();
+      msg.textContent = "✅ Đã đối chiếu xong.";
+      msg.className = "msg-ok";
+    } catch (e) { msg.textContent = "Lỗi: " + e.message; msg.className = "msg-err"; }
+  });
+  $("#reconcileOnlyDiff")?.addEventListener("change", renderReconcile);
 }
 
 // ---------------- Init ----------------
@@ -2000,6 +2413,8 @@ async function init() {
   await loadReferenceData();
   initPriorityTable();
   await initSettings();
+  initReports();
+  initIntegrations();
   await loadPriority();
   await loadFailingScripts();
   renderPriorityTableHead();

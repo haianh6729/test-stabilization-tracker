@@ -246,6 +246,7 @@
   <button class="admin-tab-btn" data-atab="assignments">👤 Assignments</button>
   <button class="admin-tab-btn" data-atab="accounts">👥 Tài khoản</button>
   <button class="admin-tab-btn" data-atab="owners">🧑‍🤝‍🧑 Owner &amp; Team</button>
+  <button class="admin-tab-btn" data-atab="audit">📜 Audit Log</button>
 </div>
 
 <!-- ============ TAB: CYCLE RESULTS ============ -->
@@ -529,6 +530,35 @@ Keyboard	SKBD_000123	tuyen.bv1"></textarea>
     </table>
   </div>
   <p id="ownerCount" style="margin-top: 10px; color: #666; font-size: 12px;"></p>
+</div>
+</div>
+
+<div id="atab-audit" class="admin-tab-panel">
+<div class="card">
+  <div class="admin-header">
+    <h2>📜 Audit Log — ai làm gì, lúc nào</h2>
+    <p>Lịch sử các thao tác thay đổi dữ liệu: sửa/xoá ở trang admin, thay đổi danh mục, đổi settings, sync/import, backup, quản lý tài khoản. Mới nhất ở trên cùng.</p>
+  </div>
+  <div class="search-bar">
+    <input type="text" id="auditSearchInput" placeholder="Lọc theo user / action / target / chi tiết...">
+    <button onclick="auditSearch()">🔍 Tìm</button>
+    <button onclick="auditLoadAll()" style="background: #666;">⟳ Tải lại</button>
+  </div>
+  <div style="overflow-x: auto;">
+    <table class="results-table" id="auditTable">
+      <thead>
+        <tr>
+          <th>Thời điểm (UTC)</th>
+          <th>User</th>
+          <th>Action</th>
+          <th>Target</th>
+          <th>Chi tiết</th>
+        </tr>
+      </thead>
+      <tbody id="auditBody"></tbody>
+    </table>
+  </div>
+  <p id="auditCount" style="margin-top: 10px; color: #666; font-size: 12px;"></p>
 </div>
 </div>
 
@@ -1561,6 +1591,43 @@ async function ownHardDelete(name) {
 }
 
 // ============================================================
+// Audit Log
+// ============================================================
+function auditEsc(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function auditLoadAll() {
+  document.getElementById('auditSearchInput').value = '';
+  const response = await fetch(`/api/admin/audit-log?key=${ADMIN_KEY}&limit=300`);
+  const data = await response.json();
+  auditDisplay(data);
+}
+
+async function auditSearch() {
+  const q = document.getElementById('auditSearchInput').value.trim();
+  if (!q) { auditLoadAll(); return; }
+  const response = await fetch(`/api/admin/audit-log?key=${ADMIN_KEY}&limit=300&q=${encodeURIComponent(q)}`);
+  const data = await response.json();
+  auditDisplay(data);
+}
+
+function auditDisplay(rows) {
+  const tbody = document.getElementById('auditBody');
+  tbody.innerHTML = '';
+  (rows || []).forEach((r) => {
+    const row = tbody.insertRow();
+    row.innerHTML = `
+      <td style="white-space:nowrap">${auditEsc(r.ts)}</td>
+      <td>${auditEsc(r.username)}</td>
+      <td><code>${auditEsc(r.action)}</code></td>
+      <td>${auditEsc(r.target)}</td>
+      <td style="max-width:420px; word-break:break-word; font-size:12px; color:#555">${auditEsc(r.detail)}</td>`;
+  });
+  document.getElementById('auditCount').textContent = `${(rows || []).length} dòng (tối đa 300 gần nhất).`;
+}
+
+// ============================================================
 // Init: load dữ liệu tab đang active khi mở trang; các tab khác load lười khi click vào.
 // ============================================================
 let _loadedTabs = new Set();
@@ -1575,6 +1642,7 @@ document.querySelectorAll('.admin-tab-btn').forEach((btn) => {
     if (t === 'assignments') asgLoadAll();
     if (t === 'accounts') usrLoadAll();
     if (t === 'owners') ownLoadAll();
+    if (t === 'audit') auditLoadAll();
   });
 });
 document.addEventListener('DOMContentLoaded', () => {
