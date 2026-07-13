@@ -23,6 +23,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+from openpyxl.formatting.rule import ColorScaleRule
+from openpyxl.chart import LineChart, BarChart, PieChart, Reference
 
 DB_PATH = "tracker.db"
 USERS_DB_PATH = "users.db"  # DB rieng cho tai khoan - tach khoi tracker.db (du lieu song)
@@ -100,6 +102,21 @@ def classify_root_cause_group(text):
         if re.search(pat, low, re.I):
             return grp
     return "Khác"
+
+
+def get_root_cause_groups(db):
+    """Danh sach nhom nguyen nhan HIEN HANH: doc tu settings key 'root_cause_groups'
+    (JSON list) neu admin da doi ten; else tra ve hang so mac dinh ROOT_CAUSE_GROUPS.
+    Cho phep doi ten nhom ma khong sua code (persist trong DB)."""
+    raw = get_setting(db, "root_cause_groups", "").strip()
+    if raw:
+        try:
+            groups = json.loads(raw)
+            if isinstance(groups, list) and all(isinstance(g, str) and g.strip() for g in groups) and groups:
+                return [g.strip() for g in groups]
+        except (ValueError, TypeError):
+            pass
+    return list(ROOT_CAUSE_GROUPS)
 
 
 app = Flask(__name__)
@@ -693,9 +710,45 @@ def summarize_root_cause(description, state=""):
     return ("Khác: " + first[:70]) if first else "Khác: (không rõ)"
 
 
-def compute_root_cause_pareto(db, limit=15):
+# Ban dich sang tieng Anh cho cac nhan CO DINH cua ROOT_CAUSE_RULES - chi dung cho
+# Dashboard + bao cao sinh ra (2 noi bat buoc tieng Anh). Export Excel toan bo du lieu
+# (tab Uu tien) va cac consumer khac VAN dung nhan tieng Viet goc (summarize_root_cause).
+_ROOT_CAUSE_LABEL_EN = {label: label for _, label in ROOT_CAUSE_RULES}
+_ROOT_CAUSE_LABEL_EN.update({
+    "Hạ tầng: Device đang bận (không xin được máy để chạy)": "Infra: Device busy (could not acquire a device to run)",
+    "Hạ tầng: Mất kết nối / không đủ thiết bị (PC ↔ điện thoại)": "Infra: Connection lost / insufficient devices (PC ↔ phone)",
+    "Hạ tầng: Lỗi kết nối tới STP server": "Infra: STP server connection error",
+    "Hạ tầng: Lỗi kết nối WiFi (không tìm thấy/không kết nối được AP)": "Infra: WiFi connection error (AP not found / could not connect)",
+    "Script: Thiếu module / lỗi import": "Script: Missing module / import error",
+    "Hạ tầng: Lỗi script log (MTCN)": "Infra: Script log error (MTCN)",
+    "Script: Không tìm thấy phần tử UI (đối tượng None)": "Script: UI element not found (None object)",
+    "Timeout: Quá thời gian chờ": "Timeout: Exceeded wait time",
+    "Script: Lỗi phân tích XML": "Script: XML parse error",
+    "Tiền đề: Lỗi thiết lập điều kiện tiền đề (pre-condition)": "Precondition: Failed to set up precondition",
+    "Ứng dụng: Không mở được Samsung Browser": "App: Could not open Samsung Browser",
+    "Script: Lỗi logic (Python exception)": "Script: Logic error (Python exception)",
+})
+
+
+def _translate_root_cause_label(label):
+    """Dich 1 nhan root-cause sang tieng Anh cho Dashboard/bao cao. Nhan dong
+    ('Khác: ...', 'Không có mô tả...') giu nguyen tien to dich, phan con lai
+    (trich tu description raw) la DU LIEU nguoi dung nhap - khong dich."""
+    if label in _ROOT_CAUSE_LABEL_EN:
+        return _ROOT_CAUSE_LABEL_EN[label]
+    if label.startswith("Khác: "):
+        return "Other: " + label[len("Khác: "):]
+    if label == "Không có mô tả lỗi":
+        return "No failure description"
+    if label.startswith("Không có mô tả ("):
+        return "No description (" + label[len("Không có mô tả ("):]
+    return label
+
+
+def compute_root_cause_pareto(db, limit=15, english=False):
     """Pareto nguyen nhan loi da GOM NHOM (thay vi group text tho). Tra ve list dict
-    {description(=ten nhom), count, pct, cum_pct} da sap giam dan + tinh % cong don."""
+    {description(=ten nhom), count, pct, cum_pct} da sap giam dan + tinh % cong don.
+    english=True: dich nhan sang tieng Anh (chi dung cho Dashboard/bao cao)."""
     groups = {}
     for r in db.execute("SELECT description, state FROM results WHERE result='Fail'"):
         label = summarize_root_cause(r["description"], r["state"])
@@ -706,7 +759,8 @@ def compute_root_cause_pareto(db, limit=15):
     for label, cnt in ordered:
         pct = (cnt / total_fail) if total_fail else 0
         cum += pct
-        out.append({"description": label, "count": cnt, "pct": pct, "cum_pct": cum})
+        out.append({"description": _translate_root_cause_label(label) if english else label,
+                    "count": cnt, "pct": pct, "cum_pct": cum})
     return out
 
 
@@ -1285,7 +1339,7 @@ def api_lists():
         "test_suites_detail": test_suites_detail,
         "models": models,
         "owners": owners,
-        "root_cause_groups": ROOT_CAUSE_GROUPS,
+        "root_cause_groups": get_root_cause_groups(db),
     })
 
 
@@ -1342,6 +1396,79 @@ def set_suite_script_path(name):
     log_audit(db, "lists.suite_path", target=name, detail=script_path)
     db.commit()
     return jsonify({"status": "ok", "script_path": script_path})
+
+
+def _persist_root_cause_groups(db, groups):
+    """Ghi danh sach nhom nguyen nhan hien hanh vao settings key 'root_cause_groups' (JSON)."""
+    db.execute(
+        "INSERT INTO settings (key, value) VALUES ('root_cause_groups', ?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (json.dumps(groups, ensure_ascii=False),),
+    )
+
+
+@app.route("/api/lists/root_cause_groups", methods=["POST"])
+@require_perm("settings")
+def add_root_cause_group():
+    """Them 1 nhom nguyen nhan goc moi (mirror add_model)."""
+    data = request.get_json(force=True)
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Tên nhóm không được rỗng"}), 400
+    db = get_db()
+    groups = get_root_cause_groups(db)
+    if name in groups:
+        return jsonify({"error": f"Nhóm '{name}' đã tồn tại."}), 400
+    new_groups = groups + [name]
+    _persist_root_cause_groups(db, new_groups)
+    log_audit(db, "lists.root_cause_group_add", target=name)
+    db.commit()
+    return jsonify({"status": "ok", "groups": new_groups})
+
+
+@app.route("/api/lists/root_cause_groups/<path:old_name>", methods=["PUT", "DELETE"])
+@require_perm("settings")
+def edit_root_cause_group(old_name):
+    """Doi ten hoac xoa 1 nhom nguyen nhan goc. Persist danh sach vao settings
+    (key 'root_cause_groups', JSON). Rename cascade cap nhat cac dong fixes cu
+    (cot root_cause_group VA prefix text trong root_cause) de Pareto/consumer khong lech.
+    Delete chi cho phep khi KHONG co fix nao dang dung nhom nay va con >=1 nhom sau khi xoa."""
+    db = get_db()
+    groups = get_root_cause_groups(db)
+    if old_name not in groups:
+        return jsonify({"error": f"Không tìm thấy nhóm '{old_name}'."}), 404
+
+    if request.method == "DELETE":
+        used = db.execute("SELECT COUNT(*) c FROM fixes WHERE root_cause_group=?", (old_name,)).fetchone()["c"]
+        if used:
+            return jsonify({"error": f"Không thể xoá: đã có {used} fix dùng nhóm này. Đổi tên thay vì xoá."}), 400
+        new_groups = [g for g in groups if g != old_name]
+        if not new_groups:
+            return jsonify({"error": "Phải giữ ít nhất 1 nhóm nguyên nhân."}), 400
+        _persist_root_cause_groups(db, new_groups)
+        log_audit(db, "lists.root_cause_group_delete", target=old_name)
+        db.commit()
+        return jsonify({"status": "deleted", "groups": new_groups})
+
+    data = request.get_json(force=True)
+    new_name = (data.get("new_name") or "").strip()
+    if not new_name:
+        return jsonify({"error": "Ten moi khong duoc rong"}), 400
+    if new_name != old_name and new_name in groups:
+        return jsonify({"error": f"Nhom '{new_name}' da ton tai — chon ten khac."}), 400
+    if new_name == old_name:
+        return jsonify({"status": "unchanged"})
+    new_groups = [new_name if g == old_name else g for g in groups]
+    _persist_root_cause_groups(db, new_groups)
+    # Cascade: cot root_cause_group + prefix "<old> - " trong text root_cause.
+    db.execute("UPDATE fixes SET root_cause_group=? WHERE root_cause_group=?", (new_name, old_name))
+    db.execute(
+        "UPDATE fixes SET root_cause = ? || SUBSTR(root_cause, ?) WHERE root_cause LIKE ?",
+        (new_name + " - ", len(old_name + " - ") + 1, old_name + " - %"),
+    )
+    log_audit(db, "lists.root_cause_group_rename", target=old_name, detail=f"-> {new_name}")
+    db.commit()
+    return jsonify({"status": "renamed", "groups": new_groups})
 
 
 @app.route("/api/lists/models", methods=["POST"])
@@ -1900,18 +2027,22 @@ def api_add_fix():
     # tu dropdown (A3); van chap nhan root_cause free text cu (bulk import/script) -> tu suy
     # group bang heuristic. Luon luu CA root_cause_group (cot moi) VA root_cause (text cu,
     # compose "Group - detail") de moi consumer cu khong doi.
+    db = get_db()
+    valid_groups = get_root_cause_groups(db)
     group = str(row.get("root_cause_group") or "").strip()
     detail = str(row.get("root_cause_detail") or "").strip()
     root_cause = str(row.get("root_cause") or "").strip()
     if group:
-        if group not in ROOT_CAUSE_GROUPS:
-            return jsonify({"error": "Nhóm nguyên nhân không hợp lệ. Chọn 1 trong: " + ", ".join(ROOT_CAUSE_GROUPS)}), 400
-        root_cause = f"{group} - {detail}" if detail else group
+        if group not in valid_groups:
+            return jsonify({"error": "Nhóm nguyên nhân không hợp lệ. Chọn 1 trong: " + ", ".join(valid_groups)}), 400
+        # Chi tiet nguyen nhan BAT BUOC (form UI). Bulk import free-text di nhanh 'elif' ben duoi.
+        if not detail:
+            return jsonify({"error": "Bắt buộc nhập Chi tiết nguyên nhân (mô tả cụ thể) khi ghi nhận fix."}), 400
+        root_cause = f"{group} - {detail}"
     elif root_cause:
         group = classify_root_cause_group(root_cause)
     else:
         return jsonify({"error": "Root cause (nguyên nhân lỗi) là bắt buộc — chọn nhóm nguyên nhân và mô tả chi tiết."}), 400
-    db = get_db()
     owner_name = row["owner"].strip()
     test_suite = row["test_suite"].strip()
     test_case = row["test_case"].strip()
@@ -2229,6 +2360,14 @@ def get_owner_stats(db, priority=None):
 
     owner_rows = db.execute("SELECT name FROM owners ORDER BY name").fetchall()
     assignment_rows = db.execute("SELECT test_suite, test_case, owner FROM assignments").fetchall()
+    # So script viet moi da hoan thanh (DONE) theo tung nguoi - all-time (cot Scripts Written).
+    written_map = {
+        r["member"]: r["c"]
+        for r in db.execute(
+            "SELECT member, COUNT(*) c FROM new_scripts "
+            "WHERE status='DONE' AND member IS NOT NULL AND TRIM(member)!='' GROUP BY member"
+        ).fetchall()
+    }
     open_workload = {}
     for r in assignment_rows:
         if not r["owner"]:
@@ -2243,7 +2382,7 @@ def get_owner_stats(db, priority=None):
     for orow in owner_rows:
         owner = orow["name"]
         fx = db.execute("SELECT * FROM fixes WHERE owner=? ORDER BY id", (owner,)).fetchall()
-        if not fx and owner not in open_workload:
+        if not fx and owner not in open_workload and not written_map.get(owner):
             continue
         seen = set()
         distinct_scripts = []
@@ -2291,6 +2430,7 @@ def get_owner_stats(db, priority=None):
         owner_stats.append({
             "owner": owner,
             "fixes_logged": len(fx),
+            "scripts_written": written_map.get(owner, 0),  # so script viet moi DONE (all-time)
             "distinct_scripts_fixed": distinct_fixed_n,
             "distinct_scripts_fully_resolved": fully_resolved_n,
             "verified": verified, "reopened": reopened, "pending": pending,
@@ -2308,6 +2448,106 @@ def get_owner_stats(db, priority=None):
     for i, o in enumerate(owner_stats, start=1):
         o["rank"] = i
     return owner_stats
+
+
+def _activity_days(db, date_from=None, date_to=None):
+    """So NGAY co hoat dong (co fix hoac co script DONE) trong khoang [date_from, date_to].
+    Dung lam mau so cho nang suat TB/nguoi/ngay (tranh chia cho ngay khong ai lam)."""
+    rng = ""
+    params = []
+    if date_from and date_to:
+        rng = " WHERE d >= ? AND d <= ?"
+        params = [date_from, date_to]
+    q = (
+        "SELECT COUNT(DISTINCT d) c FROM ("
+        "  SELECT fix_date d FROM fixes WHERE fix_date IS NOT NULL AND TRIM(fix_date)!=''"
+        "  UNION"
+        "  SELECT completed_date d FROM new_scripts WHERE status='DONE' AND completed_date IS NOT NULL AND TRIM(completed_date)!=''"
+        ")" + rng
+    )
+    return db.execute(q, params).fetchone()["c"] or 0
+
+
+def _week_range(week_str):
+    """Parse 'YYYY-Wnn' -> (monday_iso, sunday_iso). Raise ValueError neu sai."""
+    m = re.match(r"^(\d{4})-W(\d{1,2})$", (week_str or "").strip())
+    if not m:
+        raise ValueError("Định dạng tuần không hợp lệ — dùng YYYY-Wnn (VD 2026-W28).")
+    monday = date.fromisocalendar(int(m.group(1)), int(m.group(2)), 1)
+    return monday.isoformat(), (monday + timedelta(days=6)).isoformat()
+
+
+@app.route("/api/leaderboard")
+@require_login
+def api_leaderboard():
+    """Owner leaderboard co the chon theo NGAY / TUAN / CONG DON.
+    - cumulative: KPI all-time day du (resolution/verification rate, workload) + scripts_written.
+    - day/week: dem fix (fix_date) & script viet moi DONE (completed_date) TRONG khoang;
+      rate all-time van kem de tham chieu. Kem totals + nang suat TB/nguoi/ngay."""
+    db = get_db()
+    scope = (request.args.get("scope") or "cumulative").strip().lower()
+    base = get_owner_stats(db)
+    base_map = {o["owner"]: o for o in base}
+
+    date_from = date_to = None
+    if scope == "day":
+        date_from = date_to = (request.args.get("date") or "").strip() or date.today().isoformat()
+    elif scope == "week":
+        try:
+            date_from, date_to = _week_range(request.args.get("week") or date.today().strftime("%G-W%V"))
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    if scope == "cumulative":
+        rows = base
+    else:
+        fx_map = {
+            r["owner"]: r["c"] for r in db.execute(
+                "SELECT owner, COUNT(*) c FROM fixes WHERE fix_date>=? AND fix_date<=? "
+                "AND owner IS NOT NULL AND TRIM(owner)!='' GROUP BY owner", (date_from, date_to)
+            ).fetchall()
+        }
+        wr_map = {
+            r["member"]: r["c"] for r in db.execute(
+                "SELECT member, COUNT(*) c FROM new_scripts WHERE status='DONE' AND completed_date>=? AND completed_date<=? "
+                "AND member IS NOT NULL AND TRIM(member)!='' GROUP BY member", (date_from, date_to)
+            ).fetchall()
+        }
+        rows = []
+        for name in sorted(set(fx_map) | set(wr_map)):
+            b = base_map.get(name, {})
+            rows.append({
+                "owner": name,
+                "fixes_logged": fx_map.get(name, 0),
+                "scripts_written": wr_map.get(name, 0),
+                "distinct_scripts_fixed": b.get("distinct_scripts_fixed", 0),
+                "distinct_scripts_fully_resolved": b.get("distinct_scripts_fully_resolved", 0),
+                "verified": b.get("verified", 0), "reopened": b.get("reopened", 0), "pending": b.get("pending", 0),
+                "verification_rate": b.get("verification_rate"),
+                "resolution_rate": b.get("resolution_rate"),
+                "open_workload": b.get("open_workload", 0),
+            })
+        rows.sort(key=lambda x: (-(x["scripts_written"] + x["fixes_logged"]), x["owner"]))
+        for i, o in enumerate(rows, start=1):
+            o["rank"] = i
+
+    total_written = sum(o.get("scripts_written", 0) for o in rows)
+    total_fixes = sum(o.get("fixes_logged", 0) for o in rows)
+    people = sum(1 for o in rows if (o.get("scripts_written", 0) or o.get("fixes_logged", 0)))
+    days = _activity_days(db, date_from, date_to)
+    return jsonify({
+        "scope": scope,
+        "date_from": date_from, "date_to": date_to,
+        "rows": rows,
+        "totals": {
+            "scripts_written": total_written,
+            "fixes_logged": total_fixes,
+            "people": people,
+            "days": days,
+            "avg_write_per_person_day": (total_written / people / days) if (people and days) else None,
+            "avg_fix_per_person_day": (total_fixes / people / days) if (people and days) else None,
+        },
+    })
 
 
 @app.route("/api/priority")
@@ -2483,7 +2723,8 @@ def api_dashboard():
         tier_counts[p["priority_tier"]] += 1
 
     # ---- Root cause pareto (đã GOM NHOM theo nguyên nhân, không group text thô) ----
-    root_causes = compute_root_cause_pareto(db, limit=15)
+    # english=True: Dashboard hiển thị tiếng Anh (khác với export Excel toàn bộ dữ liệu ở tab Ưu tiên, vẫn tiếng Việt)
+    root_causes = compute_root_cause_pareto(db, limit=15, english=True)
     # ---- Pareto theo nhóm nguyên nhân ĐÃ XÁC NHẬN từ fix log (A3) ----
     fix_root_causes = compute_fix_root_cause_pareto(db)
 
@@ -2552,15 +2793,15 @@ def api_dashboard():
     # ---- Coverage: tiến độ viết script so với tổng động từ hệ thống công ty (B2) ----
     coverage = compute_coverage(db)
 
-    # ---- Automated insights (rule-based) ----
+    # ---- Automated insights (rule-based), English ----
     insights = []
     if trend and len(trend) >= 2:
         last = trend[-1]
         if last["delta_fail"] is not None:
             if last["delta_fail"] < 0:
-                insights.append(f"Cycle {last['cycle']}: so loi giam {-last['delta_fail']} so voi cycle truoc — dang cai thien tot.")
+                insights.append(f"Cycle {last['cycle']}: failures down {-last['delta_fail']} vs previous cycle — improving.")
             elif last["delta_fail"] > 0:
-                insights.append(f"Cycle {last['cycle']}: so loi TANG {last['delta_fail']} so voi cycle truoc — can kiem tra xem co regression hoac script moi gay loi.")
+                insights.append(f"Cycle {last['cycle']}: failures UP {last['delta_fail']} vs previous cycle — check for regressions or new failing scripts.")
     worst_model = None
     worst_rate = 2
     for m, r in model_pass_rate.items():
@@ -2568,16 +2809,16 @@ def api_dashboard():
             worst_rate = r
             worst_model = m
     if worst_model:
-        insights.append(f"Model yeu nhat hien tai: {worst_model} (pass rate {worst_rate*100:.1f}%) — uu tien kiem tra hạ tầng/device hoac loi rieng cua model nay.")
+        insights.append(f"Weakest model currently: {worst_model} (pass rate {worst_rate*100:.1f}%) — prioritize checking infra/device or model-specific issues.")
     if root_causes:
         top = root_causes[0]
-        insights.append(f"Nguyen nhan loi pho bien nhat: '{top['description']}' chiem {top['pct']*100:.1f}% tong so loi — nen fix goc va batch-verify cac script lien quan.")
+        insights.append(f"Most common failure cause: '{top['description']}' accounts for {top['pct']*100:.1f}% of all failures — fix the root cause and batch-verify related scripts.")
     if tier_counts["P0"] > 0:
-        insights.append(f"Co {tier_counts['P0']} script muc P0 (fail tren 4-5 model) — uu tien fix truoc vi anh huong rong nhat.")
+        insights.append(f"{tier_counts['P0']} scripts at P0 (failing on 4-5 models) — prioritize these first, widest impact.")
     if flaky_count:
-        insights.append(f"Co {flaky_count} script FLAKY (pass/fail xen ke) — nen xu ly rieng (them wait/sync, kiem tra locator) thay vi fix lap lai.")
+        insights.append(f"{flaky_count} FLAKY scripts (pass/fail alternating) — handle separately (add wait/sync, check locators) instead of repeatedly re-fixing.")
     if tier_counts["Verify"] > 0:
-        insights.append(f"Co {tier_counts['Verify']} script dang XAC MINH (het loi nhung chua du {get_setting_int(db, 'exit_criteria_cycles', 2)} cycle pass lien tiep) — theo doi them truoc khi tinh Done.")
+        insights.append(f"{tier_counts['Verify']} scripts VERIFYING (no longer failing but not yet {get_setting_int(db, 'exit_criteria_cycles', 2)} consecutive passing cycles) — keep monitoring before counting as Done.")
     if required_rate is not None:
         # crude actual rate estimate from last 2 cycles
         actual_rate = None
@@ -2587,12 +2828,9 @@ def api_dashboard():
             actual_rate = max(0, prev_still_fail_est - cur_still_fail_est)
         if actual_rate is not None:
             if actual_rate < required_rate:
-                insights.append(f"Toc do fix uoc tinh ({actual_rate:.1f} script/ngay) DANG THAP HON toc do can thiet ({required_rate:.1f} script/ngay) de dat muc tieu dung han — can them nguon luc hoac batch-fix theo root cause.")
+                insights.append(f"Estimated fix velocity ({actual_rate:.1f} scripts/day) is BELOW the required velocity ({required_rate:.1f} scripts/day) to hit the deadline — need more resources or batch-fix by root cause.")
             else:
-                insights.append(f"Toc do fix uoc tinh ({actual_rate:.1f} script/ngay) dang bam sat hoac vuot toc do can thiet ({required_rate:.1f} script/ngay) — tiep tuc duy tri.")
-    overloaded = []
-    for os_ in owner_stats:
-        pass  # overload based on current P0 assigned would need mapping owner->current P0 scripts; simplified below
+                insights.append(f"Estimated fix velocity ({actual_rate:.1f} scripts/day) is at or above the required velocity ({required_rate:.1f} scripts/day) — keep it up.")
 
     return jsonify({
         "trend": trend,
@@ -3835,7 +4073,7 @@ def _suite_model_report_table(db, cycle_nums):
     cyc_dates = {c["cycle"]: (c["cycle_date"] or "") for c in data["cycles"]}
     sel = [c for c in cycle_nums if c in cyc_dates]
     if not sel:
-        return "_Chưa có dữ liệu kết quả._"
+        return "_No result data._"
 
     def fmt_cell(cell):
         return _pct(cell["pass_rate"]) if cell else "—"
@@ -3888,17 +4126,17 @@ def _suite_model_report_table(db, cycle_nums):
         first = next((x for x in rates if x is not None), None)
         last = next((x for x in reversed(rates) if x is not None), None)
         lines.append(
-            f"| **{item}** | **Tổng** | " + " | ".join(f"**{fmt_cell(c)}**" for c in agg_cells)
+            f"| **{item}** | **Total** | " + " | ".join(f"**{fmt_cell(c)}**" for c in agg_cells)
             + f" | **{delta_str(first, last)}** |"
         )
 
-    # TONG CHUNG tren tat ca ket qua
+    # GRAND TOTAL tren tat ca ket qua
     overall_cells = [data["overall_by_cycle"].get(c) for c in sel]
     rates = [c["pass_rate"] if c else None for c in overall_cells]
     first = next((x for x in rates if x is not None), None)
     last = next((x for x in reversed(rates) if x is not None), None)
     lines.append(
-        "| **TỔNG CHUNG** | **Tất cả** | " + " | ".join(f"**{fmt_cell(c)}**" for c in overall_cells)
+        "| **GRAND TOTAL** | **All** | " + " | ".join(f"**{fmt_cell(c)}**" for c in overall_cells)
         + f" | **{delta_str(first, last)}** |"
     )
     return "\n".join(lines)
@@ -3927,17 +4165,18 @@ def _env_fail_by_cycle(db, cycle_nums):
 def _person_count_table(db, table, person_col, date_col, date_from, date_to, extra_where=""):
     """Bang markdown dem so dong theo nguoi trong khoang ngay [date_from, date_to]."""
     rows = db.execute(
-        f"SELECT COALESCE(NULLIF(TRIM({person_col}), ''), '(không rõ)') person, COUNT(*) c "
+        f"SELECT COALESCE(NULLIF(TRIM({person_col}), ''), '(unknown)') person, COUNT(*) c "
         f"FROM {table} WHERE {date_col} >= ? AND {date_col} <= ? {extra_where} "
         f"GROUP BY person ORDER BY c DESC, person",
         (date_from, date_to),
     ).fetchall()
     total = sum(r["c"] for r in rows)
     if not rows:
-        return 0, 0, "_Không có._"
-    lines = ["| Người | Số lượng |", "|---|---|"]
+        return 0, 0, "_None._"
+    lines = ["| Person | Count |", "|---|---|"]
     for r in rows:
         lines.append(f"| {r['person']} | {r['c']} |")
+    lines.append(f"| **Total** | **{total}** |")
     return total, len(rows), "\n".join(lines)
 
 
@@ -3960,48 +4199,48 @@ def _eta_section(db, kpi, coverage):
     write_speed = _velocity_last7(db, "new_scripts", "completed_date", "AND status='DONE'")
 
     eta_dates = []
-    # (a) stabilization: so script con phai fix de dat target / toc do fix
+    # (a) stabilization: scripts left to fix to reach target / fix velocity
     fails_to_fix = kpi.get("fails_to_fix")
     if fails_to_fix is not None:
         if fails_to_fix <= 0:
-            lines.append("- **Stabilization**: đã đạt mục tiêu pass rate hiện tại ✅")
+            lines.append("- **Stabilization**: current pass-rate target already met ✅")
         elif fix_speed > 0:
             days = int(fails_to_fix / fix_speed + 0.999)
             eta = today + timedelta(days=days)
             eta_dates.append(eta)
             lines.append(
-                f"- **Stabilization**: còn {fails_to_fix} script phải fix ÷ tốc độ {fix_speed:.1f} fix/ngày "
-                f"(TB 7 ngày) → dự kiến đạt target **{eta.strftime('%d/%m/%Y')}** (~{days} ngày)"
+                f"- **Stabilization**: {fails_to_fix} scripts left to fix ÷ {fix_speed:.1f} fixes/day "
+                f"(7-day avg) → target reached ~**{eta.strftime('%Y-%m-%d')}** (~{days} days)"
             )
         else:
-            lines.append(f"- **Stabilization**: còn {fails_to_fix} script phải fix — không ước lượng được (không có fix nào trong 7 ngày qua)")
-    # (b) viet moi: TC con thieu / toc do viet
+            lines.append(f"- **Stabilization**: {fails_to_fix} scripts left to fix — cannot estimate (no fixes in the last 7 days)")
+    # (b) new scripts: remaining TCs / write velocity
     if coverage.get("configured"):
         remaining = coverage["total_needed"] - coverage["done"]
         if remaining <= 0:
-            lines.append("- **Viết mới**: đã phủ đủ số TC cần script ✅")
+            lines.append("- **New scripts**: all required TCs covered ✅")
         elif write_speed > 0:
             days = int(remaining / write_speed + 0.999)
             eta = today + timedelta(days=days)
             eta_dates.append(eta)
             lines.append(
-                f"- **Viết mới**: còn {remaining} TC ÷ tốc độ {write_speed:.1f} script/ngày (TB 7 ngày) "
-                f"→ dự kiến phủ xong **{eta.strftime('%d/%m/%Y')}** (~{days} ngày)"
+                f"- **New scripts**: {remaining} TCs left ÷ {write_speed:.1f} scripts/day (7-day avg) "
+                f"→ coverage complete ~**{eta.strftime('%Y-%m-%d')}** (~{days} days)"
             )
         else:
-            lines.append(f"- **Viết mới**: còn {remaining} TC — không ước lượng được (không có script DONE nào trong 7 ngày qua)")
+            lines.append(f"- **New scripts**: {remaining} TCs left — cannot estimate (no DONE scripts in the last 7 days)")
     else:
-        lines.append("- **Viết mới**: chưa đồng bộ hệ thống công ty — chưa xác định được tổng TC cần làm")
+        lines.append("- **New scripts**: company system not synced — total required TCs unknown")
 
     if eta_dates:
         eta_all = max(eta_dates)
-        line = f"- **ETA hoàn thành toàn dự án (theo tiến độ hiện tại): {eta_all.strftime('%d/%m/%Y')}**"
+        line = f"- **Project ETA at current pace: {eta_all.strftime('%Y-%m-%d')}**"
         if deadline:
             try:
                 dl = date.fromisoformat(deadline)
                 diff = (dl - eta_all).days
-                line += f" — deadline {dl.strftime('%d/%m/%Y')}: " + (
-                    f"**kịp, dư {diff} ngày** ✅" if diff >= 0 else f"**trễ ~{-diff} ngày** ⚠️"
+                line += f" — deadline {dl.strftime('%Y-%m-%d')}: " + (
+                    f"**on track, {diff} days spare** ✅" if diff >= 0 else f"**~{-diff} days late** ⚠️"
                 )
             except ValueError:
                 pass
@@ -4039,68 +4278,96 @@ def _report_kpis(db, priority=None):
     }
 
 
+def _completion_table_md(coverage):
+    """Markdown 'Script completion by Test Suite' — nguon CHI TU he thong cong ty
+    (compute_coverage). Cot: Item / Total TC / Completed script / Completed Rate + Total row.
+    Cache rong -> ghi ro 'not synced' (khong bia so)."""
+    if not coverage.get("configured"):
+        return "_Company system not synced — total required TCs unknown (sync/paste in the 🔗 Sync tab)._"
+    lines = ["| Item | Total TC | Completed script | Completed Rate |", "|---|---|---|---|"]
+    for it in coverage["by_item"]:
+        lines.append(f"| {it['item']} | {it['needed']} | {it['done']} | {_pct(it['pct'])} |")
+    lines.append(f"| **Total** | **{coverage['total_needed']}** | **{coverage['done']}** | **{_pct(coverage['pct'])}** |")
+    return "\n".join(lines)
+
+
 def build_daily_report(db, date_str=None):
-    """Markdown bao cao NGAY theo mau docs/maubaocao.md + 5 muc bat buoc."""
+    """English markdown DAILY report. Cycle KHONG bat buoc: neu ngay do khong co cycle
+    nhung co fix hoac script viet moi thi van sinh bao cao (muc dua-tren-cycle ghi
+    'No cycle ran'). Chi loi khi ngay do khong co du lieu gi."""
     trend = compute_cycle_trend(db)
-    if not trend:
-        return None, "Chưa có dữ liệu kết quả nào trong hệ thống."
-    if date_str:
-        entry = next((t for t in trend if t["cycle_date"] == date_str), None)
-        if entry is None:
-            return None, f"Không có cycle nào chạy ngày {date_str}."
-    else:
-        entry = trend[-1]
-        date_str = entry["cycle_date"]
-    idx = trend.index(entry)
-    prev = trend[idx - 1] if idx > 0 else None
+    # Xac dinh ngay bao cao: uu tien date_str; else cycle moi nhat; else hom nay.
+    if not date_str:
+        date_str = trend[-1]["cycle_date"] if trend else date.today().isoformat()
+    entry = next((t for t in trend if t["cycle_date"] == date_str), None)
+    idx = trend.index(entry) if entry is not None else None
+    prev = trend[idx - 1] if (idx is not None and idx > 0) else None
+
+    # Co bat ky du lieu tien do nao trong ngay khong?
+    n_fix_today = db.execute("SELECT COUNT(*) c FROM fixes WHERE fix_date=?", (date_str,)).fetchone()["c"]
+    n_new_today = db.execute(
+        "SELECT COUNT(*) c FROM new_scripts WHERE status='DONE' AND completed_date=?", (date_str,)
+    ).fetchone()["c"]
+    if entry is None and not n_fix_today and not n_new_today:
+        return None, f"Không có dữ liệu nào (cycle / fix / script viết mới) cho ngày {date_str}."
 
     priority = get_script_priority(db)
     kpi = _report_kpis(db, priority)
     coverage = compute_coverage(db)
-    try:
-        d_disp = date.fromisoformat(date_str).strftime("%d/%m/%Y")
-    except (ValueError, TypeError):
-        d_disp = date_str
 
-    md = [f"# [Stabilization Daily] Cycle {entry['cycle']} — {d_disp}", ""]
+    title_cycle = f"Cycle {entry['cycle']}" if entry is not None else "No cycle"
+    md = [f"# [Stabilization Daily] {title_cycle} — {date_str}", ""]
 
-    # ---- 1. Ket qua cycle hom nay ----
-    md += ["## 1. Kết quả cycle hôm nay", "", "| Chỉ số | Hôm nay | Cycle trước | Δ |", "|---|---|---|---|"]
-    def _delta(cur, prv, pct=False, invert=False):
-        if cur is None or prv is None:
-            return "…"
-        d = cur - prv
-        good = (d <= 0) if invert else (d >= 0)
-        arrow = "▲" if d > 0 else ("▼" if d < 0 else "=")
-        mark = "🙂" if good and d != 0 else ("⚠️" if d != 0 else "")
-        val = f"{abs(d)*100:.1f}%" if pct else f"{abs(d)}"
-        return f"{arrow}{val} {mark}".strip()
-    md.append(f"| Pass rate | {_pct(entry['pass_rate'])} | {_pct(prev['pass_rate']) if prev else '…'} | {_delta(entry['pass_rate'], prev['pass_rate'] if prev else None, pct=True)} |")
-    md.append(f"| Tổng lượt chạy | {entry['total']} | {prev['total'] if prev else '…'} | |")
-    md.append(f"| Số lỗi (fail) trong cycle | {entry['fail_count']} | {prev['fail_count'] if prev else '…'} | {_delta(entry['fail_count'], prev['fail_count'] if prev else None, invert=True)} |")
-    md.append(f"| Script còn lỗi (hiện tại) | {kpi['still_failing']} / {kpi['total_scripts']} | | |")
-    md.append(f"| P0 (fail diện rộng) | {kpi['tier_counts']['P0']} | | |")
-    md.append(f"| Đang xác minh (Verify) | {kpi['tier_counts']['Verify']} | | |")
-    md.append(f"| Script flaky | {kpi['flaky_count']} | | |")
+    # ---- 1. Cycle result today ----
+    md += ["## 1. Cycle result today", ""]
+    if entry is not None:
+        md += ["| Metric | Today | Prev cycle | Δ |", "|---|---|---|---|"]
+        def _delta(cur, prv, pct=False, invert=False):
+            if cur is None or prv is None:
+                return "…"
+            d = cur - prv
+            good = (d <= 0) if invert else (d >= 0)
+            arrow = "▲" if d > 0 else ("▼" if d < 0 else "=")
+            mark = "🙂" if good and d != 0 else ("⚠️" if d != 0 else "")
+            val = f"{abs(d)*100:.1f}%" if pct else f"{abs(d)}"
+            return f"{arrow}{val} {mark}".strip()
+        md.append(f"| Pass rate | {_pct(entry['pass_rate'])} | {_pct(prev['pass_rate']) if prev else '…'} | {_delta(entry['pass_rate'], prev['pass_rate'] if prev else None, pct=True)} |")
+        md.append(f"| Total runs | {entry['total']} | {prev['total'] if prev else '…'} | |")
+        md.append(f"| Failures in cycle | {entry['fail_count']} | {prev['fail_count'] if prev else '…'} | {_delta(entry['fail_count'], prev['fail_count'] if prev else None, invert=True)} |")
+    else:
+        md += [f"_No cycle ran on {date_str} — showing current standings and today's progress only._", ""]
+        md += ["| Metric | Value |", "|---|---|"]
+    md.append(f"| Still failing (current) | {kpi['still_failing']} / {kpi['total_scripts']} |" + (" |" if entry is None else " | |"))
+    md.append(f"| P0 (wide-impact) | {kpi['tier_counts']['P0']} |" + (" |" if entry is None else " | |"))
+    md.append(f"| Verifying (Verify) | {kpi['tier_counts']['Verify']} |" + (" |" if entry is None else " | |"))
+    md.append(f"| Flaky scripts | {kpi['flaky_count']} |" + (" |" if entry is None else " | |"))
     md.append("")
 
-    # ---- 2. Pass rate Item x Model (>=3 cycle gan nhat) ----
-    recent_cycles = [t["cycle"] for t in trend[:idx + 1]][-3:]
-    md += [f"## 2. Pass rate Item × Model ({len(recent_cycles)} cycle gần nhất)", "",
-           _suite_model_report_table(db, recent_cycles), ""]
+    # ---- 2. Pass rate Item x Model (last >=3 cycles) ----
+    if trend:
+        end = (idx + 1) if idx is not None else len(trend)
+        recent_cycles = [t["cycle"] for t in trend[:end]][-3:]
+        md += [f"## 2. Pass rate Item × Model (last {len(recent_cycles)} cycles)", "",
+               _suite_model_report_table(db, recent_cycles), ""]
+    else:
+        recent_cycles = []
+        md += ["## 2. Pass rate Item × Model", "", "_No result data yet._", ""]
 
-    # ---- 3. Loi lien quan moi truong ----
-    env = _env_fail_by_cycle(db, recent_cycles)
-    md += ["## 3. Lỗi liên quan môi trường (Infra/Device)", "",
-           "| Cycle | Tổng fail | Fail do môi trường | Tỉ lệ |", "|---|---|---|---|"]
-    for c in recent_cycles:
-        d = env[c]
-        md.append(f"| C{c} | {d['fail']} | {d['env']} | {_pct(d['rate'])} |")
+    # ---- 3. Environment-related failures ----
+    md += ["## 3. Environment-related failures (Infra/Device)", ""]
+    if recent_cycles:
+        env = _env_fail_by_cycle(db, recent_cycles)
+        md += ["| Cycle | Total fail | Env fail | Rate |", "|---|---|---|---|"]
+        for c in recent_cycles:
+            d = env[c]
+            md.append(f"| C{c} | {d['fail']} | {d['env']} | {_pct(d['rate'])} |")
+    else:
+        md.append("_No cycle data._")
     md.append("")
 
-    # ---- 4. Fix trong ngay + verify fix cycle truoc ----
+    # ---- 4. Fixes today + verify previous cycle ----
     n_fix, n_fixers, fix_table = _person_count_table(db, "fixes", "owner", "fix_date", date_str, date_str)
-    md += [f"## 4. Fix trong ngày: **{n_fix}** fix (bởi {n_fixers} người)", "", fix_table, ""]
+    md += [f"## 4. Fixes today: **{n_fix}** fixes (by {n_fixers} people)", "", fix_table, ""]
     if prev:
         tracking = compute_fix_tracking(db)
         counts = {"verified": 0, "regressed": 0, "still_failing": 0, "pending": 0}
@@ -4110,82 +4377,74 @@ def build_daily_report(db, date_str=None):
                 counts[f["status"]] += 1
                 if f["status"] in ("still_failing", "regressed"):
                     attention.append(f"`{f['test_case']}` — {f['owner']} ({f['status_label']})")
-        md += [f"**Verify fix của cycle trước (C{prev['cycle']})**: "
-               f"✅ hết lỗi: {counts['verified']} · ⚠️ hết rồi fail lại: {counts['regressed']} · "
-               f"❌ chưa hết lỗi: {counts['still_failing']} · ⏳ chờ dữ liệu: {counts['pending']}", ""]
+        md += [f"**Verify fixes from previous cycle (C{prev['cycle']})**: "
+               f"✅ resolved: {counts['verified']} · ⚠️ regressed: {counts['regressed']} · "
+               f"❌ still failing: {counts['still_failing']} · ⏳ awaiting data: {counts['pending']}", ""]
         if attention:
-            md += ["Cần chú ý:", *[f"- {a}" for a in attention], ""]
+            md += ["Needs attention:", *[f"- {a}" for a in attention], ""]
 
-    # ---- 5. Script viet moi trong ngay ----
+    # ---- 5. New scripts today ----
     n_new, n_writers, new_table = _person_count_table(
         db, "new_scripts", "member", "completed_date", date_str, date_str, "AND status='DONE'")
-    md += [f"## 5. Script viết mới trong ngày: **{n_new}** script DONE (bởi {n_writers} người)", "", new_table, ""]
+    md += [f"## 5. New scripts today: **{n_new}** DONE (by {n_writers} people)", "", new_table, ""]
 
-    # ---- 6. Tien do viet script (coverage) ----
-    md += ["## 6. Tiến độ hoàn thành viết script", ""]
-    if coverage.get("configured"):
-        md.append(f"**Coverage: {coverage['done']}/{coverage['total_needed']} ({_pct(coverage['pct'])})** "
-                  f"(SKIP bên hệ thống công ty: {coverage['skip']} — không tính vào tổng; "
-                  f"đồng bộ lúc: {coverage['synced_at'] or '…'})")
-        md += ["", "| Item | Cần | Done | % |", "|---|---|---|---|"]
-        for it in coverage["by_item"]:
-            md.append(f"| {it['item']} | {it['needed']} | {it['done']} | {_pct(it['pct'])} |")
-    else:
-        md.append(f"_Chưa đồng bộ hệ thống công ty — chưa xác định tổng TC cần script. "
-                  f"Hiện đã ghi nhận {coverage.get('done_recorded', 0)} script DONE trên hệ thống._")
-    md.append("")
+    # ---- 6. Script completion by Test Suite (company system) ----
+    md += ["## 6. Script completion by Test Suite", "", _completion_table_md(coverage), ""]
 
-    # ---- 7. Nhan dinh & toc do ----
-    md += ["## 7. Nhận định & tốc độ", ""]
-    model_rows = db.execute(
-        "SELECT model, COUNT(*) t, SUM(CASE WHEN result='Pass' THEN 1 ELSE 0 END) p "
-        "FROM results WHERE cycle=? GROUP BY model", (entry["cycle"],),
-    ).fetchall()
-    worst = min(((r["p"] / r["t"], r["model"]) for r in model_rows if r["t"]), default=None)
-    if worst:
-        md.append(f"- Model yếu nhất cycle này: **{worst[1]}** ({_pct(worst[0])}) — lỗi device hay lỗi script?")
-    pareto = compute_root_cause_pareto(db, limit=3)
+    # ---- 7. Notes & velocity ----
+    md += ["## 7. Notes & velocity", ""]
+    if entry is not None:
+        model_rows = db.execute(
+            "SELECT model, COUNT(*) t, SUM(CASE WHEN result='Pass' THEN 1 ELSE 0 END) p "
+            "FROM results WHERE cycle=? GROUP BY model", (entry["cycle"],),
+        ).fetchall()
+        worst = min(((r["p"] / r["t"], r["model"]) for r in model_rows if r["t"]), default=None)
+        if worst:
+            md.append(f"- Weakest model this cycle: **{worst[1]}** ({_pct(worst[0])}) — device issue or script issue?")
+    pareto = compute_root_cause_pareto(db, limit=3, english=True)
     if pareto:
-        md.append(f"- Nguyên nhân lỗi phổ biến nhất (mọi cycle): **{pareto[0]['description']}** ({pareto[0]['count']} lỗi, {_pct(pareto[0]['pct'])})")
+        md.append(f"- Most common failure cause (all cycles): **{pareto[0]['description']}** ({pareto[0]['count']} failures, {_pct(pareto[0]['pct'])})")
     fix_speed = _velocity_last7(db, "fixes", "fix_date")
     req = kpi["required_rate_per_day"]
     if req is not None:
-        verdict = "ĐỦ ✅" if fix_speed >= req else "THIẾU ⚠️"
-        md.append(f"- Tốc độ fix thực tế (TB 7 ngày): **{fix_speed:.1f} fix/ngày** vs cần thiết **{req:.1f}/ngày** → {verdict}")
+        verdict = "ENOUGH ✅" if fix_speed >= req else "BELOW ⚠️"
+        md.append(f"- Actual fix velocity (7-day avg): **{fix_speed:.1f} fixes/day** vs required **{req:.1f}/day** → {verdict}")
     else:
-        md.append(f"- Tốc độ fix thực tế (TB 7 ngày): **{fix_speed:.1f} fix/ngày** (chưa đặt deadline để so với tốc độ cần thiết)")
+        md.append(f"- Actual fix velocity (7-day avg): **{fix_speed:.1f} fixes/day** (no deadline set to compare against)")
     md.append("")
 
-    # ---- 8. Uoc luong hoan thanh ----
-    md += ["## 8. Ước lượng hoàn thành dự án", "", _eta_section(db, kpi, coverage), ""]
+    # ---- 8. Project completion estimate ----
+    md += ["## 8. Project completion estimate", "", _eta_section(db, kpi, coverage), ""]
 
-    # ---- 9. Test farm (dien tay) ----
-    md += ["## 9. Test farm (điền tay)", "",
-           "| Chỉ số | Giá trị | Ghi chú |", "|---|---|---|",
-           "| Device hoạt động / tổng | …/… | |",
-           "| Run hoàn thành / dự kiến | …/… | |",
-           "| Kết quả RUNNING còn sót | … | |",
-           "| Sự cố hạ tầng trong ngày | … | |", ""]
+    # ---- 9. Test farm (fill manually) ----
+    md += ["## 9. Test farm (fill manually)", "",
+           "| Metric | Value | Note |", "|---|---|---|",
+           "| Active devices / total | …/… | |",
+           "| Runs completed / planned | …/… | |",
+           "| Leftover RUNNING results | … | |",
+           "| Infra incidents today | … | |", ""]
 
-    # ---- 10. Ke hoach mai ----
+    # ---- 10. Plan for tomorrow ----
     top_assigned = [p for p in priority if p["priority_tier"] in ("P0", "P1")]
     top_assigned.sort(key=lambda p: (-p["priority_score"], p["test_case"]))
-    md += ["## 10. Kế hoạch ngày mai", ""]
+    md += ["## 10. Plan for tomorrow", ""]
     if top_assigned:
         for p in top_assigned[:10]:
-            owner = p["current_owner"] or "(chưa gán)"
+            owner = p["current_owner"] or "(unassigned)"
             md.append(f"- [{p['priority_tier']}] `{p['test_case']}` ({p['test_suite']}) — {owner}")
         if len(top_assigned) > 10:
-            md.append(f"- … và {len(top_assigned) - 10} script P0/P1 khác (xem Bảng ưu tiên)")
+            md.append(f"- … and {len(top_assigned) - 10} more P0/P1 scripts (see Priority table)")
     else:
-        md.append("- Không còn script P0/P1 🎉")
-    md += ["", "## 11. Blocker cần hỗ trợ", "", "- …", ""]
+        md.append("- No P0/P1 scripts left 🎉")
+    md += ["", "## 11. Blockers needing support", "", "- …", ""]
 
     return "\n".join(md), None
 
 
 def build_weekly_report(db, week_str=None):
-    """Markdown bao cao TUAN (ISO week 'YYYY-Wnn') theo mau docs/maubaocao.md + 5 muc bat buoc."""
+    """English markdown WEEKLY report (ISO week 'YYYY-Wnn'). Cycle KHONG bat buoc:
+    tuan khong co cycle nhung co fix / script viet moi thi van sinh bao cao (muc
+    dua-tren-cycle ghi 'No cycle ran'). Chi loi khi tuan do khong co du lieu gi."""
     if week_str:
         m = re.match(r"^(\d{4})-W(\d{1,2})$", week_str.strip())
         if not m:
@@ -4202,73 +4461,84 @@ def build_weekly_report(db, week_str=None):
     sunday = monday + timedelta(days=6)
     prev_monday = monday - timedelta(days=7)
     prev_sunday = monday - timedelta(days=1)
+    mon_s, sun_s = monday.isoformat(), sunday.isoformat()
 
     trend = compute_cycle_trend(db)
-    in_week = [t for t in trend if t["cycle_date"] and monday.isoformat() <= t["cycle_date"] <= sunday.isoformat()]
+    in_week = [t for t in trend if t["cycle_date"] and mon_s <= t["cycle_date"] <= sun_s]
     in_prev = [t for t in trend if t["cycle_date"] and prev_monday.isoformat() <= t["cycle_date"] <= prev_sunday.isoformat()]
-    if not in_week:
-        return None, f"Không có cycle nào chạy trong tuần {week_str} ({monday.strftime('%d/%m')}–{sunday.strftime('%d/%m')})."
+
+    n_fix_week = db.execute("SELECT COUNT(*) c FROM fixes WHERE fix_date>=? AND fix_date<=?", (mon_s, sun_s)).fetchone()["c"]
+    n_new_week = db.execute("SELECT COUNT(*) c FROM new_scripts WHERE status='DONE' AND completed_date>=? AND completed_date<=?", (mon_s, sun_s)).fetchone()["c"]
+    if not in_week and not n_fix_week and not n_new_week:
+        return None, f"Không có dữ liệu nào (cycle / fix / script viết mới) trong tuần {week_str} ({monday.strftime('%d/%m')}–{sunday.strftime('%d/%m')})."
 
     priority = get_script_priority(db)
     kpi = _report_kpis(db, priority)
     coverage = compute_coverage(db)
-    first, last = in_week[0], in_week[-1]
+    first = in_week[0] if in_week else None
+    last = in_week[-1] if in_week else None
     prev_last = in_prev[-1] if in_prev else None
 
-    md = [f"# [Stabilization Weekly] Tuần {wk} ({monday.strftime('%d/%m')}–{sunday.strftime('%d/%m/%Y')}) — Cycle {first['cycle']}–{last['cycle']}", ""]
+    cyc_txt = f" — Cycle {first['cycle']}–{last['cycle']}" if in_week else " — no cycle"
+    md = [f"# [Stabilization Weekly] Week {wk} ({monday.strftime('%Y-%m-%d')}–{sunday.strftime('%Y-%m-%d')}){cyc_txt}", ""]
 
-    # ---- 1. Tom tat dieu hanh ----
-    n_fix_week = db.execute("SELECT COUNT(*) c FROM fixes WHERE fix_date>=? AND fix_date<=?",
-                            (monday.isoformat(), sunday.isoformat())).fetchone()["c"]
-    n_new_week = db.execute("SELECT COUNT(*) c FROM new_scripts WHERE status='DONE' AND completed_date>=? AND completed_date<=?",
-                            (monday.isoformat(), sunday.isoformat())).fetchone()["c"]
+    # ---- 1. Executive summary ----
     dl_txt = ""
     if kpi["deadline"]:
-        dl_txt = f", deadline {kpi['deadline']}" + (f" (còn {kpi['days_remaining']} ngày)" if kpi["days_remaining"] is not None else "")
-    md += ["## 1. Tóm tắt điều hành", "",
-           f"- Pass rate: **{_pct(first['pass_rate'])} → {_pct(last['pass_rate'])}** trong tuần "
-           f"(mục tiêu ≥{_pct(kpi['target_rate'], 0)}{dl_txt})",
-           f"- Đã ghi nhận **{n_fix_week} fix** và **{n_new_week} script viết mới (DONE)** trong tuần",
-           f"- Script còn lỗi: **{kpi['still_failing']}/{kpi['total_scripts']}** · P0: {kpi['tier_counts']['P0']} · Flaky: {kpi['flaky_count']}",
-           "- _{Nhận định 1 câu: đúng tiến độ / chậm, vì sao — điền tay}_", ""]
+        dl_txt = f", deadline {kpi['deadline']}" + (f" ({kpi['days_remaining']} days left)" if kpi["days_remaining"] is not None else "")
+    pass_line = (f"- Pass rate: **{_pct(first['pass_rate'])} → {_pct(last['pass_rate'])}** this week (target ≥{_pct(kpi['target_rate'], 0)}{dl_txt})"
+                 if in_week else f"- Pass rate: _no cycle ran this week_ (target ≥{_pct(kpi['target_rate'], 0)}{dl_txt})")
+    md += ["## 1. Executive summary", "",
+           pass_line,
+           f"- Logged **{n_fix_week} fixes** and **{n_new_week} new scripts (DONE)** this week",
+           f"- Still failing: **{kpi['still_failing']}/{kpi['total_scripts']}** · P0: {kpi['tier_counts']['P0']} · Flaky: {kpi['flaky_count']}",
+           "- _(One-line assessment: on track / behind & why — fill manually)_", ""]
 
-    # ---- 2. Chi so chinh vs muc tieu ----
+    # ---- 2. Key metrics vs target ----
     n_fix_prev = db.execute("SELECT COUNT(*) c FROM fixes WHERE fix_date>=? AND fix_date<=?",
                             (prev_monday.isoformat(), prev_sunday.isoformat())).fetchone()["c"]
     days_week = max(1, len(in_week))
-    md += ["## 2. Chỉ số chính vs mục tiêu", "",
-           "| Chỉ số | Tuần trước | Tuần này | Mục tiêu |", "|---|---|---|---|",
-           f"| Pass rate (cycle cuối tuần) | {_pct(prev_last['pass_rate']) if prev_last else '…'} | {_pct(last['pass_rate'])} | ≥{_pct(kpi['target_rate'], 0)} |",
-           f"| Số lỗi cycle cuối tuần | {prev_last['fail_count'] if prev_last else '…'} | {last['fail_count']} | ↓ |",
-           f"| Script còn lỗi (hiện tại) | | {kpi['still_failing']} | ↓ |",
-           f"| Script phải fix thêm để đạt target | | {kpi['fails_to_fix']} | 0 |",
-           f"| Tốc độ fix cần thiết | | {kpi['required_rate_per_day']:.1f}/ngày | |" if kpi["required_rate_per_day"] is not None else "| Tốc độ fix cần thiết | | … (chưa đặt deadline) | |",
-           f"| Tốc độ fix thực tế | {n_fix_prev / 7:.1f}/ngày | {n_fix_week / days_week:.1f}/ngày | ≥ cần thiết |",
+    md += ["## 2. Key metrics vs target", "",
+           "| Metric | Prev week | This week | Target |", "|---|---|---|---|",
+           f"| Pass rate (last cycle of week) | {_pct(prev_last['pass_rate']) if prev_last else '…'} | {_pct(last['pass_rate']) if last else '…'} | ≥{_pct(kpi['target_rate'], 0)} |",
+           f"| Failures (last cycle of week) | {prev_last['fail_count'] if prev_last else '…'} | {last['fail_count'] if last else '…'} | ↓ |",
+           f"| Still failing (current) | | {kpi['still_failing']} | ↓ |",
+           f"| Scripts left to fix for target | | {kpi['fails_to_fix']} | 0 |",
+           (f"| Required fix velocity | | {kpi['required_rate_per_day']:.1f}/day | |" if kpi["required_rate_per_day"] is not None else "| Required fix velocity | | … (no deadline set) | |"),
+           f"| Actual fix velocity | {n_fix_prev / 7:.1f}/day | {n_fix_week / days_week:.1f}/day | ≥ required |",
            f"| P0 / P1 | | {kpi['tier_counts']['P0']} / {kpi['tier_counts']['P1']} | P0 = 0 |",
-           f"| Tiến độ viết mới | | {coverage['done']}/{coverage['total_needed']} ({_pct(coverage['pct'])}) | theo kế hoạch |" if coverage.get("configured") else "| Tiến độ viết mới | | chưa đồng bộ hệ thống công ty | |",
+           (f"| New-script progress | | {coverage['done']}/{coverage['total_needed']} ({_pct(coverage['pct'])}) | on plan |" if coverage.get("configured") else "| New-script progress | | company system not synced | |"),
            ""]
 
-    # ---- 3. Pass rate Item x Model theo cycle trong tuan (>=3 cycle) ----
-    week_cycles = [t["cycle"] for t in in_week]
-    if len(week_cycles) < 3:
-        all_cycles = [t["cycle"] for t in trend if t["cycle"] <= last["cycle"]]
-        week_cycles = all_cycles[-3:]
-    md += [f"## 3. Pass rate Item × Model ({len(week_cycles)} cycle)", "",
-           _suite_model_report_table(db, week_cycles), ""]
+    # ---- 3. Pass rate Item x Model (>=3 cycles) ----
+    if trend:
+        week_cycles = [t["cycle"] for t in in_week]
+        if len(week_cycles) < 3:
+            ref = last["cycle"] if last else trend[-1]["cycle"]
+            week_cycles = [t["cycle"] for t in trend if t["cycle"] <= ref][-3:]
+        md += [f"## 3. Pass rate Item × Model ({len(week_cycles)} cycles)", "",
+               _suite_model_report_table(db, week_cycles), ""]
+    else:
+        week_cycles = []
+        md += ["## 3. Pass rate Item × Model", "", "_No result data yet._", ""]
 
-    # ---- 4. Loi moi truong trong tuan ----
-    env = _env_fail_by_cycle(db, week_cycles)
-    tot_fail = sum(d["fail"] for d in env.values())
-    tot_env = sum(d["env"] for d in env.values())
-    md += ["## 4. Lỗi liên quan môi trường (Infra/Device)", "",
-           "| Cycle | Tổng fail | Fail do môi trường | Tỉ lệ |", "|---|---|---|---|"]
-    for c in week_cycles:
-        d = env[c]
-        md.append(f"| C{c} | {d['fail']} | {d['env']} | {_pct(d['rate'])} |")
-    md.append(f"| **Cả tuần** | **{tot_fail}** | **{tot_env}** | **{_pct((tot_env / tot_fail) if tot_fail else None)}** |")
+    # ---- 4. Environment-related failures ----
+    md += ["## 4. Environment-related failures (Infra/Device)", ""]
+    tot_fail = tot_env = 0
+    if week_cycles:
+        env = _env_fail_by_cycle(db, week_cycles)
+        tot_fail = sum(d["fail"] for d in env.values())
+        tot_env = sum(d["env"] for d in env.values())
+        md += ["| Cycle | Total fail | Env fail | Rate |", "|---|---|---|---|"]
+        for c in week_cycles:
+            d = env[c]
+            md.append(f"| C{c} | {d['fail']} | {d['env']} | {_pct(d['rate'])} |")
+        md.append(f"| **Whole week** | **{tot_fail}** | **{tot_env}** | **{_pct((tot_env / tot_fail) if tot_fail else None)}** |")
+    else:
+        md.append("_No cycle data._")
     md.append("")
 
-    # ---- 5. Theo 7 app (suite) ----
+    # ---- 5. By app / test suite ----
     suite_rows = {}
     for p in priority:
         s = suite_rows.setdefault(p["test_suite"], {"total": 0, "done": 0, "verify": 0, "fail": 0})
@@ -4279,61 +4549,65 @@ def build_weekly_report(db, week_str=None):
             s["verify"] += 1
         else:
             s["fail"] += 1
-    md += ["## 5. Theo từng app / test suite", "",
-           "| App/Suite | Tổng script | Done | Đang xác minh | Còn lỗi | Done % |", "|---|---|---|---|---|---|"]
+    md += ["## 5. By app / test suite", "",
+           "| App/Suite | Total scripts | Done | Verifying | Still failing | Done % |", "|---|---|---|---|---|---|"]
+    t_tot = t_done = t_ver = t_fail = 0
     for name in sorted(suite_rows, key=lambda k: suite_rows[k]["done"] / suite_rows[k]["total"] if suite_rows[k]["total"] else 0):
         s = suite_rows[name]
+        t_tot += s["total"]; t_done += s["done"]; t_ver += s["verify"]; t_fail += s["fail"]
         md.append(f"| {name} | {s['total']} | {s['done']} | {s['verify']} | {s['fail']} | {_pct(s['done'] / s['total'] if s['total'] else None)} |")
+    md.append(f"| **Total** | **{t_tot}** | **{t_done}** | **{t_ver}** | **{t_fail}** | **{_pct(t_done / t_tot if t_tot else None)}** |")
     md.append("")
 
-    # ---- 6. Root cause Pareto (nhom da xac nhan tu fix log, top 5) ----
-    fix_pareto = compute_fix_root_cause_pareto(db, monday.isoformat(), sunday.isoformat())
-    md += ["## 6. Root cause Pareto tuần này (từ fix log, top 5)", ""]
+    # ---- 6. Script completion by Test Suite (company system) ----
+    md += ["## 6. Script completion by Test Suite", "", _completion_table_md(coverage), ""]
+
+    # ---- 7. Root cause Pareto (from fix log, top 5) ----
+    fix_pareto = compute_fix_root_cause_pareto(db, mon_s, sun_s)
+    md += ["## 7. Root cause Pareto this week (from fix log, top 5)", ""]
     if fix_pareto:
-        md += ["| Nhóm nguyên nhân | Số fix | % | Hành động tuần sau |", "|---|---|---|---|"]
+        md += ["| Root cause group | Fixes | % | Next-week action |", "|---|---|---|---|"]
         for g in fix_pareto[:5]:
-            md.append(f"| {g['group']} | {g['count']} | {_pct(g['pct'])} | _(điền tay)_ |")
+            md.append(f"| {g['group']} | {g['count']} | {_pct(g['pct'])} | _(fill manually)_ |")
     else:
-        md.append("_Chưa có fix nào ghi nhóm nguyên nhân trong tuần._")
+        md.append("_No fix recorded a root-cause group this week._")
     md.append("")
 
-    # ---- 7. San luong tung nguoi trong tuan ----
-    n_fix, n_fixers, fix_table = _person_count_table(db, "fixes", "owner", "fix_date",
-                                                     monday.isoformat(), sunday.isoformat())
-    n_new, n_writers, new_table = _person_count_table(db, "new_scripts", "member", "completed_date",
-                                                      monday.isoformat(), sunday.isoformat(), "AND status='DONE'")
-    md += [f"## 7. Sản lượng trong tuần", "",
-           f"**Fix: {n_fix}** (bởi {n_fixers} người)", "", fix_table, "",
-           f"**Script viết mới DONE: {n_new}** (bởi {n_writers} người)", "", new_table, ""]
+    # ---- 8. Output per person this week ----
+    n_fix, n_fixers, fix_table = _person_count_table(db, "fixes", "owner", "fix_date", mon_s, sun_s)
+    n_new, n_writers, new_table = _person_count_table(db, "new_scripts", "member", "completed_date", mon_s, sun_s, "AND status='DONE'")
+    md += ["## 8. Output this week", "",
+           f"**Fixes: {n_fix}** (by {n_fixers} people)", "", fix_table, "",
+           f"**New scripts DONE: {n_new}** (by {n_writers} people)", "", new_table, ""]
 
-    # ---- 8. Chat luong fix & team ----
+    # ---- 9. Fix quality & team ----
     tracking = compute_fix_tracking(db)
     n_verified = sum(1 for f in tracking if f["status"] == "verified")
     n_regressed = sum(1 for f in tracking if f["status"] == "regressed")
     reopen_rate = (n_regressed / (n_verified + n_regressed)) if (n_verified + n_regressed) else None
     owner_stats = get_owner_stats(db, priority)
     overloaded = [o for o in owner_stats if o["open_workload"] > 10]
-    md += ["## 8. Chất lượng fix & team", "",
-           f"- Reopen rate (hết rồi fail lại): **{_pct(reopen_rate)}** (mục tiêu ≤10%) — ✅ {n_verified} verified / ⚠️ {n_regressed} regressed",
+    md += ["## 9. Fix quality & team", "",
+           f"- Reopen rate (fixed then failed again): **{_pct(reopen_rate)}** (target ≤10%) — ✅ {n_verified} verified / ⚠️ {n_regressed} regressed",
            ]
     if owner_stats:
         best = owner_stats[0]
-        md.append(f"- Owner dẫn đầu resolution: **{best['owner']}** ({_pct(best['resolution_rate'])} resolution, {best['distinct_scripts_fully_resolved']} script hết lỗi hẳn)")
+        md.append(f"- Top resolution owner: **{best['owner']}** ({_pct(best['resolution_rate'])} resolution, {best['distinct_scripts_fully_resolved']} scripts fully resolved)")
     if overloaded:
-        md.append("- Quá tải (Open Workload > 10): " + ", ".join(f"{o['owner']} ({o['open_workload']})" for o in overloaded))
+        md.append("- Overloaded (Open Workload > 10): " + ", ".join(f"{o['owner']} ({o['open_workload']})" for o in overloaded))
     md.append("")
 
-    # ---- 9. Uoc luong hoan thanh ----
-    md += ["## 9. Ước lượng hoàn thành dự án", "", _eta_section(db, kpi, coverage), ""]
+    # ---- 10. Project completion estimate ----
+    md += ["## 10. Project completion estimate", "", _eta_section(db, kpi, coverage), ""]
 
-    # ---- 10. Farm tuan (dien tay) + rui ro ----
-    md += ["## 10. Test farm trong tuần (điền tay)", "",
-           "| Chỉ số | Giá trị | Tuần trước |", "|---|---|---|",
-           "| Device availability trung bình | …% | |",
-           "| Cycle chạy trọn vẹn / kế hoạch | …/… | |",
-           f"| % fail do Infra/Device | {_pct((tot_env / tot_fail) if tot_fail else None)} | |",
-           "| Sự cố lớn + thời gian khắc phục | | |", "",
-           "## 11. Rủi ro & đề xuất", "", "- …", ""]
+    # ---- 11. Farm (fill manually) + risks ----
+    md += ["## 11. Test farm this week (fill manually)", "",
+           "| Metric | Value | Prev week |", "|---|---|---|",
+           "| Avg device availability | …% | |",
+           "| Full cycles run / planned | …/… | |",
+           f"| % failures from Infra/Device | {_pct((tot_env / tot_fail) if tot_fail else None)} | |",
+           "| Major incidents + recovery time | | |", "",
+           "## 12. Risks & recommendations", "", "- …", ""]
 
     return "\n".join(md), None
 
@@ -4370,154 +4644,539 @@ def _excel_style_header(sheet, row, values, color="4472C4"):
 
 
 def _excel_style_data_row(sheet, row, values):
-    """Helper: style data row with light background."""
+    """Helper: style data row with light background. Float values (VD ty le 0..1)
+    duoc format tu dong thanh "0.0%" (numeric that, khong phai chuoi) de conditional
+    formatting / color-scale hoat dong duoc tren cac cot ty le."""
     for col_idx, val in enumerate(values, 1):
         cell = sheet.cell(row=row, column=col_idx, value=val)
         cell.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
+        if isinstance(val, float):
+            cell.number_format = "0.0%"
         if row % 2 == 0:
             cell.fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
 
 
+_TIER_COLORS = [("P0", "E74C3C"), ("P1", "E67E22"), ("P2", "F1C40F"),
+                 ("P3", "3498DB"), ("Verify", "9B59B6"), ("Done", "2ECC71")]
+
+
+def _excel_overview_sheet(wb, title_text, db, trend, kpi, coverage):
+    """Sheet 'Overview' — trang tong quan DUY NHAT dat dau file: health status mau,
+    vai KPI lon, 1-2 nhan dinh ngan, + 2 chart (pass rate trend toan bo lich su,
+    phan bo tier). Muc dich: doc trong ~10 giay nam duoc tinh hinh du an, cac sheet
+    chi tiet phia sau danh cho ai can dao sau. Dung chung cho ca daily & weekly."""
+    ws = wb.active
+    ws.title = "Overview"
+    ws.sheet_view.showGridLines = False
+
+    ws.cell(row=1, column=1, value=title_text).font = Font(bold=True, size=16)
+    ws.merge_cells("A1:F1")
+
+    current_rate = trend[-1]["pass_rate"] if trend else None
+    target_rate = kpi["target_rate"]
+
+    # ---- Health status (traffic light) ----
+    if current_rate is None:
+        status_text, status_color = "NO DATA", "BDC3C7"
+    else:
+        diff = current_rate - target_rate
+        if diff >= 0:
+            status_text, status_color = "ON TRACK ✅", "2ECC71"
+        elif diff >= -0.05:
+            status_text, status_color = "AT RISK ⚠️", "F1C40F"
+        else:
+            status_text, status_color = "BEHIND ❌", "E74C3C"
+    ws.merge_cells("A3:F4")
+    cell = ws["A3"]
+    cell.value = status_text
+    cell.font = Font(bold=True, size=20, color="FFFFFF")
+    cell.fill = PatternFill(start_color=status_color, end_color=status_color, fill_type="solid")
+    cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    # ---- Big KPI cells ----
+    fix_speed = _velocity_last7(db, "fixes", "fix_date")
+    if kpi["days_remaining"] is not None:
+        days_label, days_val = "Days to Deadline", kpi["days_remaining"]
+    elif kpi["fails_to_fix"] is not None and kpi["fails_to_fix"] > 0 and fix_speed > 0:
+        days_label = "Est. Days to Target"
+        days_val = int(kpi["fails_to_fix"] / fix_speed + 0.999)
+    else:
+        days_label, days_val = "Days to Deadline", "—"
+
+    kpis = [
+        ("Current Pass Rate", current_rate if current_rate is not None else "—"),
+        ("Target Pass Rate", target_rate),
+        ("Still Failing", f"{kpi['still_failing']} / {kpi['total_scripts']}"),
+        ("P0 (wide-impact)", kpi["tier_counts"]["P0"]),
+        (days_label, days_val),
+    ]
+    r = 6
+    for i, (label, val) in enumerate(kpis):
+        col = 1 + i
+        c1 = ws.cell(row=r, column=col, value=label)
+        c1.font = Font(size=10, color="666666")
+        c1.alignment = Alignment(horizontal="center")
+        c2 = ws.cell(row=r + 1, column=col, value=val)
+        c2.font = Font(size=18, bold=True)
+        c2.alignment = Alignment(horizontal="center")
+        if isinstance(val, float):
+            c2.number_format = "0.0%"
+        ws.column_dimensions[get_column_letter(col)].width = 18
+
+    # ---- Short insights (1-2 lines) ----
+    r = 9
+    insight_lines = []
+    if trend and len(trend) >= 2:
+        last, prev = trend[-1], trend[-2]
+        if last["delta_fail"] is not None and last["delta_fail"] != 0:
+            direction = "down" if last["delta_fail"] < 0 else "UP"
+            insight_lines.append(f"• Cycle {last['cycle']}: failures {direction} {abs(last['delta_fail'])} vs previous cycle.")
+    if kpi["required_rate_per_day"] is not None:
+        verdict = "meeting" if fix_speed >= kpi["required_rate_per_day"] else "BELOW"
+        insight_lines.append(f"• Fix velocity (7-day avg {fix_speed:.1f}/day) is {verdict} the {kpi['required_rate_per_day']:.1f}/day required to hit the deadline.")
+    if coverage.get("configured"):
+        insight_lines.append(f"• Script coverage: {coverage['done']}/{coverage['total_needed']} ({coverage['pct']*100:.1f}%) of required test cases done.")
+    if not insight_lines:
+        insight_lines = ["• Not enough data yet for a trend assessment."]
+    for line in insight_lines:
+        ws.cell(row=r, column=1, value=line).font = Font(size=11)
+        ws.merge_cells(f"A{r}:F{r}")
+        r += 1
+
+    # ---- Chart 1: Pass rate trend (full history) ----
+    chart_top_row = r + 2
+    ws.cell(row=chart_top_row - 1, column=1, value="Chart data (do not edit)").font = Font(size=9, italic=True, color="999999")
+    ws.cell(row=chart_top_row, column=1, value="Cycle")
+    ws.cell(row=chart_top_row, column=2, value="Pass Rate")
+    trow = chart_top_row
+    for t in trend:
+        trow += 1
+        ws.cell(row=trow, column=1, value=f"C{t['cycle']}")
+        pc = ws.cell(row=trow, column=2, value=t["pass_rate"])
+        if t["pass_rate"] is not None:
+            pc.number_format = "0.0%"
+    if trend:
+        line = LineChart()
+        line.title = "Pass Rate Trend (all cycles)"
+        line.y_axis.numFmt = "0%"
+        line.y_axis.title = "Pass Rate"
+        line.x_axis.title = "Cycle"
+        line.height, line.width = 8, 16
+        data_ref = Reference(ws, min_col=2, min_row=chart_top_row, max_row=trow)
+        cats_ref = Reference(ws, min_col=1, min_row=chart_top_row + 1, max_row=trow)
+        line.add_data(data_ref, titles_from_data=True)
+        line.set_categories(cats_ref)
+        ws.add_chart(line, f"H{r}")
+
+    # ---- Chart 2: Tier distribution ----
+    tier_start_row = trow + 3
+    ws.cell(row=tier_start_row, column=1, value="Tier")
+    ws.cell(row=tier_start_row, column=2, value="Count")
+    for i, (tier, _color) in enumerate(_TIER_COLORS):
+        ws.cell(row=tier_start_row + 1 + i, column=1, value=tier)
+        ws.cell(row=tier_start_row + 1 + i, column=2, value=kpi["tier_counts"].get(tier, 0))
+    pie = PieChart()
+    pie.title = "Priority Tier Distribution"
+    pie.height, pie.width = 8, 12
+    data_ref = Reference(ws, min_col=2, min_row=tier_start_row, max_row=tier_start_row + len(_TIER_COLORS))
+    cats_ref = Reference(ws, min_col=1, min_row=tier_start_row + 1, max_row=tier_start_row + len(_TIER_COLORS))
+    pie.add_data(data_ref, titles_from_data=True)
+    pie.set_categories(cats_ref)
+    try:
+        from openpyxl.chart.marker import DataPoint
+        pie.series[0].data_points = [
+            DataPoint(idx=i, spPr=None) for i in range(len(_TIER_COLORS))
+        ]
+        for dp, (_tier, color) in zip(pie.series[0].data_points, _TIER_COLORS):
+            dp.graphicalProperties.solidFill = color
+    except Exception:
+        pass  # mau slice mac dinh neu API chart noi bo openpyxl thay doi giua cac phien ban
+    ws.add_chart(pie, f"H{r + 18}")
+
+    return ws
+
+
+def _excel_pass_rate_matrix_sheet(wb, db, cycles):
+    """Sheet 'Pass Rate Matrix': Item x Model x cycle, kem dong Total tung Item + GRAND TOTAL.
+    Aggregation logic khop 1:1 voi _suite_model_report_table() (markdown)."""
+    ws = wb.create_sheet("Pass Rate Matrix")
+    data = compute_suite_model_matrix(db)
+    header = ["Item", "Model"] + [f"C{c}" for c in cycles] + ["Δ"]
+    _excel_style_header(ws, 1, header, "70AD47")
+    r = 2
+    first_data_row = r
+    if not cycles:
+        _excel_style_data_row(ws, r, ["No result data yet."] + [""] * (len(header) - 1))
+        r += 1
+    else:
+        def fmt(cell):
+            # Gia tri numeric that (float 0..1) de ColorScaleRule hoat dong; "—" khi khong co du lieu.
+            return cell["pass_rate"] if cell and cell["pass_rate"] is not None else "—"
+
+        def delta(first, last):
+            if first is None or last is None:
+                return "…"
+            d = (last - first) * 100
+            arrow = "▲" if d > 0 else ("▼" if d < 0 else "=")
+            return f"{arrow}{abs(d):.1f}%"
+
+        by_item = {}
+        for row in data["rows"]:
+            by_item.setdefault(row["test_suite"], []).append(row)
+
+        for item in sorted(by_item):
+            rows = by_item[item]
+            for row in sorted(rows, key=lambda x: x["model"]):
+                cells = [row["by_cycle"].get(c) for c in cycles]
+                rates = [c["pass_rate"] if c else None for c in cells]
+                first = next((x for x in rates if x is not None), None)
+                last = next((x for x in reversed(rates) if x is not None), None)
+                _excel_style_data_row(ws, r, [item, row["model"]] + [fmt(c) for c in cells] + [delta(first, last)])
+                r += 1
+            agg_cells = []
+            for c in cycles:
+                tot = pas = na = 0
+                found = False
+                for row in rows:
+                    cell = row["by_cycle"].get(c)
+                    if cell:
+                        found = True
+                        tot += cell["total"]; pas += cell["pass_count"]; na += cell["na_count"]
+                denom = tot - na
+                agg_cells.append({"pass_rate": (pas / denom) if (found and denom > 0) else None} if found else None)
+            rates = [c["pass_rate"] if c else None for c in agg_cells]
+            first = next((x for x in rates if x is not None), None)
+            last = next((x for x in reversed(rates) if x is not None), None)
+            _excel_style_data_row(ws, r, [item, "Total"] + [fmt(c) for c in agg_cells] + [delta(first, last)])
+            r += 1
+
+        overall_cells = [data["overall_by_cycle"].get(c) for c in cycles]
+        rates = [c["pass_rate"] if c else None for c in overall_cells]
+        first = next((x for x in rates if x is not None), None)
+        last = next((x for x in reversed(rates) if x is not None), None)
+        _excel_style_data_row(ws, r, ["GRAND TOTAL", "All"] + [fmt(c) for c in overall_cells] + [delta(first, last)])
+
+        # Conditional formatting: to do-vang-xanh theo pass rate tren toan bo cot cycle (khong tinh Item/Model/Delta).
+        last_row = r
+        rate_range = f"C{first_data_row}:{get_column_letter(2 + len(cycles))}{last_row}"
+        ws.conditional_formatting.add(rate_range, ColorScaleRule(
+            start_type="min", start_color="F8696B",
+            mid_type="percentile", mid_value=50, mid_color="FFEB84",
+            end_type="max", end_color="63BE7B",
+        ))
+
+    ws.column_dimensions["A"].width = 22
+    for col in range(2, len(header) + 1):
+        ws.column_dimensions[get_column_letter(col)].width = 14
+    return ws
+
+
+def _excel_env_failures_sheet(wb, db, cycles):
+    """Sheet 'Env Failures': loi lien quan moi truong (Infra/Device) tung cycle + Total row."""
+    ws = wb.create_sheet("Env Failures")
+    _excel_style_header(ws, 1, ["Cycle", "Total Fail", "Env Fail", "Rate"])
+    r = 2
+    if not cycles:
+        _excel_style_data_row(ws, r, ["No cycle data.", "", "", ""])
+    else:
+        env = _env_fail_by_cycle(db, cycles)
+        tot_fail = tot_env = 0
+        for c in cycles:
+            d = env[c]
+            tot_fail += d["fail"]; tot_env += d["env"]
+            _excel_style_data_row(ws, r, [f"C{c}", d["fail"], d["env"], f"{d['rate']*100:.1f}%" if d["rate"] is not None else "…"])
+            r += 1
+        _excel_style_data_row(ws, r, ["Total", tot_fail, tot_env, f"{(tot_env/tot_fail*100):.1f}%" if tot_fail else "…"])
+    for col in range(1, 5):
+        ws.column_dimensions[get_column_letter(col)].width = 16
+    return ws
+
+
+def _excel_productivity_sheet(wb, db, date_from, date_to):
+    """Sheet 'Productivity': fix & script viet moi tung nguoi trong khoang [date_from, date_to] + Total row moi bang."""
+    ws = wb.create_sheet("Productivity")
+    r = 1
+    ws.cell(row=r, column=1, value="Fixes per person").font = Font(bold=True, size=12)
+    r += 1
+    _excel_style_header(ws, r, ["Person", "Fixes"])
+    r += 1
+    fx_rows = db.execute(
+        "SELECT COALESCE(NULLIF(TRIM(owner), ''), '(unknown)') person, COUNT(*) c FROM fixes "
+        "WHERE fix_date>=? AND fix_date<=? GROUP BY person ORDER BY c DESC, person",
+        (date_from, date_to),
+    ).fetchall()
+    for x in fx_rows:
+        _excel_style_data_row(ws, r, [x["person"], x["c"]])
+        r += 1
+    _excel_style_data_row(ws, r, ["Total", sum(x["c"] for x in fx_rows)])
+    r += 2
+
+    ws.cell(row=r, column=1, value="New scripts (DONE) per person").font = Font(bold=True, size=12)
+    r += 1
+    _excel_style_header(ws, r, ["Person", "Scripts Written"])
+    r += 1
+    ws_rows = db.execute(
+        "SELECT COALESCE(NULLIF(TRIM(member), ''), '(unknown)') person, COUNT(*) c FROM new_scripts "
+        "WHERE status='DONE' AND completed_date>=? AND completed_date<=? GROUP BY person ORDER BY c DESC, person",
+        (date_from, date_to),
+    ).fetchall()
+    for x in ws_rows:
+        _excel_style_data_row(ws, r, [x["person"], x["c"]])
+        r += 1
+    _excel_style_data_row(ws, r, ["Total", sum(x["c"] for x in ws_rows)])
+
+    ws.column_dimensions["A"].width = 26
+    ws.column_dimensions["B"].width = 18
+    return ws
+
+
+def _excel_completion_sheet(wb, coverage):
+    """Sheet 'Completion by Suite': nguon CHI TU he thong cong ty (compute_coverage). Chua sync -> ghi ro."""
+    ws = wb.create_sheet("Completion by Suite")
+    if not coverage.get("configured"):
+        ws.cell(row=1, column=1, value="Company system not synced — total required TCs unknown.").font = Font(italic=True)
+        ws.column_dimensions["A"].width = 60
+        return ws
+    _excel_style_header(ws, 1, ["Item", "Total TC", "Completed Script", "Completed Rate"], "FFC000")
+    r = 2
+    for it in coverage["by_item"]:
+        _excel_style_data_row(ws, r, [it["item"], it["needed"], it["done"], it["pct"]])
+        r += 1
+    _excel_style_data_row(ws, r, ["Total", coverage["total_needed"], coverage["done"], coverage["pct"]])
+    ws.conditional_formatting.add(f"D2:D{r}", ColorScaleRule(
+        start_type="min", start_color="F8696B",
+        mid_type="percentile", mid_value=50, mid_color="FFEB84",
+        end_type="max", end_color="63BE7B",
+    ))
+    for col in range(1, 5):
+        ws.column_dimensions[get_column_letter(col)].width = 20
+    return ws
+
+
+def _excel_eta_plan_sheet(wb, db, kpi, coverage, priority):
+    """Sheet 'ETA & Plan': uoc luong hoan thanh (tai su dung _eta_section) + top P0/P1 can lam truoc."""
+    ws = wb.create_sheet("ETA & Plan")
+    r = 1
+    ws.cell(row=r, column=1, value="Project completion estimate").font = Font(bold=True, size=12)
+    r += 1
+    for line in _eta_section(db, kpi, coverage).split("\n"):
+        ws.cell(row=r, column=1, value=line.lstrip("- ").replace("**", ""))
+        r += 1
+    r += 1
+    ws.cell(row=r, column=1, value="Top P0/P1 scripts").font = Font(bold=True, size=12)
+    r += 1
+    _excel_style_header(ws, r, ["Tier", "Test Suite", "Test Case", "Owner"])
+    r += 1
+    top = sorted(
+        (p for p in priority if p["priority_tier"] in ("P0", "P1")),
+        key=lambda p: (-p["priority_score"], p["test_case"]),
+    )
+    for p in top[:30]:
+        _excel_style_data_row(ws, r, [p["priority_tier"], p["test_suite"], p["test_case"], p["current_owner"] or "(unassigned)"])
+        r += 1
+    ws.column_dimensions["A"].width = 55
+    for col in "BCD":
+        ws.column_dimensions[col].width = 22
+    return ws
+
+
+def _excel_root_cause_pareto_sheet(wb, fix_pareto):
+    """Sheet 'Root Cause Pareto' (weekly only): tu fix log, group theo root_cause_group."""
+    ws = wb.create_sheet("Root Cause Pareto")
+    _excel_style_header(ws, 1, ["Root Cause Group", "Fixes", "%"])
+    r = 2
+    if not fix_pareto:
+        ws.cell(row=r, column=1, value="No fix recorded a root-cause group this week.").font = Font(italic=True)
+    else:
+        for g in fix_pareto:
+            _excel_style_data_row(ws, r, [g["group"], g["count"], f"{g['pct']*100:.1f}%"])
+            r += 1
+    for col in range(1, 4):
+        ws.column_dimensions[get_column_letter(col)].width = 26
+    return ws
+
+
+def _excel_team_quality_sheet(wb, owner_stats, reopen_rate, n_verified, n_regressed):
+    """Sheet 'Team Quality' (weekly only): mirror Owner Leaderboard (all-time rates) + Total row."""
+    ws = wb.create_sheet("Team Quality")
+    r = 1
+    ws.cell(row=r, column=1,
+            value=f"Reopen rate: {reopen_rate*100:.1f}%  (Verified: {n_verified}  Regressed: {n_regressed})"
+            if reopen_rate is not None else f"Reopen rate: …  (Verified: {n_verified}  Regressed: {n_regressed})"
+            ).font = Font(bold=True)
+    r += 2
+    header = ["#", "Owner", "Scripts Written", "Fixes", "Distinct Fixed", "Fully Resolved",
+              "Resolution Rate", "Verified", "Reopen", "Verification Rate", "Open Workload"]
+    _excel_style_header(ws, r, header)
+    r += 1
+    first_data_row = r
+    for o in owner_stats:
+        _excel_style_data_row(ws, r, [
+            o["rank"], o["owner"], o.get("scripts_written", 0), o["fixes_logged"],
+            o["distinct_scripts_fixed"], o["distinct_scripts_fully_resolved"],
+            o["resolution_rate"] if o["resolution_rate"] is not None else "…",
+            o["verified"], o["reopened"],
+            o["verification_rate"] if o["verification_rate"] is not None else "…",
+            o["open_workload"],
+        ])
+        r += 1
+    def sm(k):
+        return sum(o.get(k, 0) for o in owner_stats)
+    _excel_style_data_row(ws, r, ["", "Total", sm("scripts_written"), sm("fixes_logged"), sm("distinct_scripts_fixed"),
+                                   sm("distinct_scripts_fully_resolved"), "—", sm("verified"), sm("reopened"), "—",
+                                   sm("open_workload")])
+    if owner_stats:
+        for col_letter in ("G", "J"):  # Resolution Rate, Verification Rate
+            ws.conditional_formatting.add(f"{col_letter}{first_data_row}:{col_letter}{r - 1}", ColorScaleRule(
+                start_type="min", start_color="F8696B",
+                mid_type="percentile", mid_value=50, mid_color="FFEB84",
+                end_type="max", end_color="63BE7B",
+            ))
+    for col in range(1, len(header) + 1):
+        ws.column_dimensions[get_column_letter(col)].width = 15
+    return ws
+
+
 def _build_daily_report_excel(db, date_str):
-    """Export daily report to Excel workbook. Dùng build_daily_report() → parse markdown → Excel sheets."""
+    """Excel DAILY report: nhieu sheet, English, dong Total, dat parity voi build_daily_report()
+    (markdown). Cycle KHONG bat buoc (giong markdown) - dung chung logic loi/relax."""
+    trend = compute_cycle_trend(db)
+    if not date_str:
+        date_str = trend[-1]["cycle_date"] if trend else date.today().isoformat()
     md, err = build_daily_report(db, date_str)
     if err:
         raise ValueError(err)
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Báo cáo ngày"
-
-    trend = compute_cycle_trend(db)
-    if not trend:
-        return wb
-
-    if date_str:
-        entry = next((t for t in trend if t["cycle_date"] == date_str), None)
-        if not entry:
-            raise ValueError(f"Không có cycle ngày {date_str}.")
-    else:
-        entry = trend[-1]
-        date_str = entry["cycle_date"]
-
-    idx = trend.index(entry)
-    prev = trend[idx - 1] if idx > 0 else None
+    entry = next((t for t in trend if t["cycle_date"] == date_str), None)
+    idx = trend.index(entry) if entry is not None else None
+    prev = trend[idx - 1] if (idx is not None and idx > 0) else None
     priority = get_script_priority(db)
     kpi = _report_kpis(db, priority)
     coverage = compute_coverage(db)
 
+    wb = Workbook()
+    title_cycle = f"Cycle {entry['cycle']}" if entry is not None else "No cycle"
+    _excel_overview_sheet(wb, f"Stabilization Daily Report — {title_cycle} ({date_str})", db, trend, kpi, coverage)
+
+    ws = wb.create_sheet("Summary")
     r = 1
-    ws.cell(row=r, column=1, value=f"Báo cáo Stabilization — Cycle {entry['cycle']} ({date_str})").font = Font(bold=True, size=14)
+    ws.cell(row=r, column=1, value=f"Stabilization Daily Report — {title_cycle} ({date_str})").font = Font(bold=True, size=14)
     r += 2
-
-    # KPI summary
-    _excel_style_header(ws, r, ["Chỉ số", "Hôm nay", "Cycle trước"])
+    _excel_style_header(ws, r, ["Metric", "Today", "Prev Cycle"])
     r += 1
-    for key, label in [("pass_rate", "Pass rate (%)"), ("fail_count", "Số lỗi (fail)"), ("total", "Tổng lượt chạy")]:
-        cur = entry.get(key)
-        prv = prev.get(key) if prev else None
-        if key == "pass_rate":
-            cur = f"{cur*100:.1f}" if cur is not None else "…"
-            prv = f"{prv*100:.1f}" if prv is not None else "…"
-        _excel_style_data_row(ws, r, [label, cur, prv])
-        r += 1
-
-    for label, val in [
-        ("Script còn lỗi", f"{kpi['still_failing']}/{kpi['total_scripts']}"),
-        ("P0", kpi["tier_counts"]["P0"]),
-        ("Verify", kpi["tier_counts"]["Verify"]),
-        ("Flaky", kpi["flaky_count"]),
-    ]:
-        _excel_style_data_row(ws, r, [label, val, ""])
-        r += 1
-
-    r += 1
-    recent_cycles = [t["cycle"] for t in trend[:idx + 1]][-3:]
-    _excel_style_header(ws, r, ["Item", "Model"] + [f"C{c}" for c in recent_cycles], "70AD47")
-    r += 1
-    matrix = compute_suite_model_matrix(db)
-    for row in sorted(matrix["rows"], key=lambda x: (x["test_suite"], x["model"])):
-        cells = [row["by_cycle"].get(c) for c in recent_cycles]
-        rate_cells = [f"{c['pass_rate']*100:.1f}%" if c and c["pass_rate"] is not None else "…" for c in cells]
-        _excel_style_data_row(ws, r, [row["test_suite"], row["model"]] + rate_cells)
-        r += 1
-
-    r += 2
-    _excel_style_header(ws, r, ["Coverage", "Giá trị"], "FFC000")
-    r += 1
-    if coverage.get("configured"):
-        _excel_style_data_row(ws, r, ["Done / Cần", f"{coverage['done']}/{coverage['total_needed']}"])
-        r += 1
-        _excel_style_data_row(ws, r, ["Tỉ lệ", f"{coverage['pct']*100:.1f}%"])
+    if entry is not None:
+        rows = [
+            ("Pass rate", f"{entry['pass_rate']*100:.1f}%", f"{prev['pass_rate']*100:.1f}%" if prev else "…"),
+            ("Total runs", entry["total"], prev["total"] if prev else "…"),
+            ("Failures in cycle", entry["fail_count"], prev["fail_count"] if prev else "…"),
+        ]
     else:
-        _excel_style_data_row(ws, r, ["Trạng thái", "Chưa đồng bộ"])
+        rows = [(f"No cycle ran on {date_str}", "", "")]
+    for lbl, cur, prv in rows:
+        _excel_style_data_row(ws, r, [lbl, cur, prv])
+        r += 1
+    for lbl, val in [
+        ("Still failing", f"{kpi['still_failing']}/{kpi['total_scripts']}"),
+        ("P0", kpi["tier_counts"]["P0"]),
+        ("Verifying (Verify)", kpi["tier_counts"]["Verify"]),
+        ("Flaky scripts", kpi["flaky_count"]),
+    ]:
+        _excel_style_data_row(ws, r, [lbl, val, ""])
+        r += 1
+    ws.column_dimensions["A"].width = 28
+    ws.column_dimensions["B"].width = 20
+    ws.column_dimensions["C"].width = 20
 
-    for col in range(1, 3 + len(recent_cycles)):
-        ws.column_dimensions[get_column_letter(col)].width = 22
-
+    if trend:
+        end = (idx + 1) if idx is not None else len(trend)
+        recent_cycles = [t["cycle"] for t in trend[:end]][-3:]
+    else:
+        recent_cycles = []
+    _excel_pass_rate_matrix_sheet(wb, db, recent_cycles)
+    _excel_env_failures_sheet(wb, db, recent_cycles)
+    _excel_productivity_sheet(wb, db, date_str, date_str)
+    _excel_completion_sheet(wb, coverage)
+    _excel_eta_plan_sheet(wb, db, kpi, coverage, priority)
     return wb
 
 
 def _build_weekly_report_excel(db, week_str):
-    """Export weekly report to Excel workbook."""
+    """Excel WEEKLY report: nhieu sheet, English, dong Total, dat parity voi build_weekly_report()
+    (markdown) + 2 sheet rieng cho tuan (Root Cause Pareto, Team Quality)."""
+    if not week_str:
+        iso = date.today().isocalendar()
+        week_str = f"{iso[0]}-W{iso[1]:02d}"
     md, err = build_weekly_report(db, week_str)
     if err:
         raise ValueError(err)
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Báo cáo tuần"
-
-    if week_str:
-        m = re.match(r"^(\d{4})-W(\d{1,2})$", week_str.strip())
-        if not m:
-            raise ValueError("Định dạng tuần không hợp lệ.")
-        year, wk = int(m.group(1)), int(m.group(2))
-    else:
-        iso = date.today().isocalendar()
-        year, wk = iso[0], iso[1]
-        week_str = f"{year}-W{wk:02d}"
-
+    m = re.match(r"^(\d{4})-W(\d{1,2})$", week_str.strip())
+    year, wk = int(m.group(1)), int(m.group(2))
     monday = date.fromisocalendar(year, wk, 1)
     sunday = monday + timedelta(days=6)
+    mon_s, sun_s = monday.isoformat(), sunday.isoformat()
 
     trend = compute_cycle_trend(db)
-    in_week = [t for t in trend if t["cycle_date"] and monday.isoformat() <= t["cycle_date"] <= sunday.isoformat()]
-    if not in_week:
-        raise ValueError(f"Không có cycle trong tuần {week_str}.")
-
+    in_week = [t for t in trend if t["cycle_date"] and mon_s <= t["cycle_date"] <= sun_s]
     priority = get_script_priority(db)
     kpi = _report_kpis(db, priority)
     coverage = compute_coverage(db)
 
-    n_fix = db.execute("SELECT COUNT(*) c FROM fixes WHERE fix_date>=? AND fix_date<=?",
-                      (monday.isoformat(), sunday.isoformat())).fetchone()["c"]
-    n_new = db.execute("SELECT COUNT(*) c FROM new_scripts WHERE status='DONE' AND completed_date>=? AND completed_date<=?",
-                      (monday.isoformat(), sunday.isoformat())).fetchone()["c"]
+    wb = Workbook()
+    cyc_txt = f"Cycle {in_week[0]['cycle']}–{in_week[-1]['cycle']}" if in_week else "No cycle"
+    title_text = f"Stabilization Weekly Report — Week {wk} ({monday.strftime('%Y-%m-%d')}–{sunday.strftime('%Y-%m-%d')}) — {cyc_txt}"
+    _excel_overview_sheet(wb, title_text, db, trend, kpi, coverage)
 
+    ws = wb.create_sheet("Summary")
     r = 1
-    ws.cell(row=r, column=1, value=f"Báo cáo Tuần {wk} ({monday.strftime('%d/%m')}–{sunday.strftime('%d/%m/%Y')})").font = Font(bold=True, size=14)
+    ws.cell(row=r, column=1, value=title_text).font = Font(bold=True, size=14)
     r += 2
-
-    _excel_style_header(ws, r, ["Chỉ số", "Giá trị"])
+    n_fix = db.execute("SELECT COUNT(*) c FROM fixes WHERE fix_date>=? AND fix_date<=?", (mon_s, sun_s)).fetchone()["c"]
+    n_new = db.execute("SELECT COUNT(*) c FROM new_scripts WHERE status='DONE' AND completed_date>=? AND completed_date<=?",
+                      (mon_s, sun_s)).fetchone()["c"]
+    _excel_style_header(ws, r, ["Metric", "Value"])
     r += 1
     data = [
-        ["Pass rate đầu–cuối tuần", f"{in_week[0]['pass_rate']*100:.1f}% → {in_week[-1]['pass_rate']*100:.1f}%"],
-        ["Fixes trong tuần", n_fix],
-        ["Scripts viết mới (DONE)", n_new],
-        ["Script còn lỗi", f"{kpi['still_failing']}/{kpi['total_scripts']}"],
-        ["Coverage", f"{coverage['done']}/{coverage['total_needed']} ({coverage['pct']*100:.1f}%)" if coverage.get("configured") else "Chưa đồng bộ"],
-        ["P0", kpi['tier_counts'].get('P0', 0)],
-        ["Verify", kpi['tier_counts'].get('Verify', 0)],
-        ["Flaky", kpi['flaky_count']],
+        ("Pass rate start→end of week",
+         f"{in_week[0]['pass_rate']*100:.1f}% → {in_week[-1]['pass_rate']*100:.1f}%" if in_week else "No cycle this week"),
+        ("Fixes this week", n_fix),
+        ("New scripts (DONE)", n_new),
+        ("Still failing", f"{kpi['still_failing']}/{kpi['total_scripts']}"),
+        ("Completion (company system)",
+         f"{coverage['done']}/{coverage['total_needed']} ({coverage['pct']*100:.1f}%)" if coverage.get("configured") else "Not synced"),
+        ("P0", kpi["tier_counts"]["P0"]),
+        ("Verifying (Verify)", kpi["tier_counts"]["Verify"]),
+        ("Flaky scripts", kpi["flaky_count"]),
     ]
     for lbl, val in data:
         _excel_style_data_row(ws, r, [lbl, val])
         r += 1
+    ws.column_dimensions["A"].width = 32
+    ws.column_dimensions["B"].width = 28
 
-    for col in range(1, 3):
-        ws.column_dimensions[get_column_letter(col)].width = 30
+    if trend:
+        week_cycles = [t["cycle"] for t in in_week]
+        if len(week_cycles) < 3:
+            ref = in_week[-1]["cycle"] if in_week else trend[-1]["cycle"]
+            week_cycles = [t["cycle"] for t in trend if t["cycle"] <= ref][-3:]
+    else:
+        week_cycles = []
+    _excel_pass_rate_matrix_sheet(wb, db, week_cycles)
+    _excel_env_failures_sheet(wb, db, week_cycles)
+    _excel_productivity_sheet(wb, db, mon_s, sun_s)
+    _excel_completion_sheet(wb, coverage)
 
+    fix_pareto = compute_fix_root_cause_pareto(db, mon_s, sun_s)
+    _excel_root_cause_pareto_sheet(wb, fix_pareto)
+
+    tracking = compute_fix_tracking(db)
+    n_verified = sum(1 for f in tracking if f["status"] == "verified")
+    n_regressed = sum(1 for f in tracking if f["status"] == "regressed")
+    reopen_rate = (n_regressed / (n_verified + n_regressed)) if (n_verified + n_regressed) else None
+    owner_stats = get_owner_stats(db, priority)
+    _excel_team_quality_sheet(wb, owner_stats, reopen_rate, n_verified, n_regressed)
+
+    _excel_eta_plan_sheet(wb, db, kpi, coverage, priority)
     return wb
 
 

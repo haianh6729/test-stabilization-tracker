@@ -162,6 +162,14 @@ main { padding: 20px; max-width: 1400px; margin: 0 auto; }
 }
 .data-table tbody tr:hover { background: #f7f9fc; }
 
+/* Dong Total o cuoi cac bang dem (count) - dam, nen nhat, khong doi mau khi hover. */
+.data-table tbody tr.total-row,
+.data-table tbody tr.total-row:hover {
+  font-weight: 700;
+  background: #eef2f7;
+  border-top: 2px solid #cfd8e3;
+}
+
 .data-table .filter-row th {
   cursor: default;
   background: #f7f9fc;

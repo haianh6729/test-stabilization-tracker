@@ -16,6 +16,10 @@ const state = {
   charts: {},
   currentUser: localStorage.getItem("tracker_user") || "",
   me: null,   // {username, role, permissions} - phien dang nhap hien tai
+  lastReport: "",
+  lastReportParams: {},
+  rootCauseGroups: [],
+  leaderboard: { scope: "cumulative", date: "", week: "" },
 };
 
 const TREND_BADGE = {
@@ -206,63 +210,71 @@ function kpiCard(label, value, cls) {
 function renderKPIs(d) {
   const k = d.kpi;
   let html = "";
-  html += kpiCard("Pass Rate hiện tại", fmtPct(k.current_pass_rate));
+  html += kpiCard("Current Pass Rate", fmtPct(k.current_pass_rate));
   if (k.current_pass_rate_adjusted !== null && k.current_pass_rate_adjusted !== undefined) {
-    html += kpiCard("Pass Rate (bỏ script mới)", fmtPct(k.current_pass_rate_adjusted));
+    html += kpiCard("Pass Rate (excl. new scripts)", fmtPct(k.current_pass_rate_adjusted));
   }
-  html += kpiCard("Mục tiêu", fmtPct(k.target_pass_rate));
-  html += kpiCard("Tổng số script", k.total_scripts);
-  html += kpiCard("Script còn lỗi", k.still_failing, k.still_failing > 0 ? "warn" : "good");
+  html += kpiCard("Target", fmtPct(k.target_pass_rate));
+  html += kpiCard("Total Scripts", k.total_scripts);
+  html += kpiCard("Still Failing", k.still_failing, k.still_failing > 0 ? "warn" : "good");
   if (d.tier_counts && d.tier_counts.Verify) {
-    html += kpiCard("Đang xác minh", d.tier_counts.Verify, "warn");
+    html += kpiCard("Verifying", d.tier_counts.Verify, "warn");
   }
   if (k.flaky_count !== null && k.flaky_count !== undefined) {
     html += kpiCard("🌀 Flaky", `${k.flaky_count} (${fmtPct(k.flaky_rate)})`, k.flaky_count > 0 ? "warn" : "good");
   }
-  html += kpiCard("Cycle hiện tại", k.latest_cycle);
+  html += kpiCard("Current Cycle", k.latest_cycle);
   if (k.days_remaining !== null && k.days_remaining !== undefined) {
-    html += kpiCard("Số ngày còn lại", k.days_remaining, k.days_remaining < 7 ? "bad" : "");
+    html += kpiCard("Days Remaining", k.days_remaining, k.days_remaining < 7 ? "bad" : "");
   }
   if (k.required_rate_per_day !== null && k.required_rate_per_day !== undefined) {
-    html += kpiCard("Cần fix / ngày", k.required_rate_per_day.toFixed(1), "warn");
+    html += kpiCard("Required Fixes / Day", k.required_rate_per_day.toFixed(1), "warn");
   }
   $("#kpiRow").innerHTML = html;
 }
 
-// ---------------- Dashboard: coverage (hệ thống công ty) + Pareto fix-group ----------------
+// ---------------- Dashboard: coverage (company system) + fix-group Pareto ----------------
 function renderCoverage(cov) {
   const box = $("#coverageBox");
   const table = $("#coverageTable");
   if (!box) return;
   if (!cov || !cov.configured) {
-    box.innerHTML = `<span style="color:#e67e22">⚠️ Chưa đồng bộ hệ thống công ty — chưa xác định tổng TC cần script.</span>
-      ${cov && cov.done_recorded ? `<br><span class="hint">Hiện đã ghi nhận <b>${cov.done_recorded}</b> script DONE trên hệ thống này.</span>` : ""}`;
+    box.innerHTML = `<span style="color:#e67e22">⚠️ Company system not synced — total required TCs unknown.</span>
+      ${cov && cov.done_recorded ? `<br><span class="hint">Currently recorded <b>${cov.done_recorded}</b> DONE scripts in the system.</span>` : ""}`;
     if (table) table.style.display = "none";
     return;
   }
   const color = cov.pct >= 0.85 ? "#1e8449" : (cov.pct >= 0.5 ? "#e67e22" : "#c0392b");
   box.innerHTML = `<div style="font-size:20px; font-weight:bold; color:${color}">
       ${cov.done} / ${cov.total_needed} (${fmtPct(cov.pct)})</div>
-    <span class="hint">SKIP bên công ty: ${cov.skip} (không tính vào tổng)${cov.out_of_plan ? ` · DONE ngoài kế hoạch: ${cov.out_of_plan}` : ""} · Đồng bộ: ${cov.synced_at || "—"}</span>`;
+    <span class="hint">SKIP on company side: ${cov.skip} (excluded from total)${cov.out_of_plan ? ` · DONE outside plan: ${cov.out_of_plan}` : ""} · Synced: ${cov.synced_at || "—"}</span>`;
   if (table) {
     table.style.display = "";
-    table.querySelector("tbody").innerHTML = (cov.by_item || []).map((it) => `
+    const rowsHtml = (cov.by_item || []).map((it) => `
       <tr><td>${it.item}</td><td>${it.needed}</td><td>${it.done}</td><td><b>${fmtPct(it.pct)}</b></td></tr>
     `).join("") || `<tr><td colspan="4" style="color:#999">—</td></tr>`;
+    const totalRow = `<tr class="total-row"><td>Total</td><td>${cov.total_needed}</td><td>${cov.done}</td><td>${fmtPct(cov.pct)}</td></tr>`;
+    table.querySelector("tbody").innerHTML = rowsHtml + totalRow;
   }
 }
 
 function renderFixPareto(rows) {
   const tbody = $("#fixParetoTable tbody");
   if (!tbody) return;
-  tbody.innerHTML = (rows || []).map((g) => `
+  if (!rows || !rows.length) {
+    tbody.innerHTML = `<tr><td colspan="4" style="color:#999">No fix has recorded a root cause group yet.</td></tr>`;
+    return;
+  }
+  const body = rows.map((g) => `
     <tr><td>${g.group}</td><td>${g.count}</td><td>${fmtPct(g.pct)}</td><td>${fmtPct(g.cum_pct)}</td></tr>
-  `).join("") || `<tr><td colspan="4" style="color:#999">Chưa có fix nào ghi nhóm nguyên nhân.</td></tr>`;
+  `).join("");
+  const total = rows.reduce((a, g) => a + (g.count || 0), 0);
+  tbody.innerHTML = body + `<tr class="total-row"><td>Total</td><td>${total}</td><td>—</td><td>—</td></tr>`;
 }
 
 function renderInsights(insights) {
   if (!insights.length) {
-    $("#insightsList").innerHTML = "<li>Chưa đủ dữ liệu để đưa ra nhận định.</li>";
+    $("#insightsList").innerHTML = "<li>Not enough data yet to generate insights.</li>";
     return;
   }
   $("#insightsList").innerHTML = insights.map((i) => `<li>${i}</li>`).join("");
@@ -338,20 +350,20 @@ function renderCharts(d) {
     options: { plugins: { legend: { position: "right" } } },
   });
 
-  // Pareto (label giờ là NHÓM nguyên nhân đã gom — truncate trục X, full text khi hover)
+  // Pareto (label is now the GROUPED root cause — truncate X axis, full text on hover)
   destroyChart("pareto");
   state.charts.pareto = new Chart($("#chartPareto"), {
     data: {
       labels: d.root_causes.map((r) => r.description.length > 22 ? r.description.slice(0, 22) + "…" : r.description),
       datasets: [
-        { type: "bar", label: "Số lượt Fail", data: d.root_causes.map((r) => r.count), backgroundColor: "#e67e22", yAxisID: "y" },
-        { type: "line", label: "Cộng dồn %", data: d.root_causes.map((r) => (r.cum_pct * 100).toFixed(1)), borderColor: "#1F4E78", yAxisID: "y1" },
+        { type: "bar", label: "Fail Count", data: d.root_causes.map((r) => r.count), backgroundColor: "#e67e22", yAxisID: "y" },
+        { type: "line", label: "Cumulative %", data: d.root_causes.map((r) => (r.cum_pct * 100).toFixed(1)), borderColor: "#1F4E78", yAxisID: "y1" },
       ],
     },
     options: {
       plugins: { tooltip: { callbacks: { title: (items) => d.root_causes[items[0].dataIndex].description } } },
       scales: {
-        y: { position: "left", title: { display: true, text: "Số lượt Fail" } },
+        y: { position: "left", title: { display: true, text: "Fail Count" } },
         y1: { position: "right", min: 0, max: 100, grid: { drawOnChartArea: false }, ticks: { callback: (v) => v + "%" } },
       },
     },
@@ -375,7 +387,7 @@ function renderCharts(d) {
     type: "bar",
     data: {
       labels: d.suite_stats.map((s) => s.test_suite),
-      datasets: [{ label: "% Hoàn thành", data: d.suite_stats.map((s) => (s.done_pct * 100).toFixed(1)), backgroundColor: "#3498db" }],
+      datasets: [{ label: "Completion %", data: d.suite_stats.map((s) => (s.done_pct * 100).toFixed(1)), backgroundColor: "#3498db" }],
     },
     options: { indexAxis: "y", scales: { x: { min: 0, max: 100, ticks: { callback: (v) => v + "%" } } }, plugins: { legend: { display: false } } },
   });
@@ -385,10 +397,10 @@ function renderPassRateTable(trend) {
   const tbody = $("#passRateTable tbody");
   if (!tbody) return;
   if (!trend || !trend.length) {
-    tbody.innerHTML = `<tr><td colspan="8" style="color:#999">Chưa có dữ liệu.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="color:#999">No data yet.</td></tr>`;
     return;
   }
-  tbody.innerHTML = trend.map((t) => {
+  const body = trend.map((t) => {
     const rateStr = t.pass_rate === null ? "—" : (t.pass_rate * 100).toFixed(1) + "%";
     let deltaStr = "—";
     if (t.delta_rate !== null && t.delta_rate !== undefined) {
@@ -409,6 +421,17 @@ function renderPassRateTable(trend) {
       <td>${deltaStr}</td>
     </tr>`;
   }).join("");
+  const sum = (k) => trend.reduce((a, t) => a + (t[k] || 0), 0);
+  const sTotal = sum("total"), sPass = sum("pass_count"), sNa = sum("na_count"), sFail = sum("fail_count");
+  const denom = sTotal - sNa;
+  const overallRate = denom > 0 ? ((sPass / denom) * 100).toFixed(1) + "%" : "—";
+  const totalRow = `
+    <tr class="total-row">
+      <td colspan="2">Total</td>
+      <td>${sTotal}</td><td>${sPass}</td><td>${sNa}</td><td>${sFail}</td>
+      <td><b>${overallRate}</b></td><td>—</td>
+    </tr>`;
+  tbody.innerHTML = body + totalRow;
 }
 
 // ---------------- Dashboard: Suite × Model × Cycle matrix ----------------
@@ -438,14 +461,14 @@ function renderSmChooser() {
   if (!box) return;
   const cycles = state.suiteModel.cycles || [];
   box.innerHTML = `
-    <span style="font-size:13px; color:var(--muted)">Chọn cycle:</span>
+    <span style="font-size:13px; color:var(--muted)">Select cycles:</span>
     <div class="ms-dropdown" id="smMs">
       <button type="button" class="ms-toggle" id="smMsToggle" aria-expanded="false"></button>
       <div class="ms-panel" id="smMsPanel" hidden>
         <div class="ms-actions">
-          <button type="button" data-act="all">Tất cả</button>
-          <button type="button" data-act="recent5">5 gần nhất</button>
-          <button type="button" data-act="none">Bỏ chọn</button>
+          <button type="button" data-act="all">All</button>
+          <button type="button" data-act="recent5">Last 5</button>
+          <button type="button" data-act="none">Clear</button>
         </div>
         <div class="ms-options">
           ${cycles.map((c) => `
@@ -516,7 +539,7 @@ function updateSmToggleLabel() {
   const toggle = $("#smMsToggle");
   if (!toggle) return;
   const sel = smSelectedCyclesList();
-  const label = sel.length ? sel.map((c) => "C" + c.cycle).join(", ") : "Chưa chọn cycle";
+  const label = sel.length ? sel.map((c) => "C" + c.cycle).join(", ") : "No cycle selected";
   toggle.innerHTML = `<span class="ms-count">${sel.length} cycle</span> ${label} <span class="ms-caret">▾</span>`;
 }
 
@@ -527,7 +550,7 @@ function heatColor(rate) {
 }
 
 function smCellHtml(cell) {
-  if (!cell) return `<td class="cyc-cell cyc-none" data-sortval="-1" title="Không chạy ở cycle này">—</td>`;
+  if (!cell) return `<td class="cyc-cell cyc-none" data-sortval="-1" title="Did not run in this cycle">—</td>`;
   const { pass_rate, fail_count, total, na_count } = cell;
   let main = "—", sv = -1, style = "";
   if (pass_rate !== null && pass_rate !== undefined) {
@@ -553,9 +576,9 @@ function renderSuiteModelMatrix() {
   const rows = state.suiteModel.rows || [];
   const overall = state.suiteModel.overall_by_cycle || {};
 
-  // Dòng OVERALL (tất cả script) ở đầu bảng.
+  // OVERALL row (all scripts) at the top of the table.
   let overallRow = `<tr class="sm-overall-row">
-    <td class="sm-col-item" colspan="2">OVERALL — tất cả script</td>`;
+    <td class="sm-col-item" colspan="2">OVERALL — all scripts</td>`;
   for (const c of sel) overallRow += smCellHtml(overall[c.cycle]);
   overallRow += `</tr>`;
 
@@ -599,9 +622,9 @@ function renderSmOverall() {
   const denom = total - na;
   const rate = denom > 0 ? (pass / denom) : null;
   const label = sel.map((c) => "C" + c.cycle).join(", ");
-  box.innerHTML = `📊 <b>Overall pass rate</b> cho cycle đang chọn (${label}):
+  box.innerHTML = `📊 <b>Overall pass rate</b> for selected cycles (${label}):
     <b style="color:${rate !== null && rate >= 0.88 ? "#1e8449" : "#c0392b"}; font-size:16px;">${rate === null ? "—" : (rate * 100).toFixed(1) + "%"}</b>
-    <span style="color:#888; font-size:12px;">(${pass} pass-like / ${denom} tính điểm — loại ${na} NA, tổng ${total} lượt chạy)</span>`;
+    <span style="color:#888; font-size:12px;">(${pass} pass-like / ${denom} counted — excludes ${na} NA, ${total} total runs)</span>`;
 }
 
 function exportSmMatrixExcel() {
@@ -610,35 +633,93 @@ function exportSmMatrixExcel() {
   window.location.href = "/api/export/excel/suite-model-matrix" + (cycles ? `?cycles=${cycles}` : "");
 }
 
-function renderOwnerTable(owner_stats) {
+function renderOwnerTable(rows, totals) {
   const tbody = $("#ownerTable tbody");
-  if (!owner_stats.length) {
-    tbody.innerHTML = `<tr><td colspan="10" style="color:#999">Chưa có ai ghi nhận fix.</td></tr>`;
+  if (!rows || !rows.length) {
+    tbody.innerHTML = `<tr><td colspan="11" style="color:#999">No data in the selected range.</td></tr>`;
+    if ($("#lbProductivity")) $("#lbProductivity").textContent = "";
     return;
   }
-  tbody.innerHTML = owner_stats.map((o) => `
+  const body = rows.map((o) => `
     <tr>
-      <td>${o.rank}</td>
+      <td>${o.rank ?? ""}</td>
       <td>${o.owner}</td>
-      <td>${o.distinct_scripts_fixed}</td>
-      <td>${o.distinct_scripts_fully_resolved}</td>
+      <td>${o.scripts_written ?? 0}</td>
+      <td>${o.fixes_logged ?? 0}</td>
+      <td>${o.distinct_scripts_fixed ?? 0}</td>
+      <td>${o.distinct_scripts_fully_resolved ?? 0}</td>
       <td><b>${fmtPct(o.resolution_rate)}</b></td>
-      <td>${o.verified}</td>
-      <td>${o.reopened}</td>
-      <td>${o.pending}</td>
+      <td>${o.verified ?? 0}</td>
+      <td>${o.reopened ?? 0}</td>
       <td>${fmtPct(o.verification_rate)}</td>
-      <td>${o.open_workload}</td>
+      <td>${o.open_workload ?? 0}</td>
     </tr>
   `).join("");
+  const sum = (k) => rows.reduce((a, o) => a + (o[k] || 0), 0);
+  const totalRow = `
+    <tr class="total-row">
+      <td></td><td>Total</td>
+      <td>${sum("scripts_written")}</td>
+      <td>${sum("fixes_logged")}</td>
+      <td>${sum("distinct_scripts_fixed")}</td>
+      <td>${sum("distinct_scripts_fully_resolved")}</td>
+      <td>—</td>
+      <td>${sum("verified")}</td>
+      <td>${sum("reopened")}</td>
+      <td>—</td>
+      <td>${sum("open_workload")}</td>
+    </tr>`;
+  tbody.innerHTML = body + totalRow;
+
+  const prod = $("#lbProductivity");
+  if (prod && totals) {
+    const w = totals.avg_write_per_person_day, f = totals.avg_fix_per_person_day;
+    prod.innerHTML = `📊 Productivity avg (over ${totals.days || 0} active day(s), ${totals.people || 0} active people): ` +
+      `<b>${w != null ? w.toFixed(2) : "—"}</b> scripts written / person / day · ` +
+      `<b>${f != null ? f.toFixed(2) : "—"}</b> fixes / person / day`;
+  }
+}
+
+async function loadLeaderboard() {
+  const lb = state.leaderboard;
+  let url = `/api/leaderboard?scope=${encodeURIComponent(lb.scope)}`;
+  if (lb.scope === "day" && lb.date) url += `&date=${encodeURIComponent(lb.date)}`;
+  if (lb.scope === "week" && lb.week) url += `&week=${encodeURIComponent(lb.week)}`;
+  try {
+    const res = await api(url);
+    renderOwnerTable(res.rows, res.totals);
+    reapplyAllTableFilters();
+  } catch (e) {
+    if ($("#lbMsg")) { $("#lbMsg").textContent = "Error: " + e.message; $("#lbMsg").className = "msg-err"; }
+  }
+}
+
+function initLeaderboard() {
+  const scopeSel = $("#lbScope");
+  if (!scopeSel) return;
+  if ($("#lbDate") && !$("#lbDate").value) $("#lbDate").value = new Date().toISOString().slice(0, 10);
+  const syncWraps = () => {
+    $("#lbDateWrap").style.display = scopeSel.value === "day" ? "" : "none";
+    $("#lbWeekWrap").style.display = scopeSel.value === "week" ? "" : "none";
+  };
+  const apply = () => {
+    state.leaderboard = { scope: scopeSel.value, date: $("#lbDate").value, week: $("#lbWeek").value };
+    if ($("#lbMsg")) $("#lbMsg").textContent = "";
+    loadLeaderboard();
+  };
+  scopeSel.addEventListener("change", () => { syncWraps(); apply(); });
+  $("#lbDate").addEventListener("change", apply);
+  $("#lbWeek").addEventListener("change", apply);
+  syncWraps();
 }
 
 function renderSuiteTable(suite_stats) {
   const tbody = $("#suiteTable tbody");
   if (!suite_stats.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="color:#999">Chưa có dữ liệu.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="color:#999">No data yet.</td></tr>`;
     return;
   }
-  tbody.innerHTML = suite_stats.map((s) => `
+  const body = suite_stats.map((s) => `
     <tr>
       <td>${s.test_suite}</td>
       <td>${s.total_scripts}</td>
@@ -648,6 +729,14 @@ function renderSuiteTable(suite_stats) {
       <td>${fmtPct(s.done_pct)}</td>
     </tr>
   `).join("");
+  const sum = (k) => suite_stats.reduce((a, s) => a + (s[k] || 0), 0);
+  const tTot = sum("total_scripts"), tDone = sum("done");
+  const totalRow = `
+    <tr class="total-row">
+      <td>Total</td><td>${tTot}</td><td>${tDone}</td><td>${sum("verify")}</td><td>${sum("still_failing")}</td>
+      <td>${fmtPct(tTot ? tDone / tTot : null)}</td>
+    </tr>`;
+  tbody.innerHTML = body + totalRow;
 }
 
 async function refreshDashboard() {
@@ -659,7 +748,7 @@ async function refreshDashboard() {
     renderFixPareto(d.fix_root_causes);
     // Biểu đồ tách riêng: nếu Chart.js lỗi cũng KHÔNG chặn bảng số liệu bên dưới render.
     try { renderCharts(d); } catch (e) { console.error("Chart render failed:", e); }
-    renderOwnerTable(d.owner_stats);
+    await loadLeaderboard();
     renderSuiteTable(d.suite_stats);
     renderPassRateTable(d.trend);
     try { await loadSuiteModelMatrix(); } catch (e) { console.error("Suite-model matrix failed:", e); }
@@ -768,7 +857,11 @@ function ttApply(table) {
   const tbody = table.tBodies[0];
   if (!st || !headerRow || !tbody) return;
   const nCols = headerRow.cells.length;
-  const dataRows = Array.from(tbody.rows).filter((r) => r.cells.length === nCols);
+  // Dong Total (.total-row) luon dung yen o cuoi bang - khong tham gia sort/filter,
+  // khong bao gio bi an (tong luon phan anh toan bo du lieu, khong theo bo loc).
+  const totalRows = Array.from(tbody.rows).filter((r) => r.classList.contains("total-row"));
+  const dataRows = Array.from(tbody.rows).filter((r) => r.cells.length === nCols && !r.classList.contains("total-row"));
+  totalRows.forEach((r) => { r.style.display = ""; });
 
   const gs = (st.globalSearch || "").toLowerCase().trim();
   for (const r of dataRows) {
@@ -786,7 +879,7 @@ function ttApply(table) {
   }
   // Rows không khớp số cột (VD dòng "không có dữ liệu" colspan): luôn hiện nếu không có bộ lọc nào.
   const anyFilter = gs || Object.values(st.filters).some((v) => v);
-  Array.from(tbody.rows).filter((r) => r.cells.length !== nCols).forEach((r) => {
+  Array.from(tbody.rows).filter((r) => r.cells.length !== nCols && !r.classList.contains("total-row")).forEach((r) => {
     r.style.display = anyFilter ? "none" : "";
   });
 
@@ -796,6 +889,7 @@ function ttApply(table) {
     // callback chạy bất đồng bộ nên cờ boolean không đủ — phải disconnect thật sự).
     if (st._obs) st._obs.disconnect();
     for (const r of sorted) tbody.appendChild(r);
+    for (const r of totalRows) tbody.appendChild(r); // giu Total luon o day cung
     if (st._obs) { st._obs.takeRecords(); st._obs.observe(tbody, { childList: true }); }
   }
 }
@@ -1129,6 +1223,12 @@ function initInputFix() {
       $("#fRootCauseGroup").focus();
       return;
     }
+    if (!payload.root_cause_detail) {
+      msg.textContent = "⚠️ Bắt buộc nhập Chi tiết nguyên nhân (mô tả cụ thể) trước khi ghi nhận fix.";
+      msg.className = "msg-err";
+      $("#fRootCause").focus();
+      return;
+    }
     try {
       const res = await api("/api/fixes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (res.status === "updated") {
@@ -1326,7 +1426,7 @@ function renderNewScriptsTable() {
   };
   const isAdminOrMod = nsIsAdminOrMod();
   const myUsername = state.me && state.me.username;
-  tbody.innerHTML = rows.map((r) => {
+  const body = rows.map((r) => {
     const canEditRow = isAdminOrMod || state.nsCanEdit || (myUsername && r.member === myUsername);
     return `
     <tr>
@@ -1343,6 +1443,16 @@ function renderNewScriptsTable() {
       <td>${canEditRow ? `<button class="btn-tiny rename" data-action="ns-edit" data-id="${r.id}">✏️ Sửa</button>` : ""}</td>
     </tr>`;
   }).join("");
+  const nDone = rows.filter((r) => r.status === "DONE").length;
+  const nAssigned = rows.filter((r) => r.status === "ASSIGNED").length;
+  const nSkip = rows.filter((r) => r.status === "SKIP").length;
+  const totalRow = `
+    <tr class="total-row">
+      <td colspan="6">Total: ${rows.length} script</td>
+      <td>${nDone} DONE / ${nAssigned} ASSIGNED / ${nSkip} SKIP</td>
+      <td colspan="4"></td>
+    </tr>`;
+  tbody.innerHTML = body + totalRow;
 }
 
 function initNewScripts() {
@@ -1558,18 +1668,25 @@ async function loadPriority() {
 
 function renderPriorityTableHead() {
   const baseCols = [
-    ["rank", "#"], ["test_suite", "Test suite"], ["test_case", "Test Case"],
-    ["priority_tier", "Tier"], ["is_flaky", "Flaky"], ["reopen_count", "Reopen"],
-    ["priority_score", "Điểm ưu tiên"],
-    ["fail_count", "Tổng Fail"], ["fail_model_breadth", "Số model fail"],
-    ["current_owner", "Đang phụ trách"], ["team", "Team"],
-    ["pass_count", "Pass hiện tại"], ["not_run_count", "NotRun"],
-    ["last_updated_cycle", "Cycle cuối"],
+    ["rank", "#", "Thứ hạng theo điểm ưu tiên"],
+    ["test_suite", "Test suite", "Item / test suite chứa script này"],
+    ["test_case", "Test Case", "Tên test case / script"],
+    ["priority_tier", "Tier", "P0-P3 = còn lỗi (mức độ ưu tiên); Verify = hết lỗi nhưng chưa đủ cycle xác nhận; Done = đã xác nhận ổn định"],
+    ["is_flaky", "Flaky", "Script đổi kết quả pass/fail nhiều lần trong các cycle gần nhất"],
+    ["reopen_count", "Reopen", "Số lần script đã fix xong nhưng fail lại (toàn bộ lịch sử)"],
+    ["priority_score", "Điểm ưu tiên", "fail_count × số model fail — điểm càng cao càng cần ưu tiên fix"],
+    ["fail_count", "Tổng Fail", "Tổng số lượt fail qua tất cả cycle và model"],
+    ["fail_model_breadth", "Số model fail", "Số model khác nhau từng fail script này"],
+    ["current_owner", "Đang phụ trách", "Người đang được gán xử lý script này"],
+    ["team", "Team", "Team của người đang phụ trách"],
+    ["pass_count", "Pass hiện tại", "Số model đang pass ở trạng thái mới nhất"],
+    ["not_run_count", "NotRun", "Số model chưa từng chạy script này"],
+    ["last_updated_cycle", "Cycle cuối", "Cycle gần nhất có kết quả cho script này"],
   ];
-  const allCols = [...baseCols, ...state.models.map((m) => [`model_${m}`, m])];
+  const allCols = [...baseCols, ...state.models.map((m) => [`model_${m}`, m, `Kết quả lần chạy mới nhất trên model ${m}`])];
 
   let headRow = "<tr>";
-  for (const [key, label] of allCols) headRow += `<th data-key="${key}">${label}</th>`;
+  for (const [key, label, tooltip] of allCols) headRow += `<th data-key="${key}"${tooltip ? ` title="${tooltip}"` : ""}>${label}</th>`;
   headRow += `<th>Hành động</th></tr>`;
 
   // Hang filter rieng cho tung cot - go text vao o duoi ten cot de loc.
@@ -1745,11 +1862,14 @@ async function loadCycleMatrix() {
 function renderCycleMatrixHead() {
   const cycles = state.cycleMatrix.cycles || [];
   const byModel = state.cycleMatrix.groupByModel;
-  let headRow = `<tr><th>Test suite</th><th>Test Case</th>${byModel ? "<th>Model</th>" : ""}<th>Đang phụ trách</th><th>Team</th><th>Tier</th>`;
+  let headRow = `<tr><th title="Item / test suite chứa script này">Test suite</th><th title="Tên test case / script">Test Case</th>` +
+    `${byModel ? `<th title="Model điện thoại">Model</th>` : ""}` +
+    `<th title="Người đang được gán xử lý script này">Đang phụ trách</th><th title="Team của người đang phụ trách">Team</th>` +
+    `<th title="P0-P3 = còn lỗi; Verify = hết lỗi nhưng chưa đủ cycle xác nhận; Done = ổn định">Tier</th>`;
   for (const c of cycles) {
-    headRow += `<th>Cycle ${c.cycle}<br><span style="font-weight:400;font-size:11px;color:#888">${c.cycle_date || ""}</span></th>`;
+    headRow += `<th title="Kết quả (verdict) lần chạy cuối trong cycle này">Cycle ${c.cycle}<br><span style="font-weight:400;font-size:11px;color:#888">${c.cycle_date || ""}</span></th>`;
   }
-  headRow += `<th>Xu hướng</th></tr>`;
+  headRow += `<th title="Xu hướng pass rate qua các cycle đã chọn">Xu hướng</th></tr>`;
   $("#cycleMatrixHead").innerHTML = headRow;
 }
 
@@ -1839,10 +1959,30 @@ function initPriorityTable() {
 // ---------------- Settings & Master Lists ----------------
 async function loadLists() {
   const lists = await api("/api/lists");
+  state.rootCauseGroups = lists.root_cause_groups || [];
   renderSuiteList(lists.test_suites_detail || (lists.test_suites || []).map((n) => ({ name: n, script_path: "" })));
   renderModelList(lists.models);
   renderOwnerList(lists.owners);
+  renderGroupList(state.rootCauseGroups);
   reapplyAllTableFilters();
+}
+
+function renderGroupList(groups) {
+  const tbody = $("#groupListTable tbody");
+  if (!tbody) return;
+  if (!groups.length) {
+    tbody.innerHTML = `<tr><td colspan="2" style="color:#999">Chưa có nhóm nào.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = groups.map((g) => `
+    <tr>
+      <td>${escAttr(g)}</td>
+      <td>
+        <button class="btn-tiny rename" data-action="rename-group" data-name="${escAttr(g)}">Đổi tên</button>
+        <button class="btn-tiny danger" data-action="delete-group" data-name="${escAttr(g)}">Xoá</button>
+      </td>
+    </tr>
+  `).join("");
 }
 
 function renderSuiteList(suites) {
@@ -1931,6 +2071,13 @@ async function handleListAction(action, name, extra) {
     } else if (action === "deactivate-owner") {
       if (!confirm(`Đánh dấu "${name}" ngừng hoạt động? (vẫn giữ lịch sử fix, chỉ ẩn khỏi danh sách chọn)`)) return;
       await api(`/api/lists/owners/${encodeURIComponent(name)}`, { method: "DELETE" });
+    } else if (action === "rename-group") {
+      const nn = prompt(`Đổi tên nhóm nguyên nhân "${name}" thành (toàn bộ fix log cũ sẽ tự chuyển sang tên mới):`, name);
+      if (!nn || nn.trim() === name) return;
+      await api(`/api/lists/root_cause_groups/${encodeURIComponent(name)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ new_name: nn.trim() }) });
+    } else if (action === "delete-group") {
+      if (!confirm(`Xoá nhóm nguyên nhân "${name}"? (chỉ xoá được nếu chưa có fix nào dùng nhóm này)`)) return;
+      await api(`/api/lists/root_cause_groups/${encodeURIComponent(name)}`, { method: "DELETE" });
     }
     await loadLists();
     await loadReferenceData();
@@ -1963,6 +2110,18 @@ function initListsManagement() {
       msg.textContent = "";
       await loadLists();
       await loadReferenceData();
+    } catch (e) { msg.textContent = "Lỗi: " + e.message; }
+  });
+
+  $("#btnAddGroup").addEventListener("click", async () => {
+    const name = $("#newGroupName").value.trim();
+    const msg = $("#groupListMsg");
+    if (!name) { msg.textContent = "Nhập tên nhóm."; return; }
+    try {
+      await api("/api/lists/root_cause_groups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+      $("#newGroupName").value = "";
+      msg.textContent = "";
+      await loadLists();
     } catch (e) { msg.textContent = "Lỗi: " + e.message; }
   });
 
@@ -2170,17 +2329,20 @@ function initReports() {
       }
       const res = await api(url);
       state.lastReport = res.markdown;
+      state.lastReportParams = { type: typeSel.value, date: $("#rpDate").value, week: $("#rpWeek").value };
       const pre = $("#reportPreview");
       pre.textContent = res.markdown;
       pre.style.display = "";
       $("#btnCopyReport").style.display = "";
-      msg.textContent = "✅ Đã tạo báo cáo — bấm Copy markdown rồi dán vào chat/email.";
+      $("#btnExportReport").style.display = "";
+      msg.textContent = "✅ Đã tạo báo cáo — bấm Copy markdown rồi dán vào chat/email, hoặc Tải xuống Excel.";
       msg.className = "msg-ok";
     } catch (e) {
       msg.textContent = "Lỗi: " + e.message;
       msg.className = "msg-err";
       $("#reportPreview").style.display = "none";
       $("#btnCopyReport").style.display = "none";
+      $("#btnExportReport").style.display = "none";
     }
   });
 
@@ -2203,6 +2365,29 @@ function initReports() {
     }
     msg.textContent = ok ? "📋 Đã copy markdown vào clipboard." : "Không copy tự động được — bôi đen nội dung bên dưới và Ctrl+C.";
     msg.className = ok ? "msg-ok" : "msg-err";
+  });
+
+  $("#btnExportReport").addEventListener("click", async () => {
+    const msg = $("#rpMsg");
+    const params = state.lastReportParams || {};
+    msg.textContent = "Đang tải xuống..."; msg.className = "";
+    try {
+      let url;
+      if (params.type === "weekly") {
+        url = "/api/report/weekly/export" + (params.week ? `?week=${encodeURIComponent(params.week)}` : "");
+      } else {
+        url = "/api/report/daily/export" + (params.date ? `?date=${encodeURIComponent(params.date)}` : "");
+      }
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = params.type === "weekly" ? `weekly_${params.week || 'current'}.xlsx` : `daily_${params.date || 'latest'}.xlsx`;
+      link.click();
+      msg.textContent = "✅ Đã tải xuống file Excel.";
+      msg.className = "msg-ok";
+    } catch (e) {
+      msg.textContent = "Lỗi: " + e.message;
+      msg.className = "msg-err";
+    }
   });
 }
 
@@ -2415,6 +2600,7 @@ async function init() {
   await initSettings();
   initReports();
   initIntegrations();
+  initLeaderboard();
   await loadPriority();
   await loadFailingScripts();
   renderPriorityTableHead();

@@ -44,7 +44,7 @@ python app.py        # 0.0.0.0:5000
 
 ## Đặc điểm hiện tại
 
-- Single file `app.py` (~4600 dòng): tất cả routes, business logic, DB helpers, integrations, reports, backup
+- Single file `app.py` (~5800 dòng): tất cả routes, business logic, DB helpers, integrations, reports (markdown + Excel multi-sheet), backup
 - Outbound API (mới 2026-07-12, qua `_http_json()` urllib): farm API (fetch kết quả theo Test ID), API hệ thống công ty (danh sách TC), GitHub API (git trees). **Adapter farm/công ty là stub chờ tài liệu API** — cấu hình URL/token trong tab Cài đặt; fallback paste tay dùng được ngay
 - Script phía farm có thể push kết quả: `POST /api/results/import` + header `X-Import-Token` (token đặt trong Cài đặt)
 - LAN-only (không qua internet), 10 tabs UI, ~1200 scripts / 60 tài khoản dữ liệu thật

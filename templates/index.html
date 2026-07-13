@@ -106,38 +106,54 @@
   <div class="kpi-row" id="kpiRow"></div>
 
   <div id="insightsBox" class="insights-box">
-    <h3>🔎 Nhận định tự động</h3>
+    <h3>🔎 Automated Insights</h3>
     <ul id="insightsList"></ul>
   </div>
 
   <div class="table-grid">
     <div class="card">
-      <h3>🎯 Tiến độ viết script (theo hệ thống công ty)</h3>
-      <p class="hint">Tổng số TC cần script lấy <b>động</b> từ hệ thống công ty (TC bị SKIP bên đó không tính vào tổng). Đồng bộ/paste dữ liệu ở tab <b>🔗 Đồng bộ</b>.</p>
+      <h3>🎯 Script Writing Progress (company system)</h3>
+      <p class="hint">Total TCs needing scripts is fetched <b>dynamically</b> from the company system (TCs marked SKIP there are excluded from the total). Sync/paste data in the <b>🔗 Sync</b> tab.</p>
       <div id="coverageBox">—</div>
       <table id="coverageTable" class="data-table" style="display:none">
-        <thead><tr><th>Item</th><th>Cần</th><th>Done</th><th>%</th></tr></thead>
+        <thead><tr>
+          <th title="Tên item / test suite">Item</th>
+          <th title="Tổng số TC (test case) cần viết script cho item này, lấy từ hệ thống công ty (TC bị đánh dấu SKIP bên đó không tính vào tổng)">Total TC</th>
+          <th title="Số TC đã có script viết xong (trạng thái DONE) và nằm trong kế hoạch cần làm">Done</th>
+          <th title="Tỷ lệ hoàn thành = Done / Total TC">%</th>
+        </tr></thead>
         <tbody></tbody>
       </table>
     </div>
     <div class="card">
-      <h3>🧭 Nguyên nhân đã xác nhận khi fix (từ Fix Log)</h3>
-      <p class="hint">Khác với Pareto bên dưới (mô tả lỗi <b>đang quan sát</b> từ kết quả chạy): bảng này gom theo <b>nhóm nguyên nhân do người fix xác nhận</b> — dùng để chọn chiến dịch batch-fix.</p>
+      <h3>🧭 Confirmed Root Causes (from Fix Log)</h3>
+      <p class="hint">Unlike the Pareto below (describes failures <b>currently observed</b> from run results): this table groups by <b>root cause group confirmed by the person who fixed it</b> — use it to pick batch-fix campaigns.</p>
       <table id="fixParetoTable" class="data-table">
-        <thead><tr><th>Nhóm nguyên nhân</th><th>Số fix</th><th>%</th><th>% cộng dồn</th></tr></thead>
+        <thead><tr>
+          <th title="Nhóm nguyên nhân chuẩn được người fix xác nhận khi ghi nhận fix (chọn ở form Ghi nhận Fix)">Root Cause Group</th>
+          <th title="Số lần fix đã được ghi nhận thuộc nhóm nguyên nhân này">Fixes</th>
+          <th title="Tỷ lệ số fix của nhóm này trên tổng số fix">%</th>
+          <th title="Tỷ lệ cộng dồn tính từ nhóm nhiều nhất trở xuống — dùng để đọc theo nguyên tắc Pareto 80/20 (nhóm nào chiếm phần lớn vấn đề)">Cumulative %</th>
+        </tr></thead>
         <tbody></tbody>
       </table>
     </div>
   </div>
 
   <div class="card">
-    <h3>📈 Pass Rate chi tiết theo Cycle</h3>
-    <p class="hint">Công thức: <b>Pass Rate = (Pass + Check + Manual Check) / (Tổng số − Skip − NA)</b>. Skip (RUNNING) không bao giờ được lưu vào hệ thống nên không xuất hiện trong bảng; NA bị loại khỏi cả tử số lẫn mẫu số (trung lập, không tính là Pass hay Fail).</p>
+    <h3>📈 Pass Rate by Cycle (detail)</h3>
+    <p class="hint">Formula: <b>Pass Rate = (Pass + Check + Manual Check) / (Total − Skip − NA)</b>. Skip (RUNNING) is never persisted so it never appears in this table; NA is excluded from both numerator and denominator (neutral — not counted as Pass or Fail).</p>
     <table id="passRateTable" class="data-table">
       <thead>
         <tr>
-          <th>Cycle</th><th>Ngày</th><th>Tổng số</th><th>Pass-like (Pass/Check/Manual Check)</th>
-          <th>NA (loại trừ)</th><th>Fail</th><th>Pass Rate</th><th>Thay đổi so cycle trước</th>
+          <th title="Số thứ tự đợt chạy test (cycle)">Cycle</th>
+          <th title="Ngày chạy cycle này">Date</th>
+          <th title="Tổng số lượt chạy (test case × model) trong cycle">Total</th>
+          <th title="Số lượt được tính là Pass, gồm 3 trạng thái: Pass, Check, Manual Check">Pass-like (Pass/Check/Manual Check)</th>
+          <th title="Số lượt bị loại khỏi cả tử số lẫn mẫu số khi tính pass rate — không tính là Pass cũng không tính là Fail (trung lập)">NA (excluded)</th>
+          <th title="Số lượt fail thực sự trong cycle">Fail</th>
+          <th title="Tỷ lệ pass = Pass-like / (Total − NA)">Pass Rate</th>
+          <th title="Chênh lệch Pass Rate so với cycle chạy liền trước">Δ vs Prev Cycle</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -145,10 +161,10 @@
   </div>
 
   <div class="card">
-    <h3>🧩 Pass Rate theo Item × Model × Cycle</h3>
-    <p class="hint">Pass rate của từng <b>item (test suite)</b> trên <b>từng model</b>, tách theo <b>từng cycle</b>. Chọn các cycle muốn xem trong ô bên dưới — dòng <b>“OVERALL”</b> ở đầu là pass rate gộp của <b>toàn bộ script</b> cho các cycle đang chọn. Ô càng <span style="color:#1e8449">xanh</span> = pass rate càng cao, càng <span style="color:#c0392b">đỏ</span> = càng thấp.</p>
+    <h3>🧩 Pass Rate by Item × Model × Cycle</h3>
+    <p class="hint">Pass rate of each <b>item (test suite)</b> on <b>each model</b>, split by <b>cycle</b>. Pick the cycles to view below — the <b>"OVERALL"</b> row at the top is the combined pass rate across <b>all scripts</b> for the selected cycles. Greener cell = <span style="color:#1e8449">higher</span> pass rate, redder cell = <span style="color:#c0392b">lower</span>.</p>
     <div class="form-row" id="smCycleChooser" style="gap:12px; align-items:center;"></div>
-    <button class="btn-tiny rename" id="btnExportSmMatrix" style="margin-bottom:8px;">⬇️ Xuất Excel (.xlsx)</button>
+    <button class="btn-tiny rename" id="btnExportSmMatrix" style="margin-bottom:8px;">⬇️ Export Excel (.xlsx)</button>
     <div id="smOverallBox" style="margin:6px 0 12px; font-size:14px;"></div>
     <div class="sm-table-wrap">
       <table id="suiteModelTable" class="data-table sm-matrix">
@@ -160,19 +176,19 @@
 
   <div class="chart-grid">
     <div class="card">
-      <h3>Pass Rate theo Cycle</h3>
+      <h3>Pass Rate by Cycle</h3>
       <canvas id="chartTrend"></canvas>
     </div>
     <div class="card">
-      <h3>Fail Count theo Cycle</h3>
+      <h3>Fail Count by Cycle</h3>
       <canvas id="chartFail"></canvas>
     </div>
     <div class="card">
-      <h3>Pass Rate theo Model (cycle gần nhất)</h3>
+      <h3>Pass Rate by Model (latest cycle)</h3>
       <canvas id="chartModel"></canvas>
     </div>
     <div class="card">
-      <h3>Phân bố Priority Tier</h3>
+      <h3>Priority Tier Distribution</h3>
       <canvas id="chartTier"></canvas>
     </div>
     <div class="card wide">
@@ -180,37 +196,69 @@
       <canvas id="chartPareto"></canvas>
     </div>
     <div class="card">
-      <h3>🏆 Resolution Rate theo Owner (KPI)</h3>
+      <h3>🏆 Resolution Rate by Owner (KPI)</h3>
       <canvas id="chartOwner"></canvas>
     </div>
     <div class="card">
-      <h3>📦 % Hoàn thành theo Test Suite</h3>
+      <h3>📦 Completion % by Test Suite</h3>
       <canvas id="chartSuite"></canvas>
     </div>
   </div>
 
   <div class="table-grid">
     <div class="card wide">
-      <h3>🏆 Owner Leaderboard — KPI cá nhân</h3>
-      <p class="hint">Resolution Rate = % script đã từng fix mà nay <b>hết lỗi hoàn toàn</b> trên mọi model (KPI chính). Verification Rate = % lần fix được xác nhận đúng ngay lần đầu (không bị reopen). Open Workload = số script đang được gán mà còn lỗi.</p>
-      <input type="text" class="table-filter" data-target="ownerTable" placeholder="🔍 Lọc owner...">
+      <h3>🏆 Owner Leaderboard — Personal KPI</h3>
+      <p class="hint">Individual productivity & fix quality per member. Use the range selector to view by day, week, or cumulative (all-time). "Scripts Written" counts completed new scripts (DONE); "Fixes" counts fix-log entries. Rates are always all-time.</p>
+      <div class="form-row" style="align-items:flex-end; flex-wrap:wrap; gap:8px;">
+        <label>Range
+          <select id="lbScope">
+            <option value="cumulative">Cumulative (all-time)</option>
+            <option value="day">By day</option>
+            <option value="week">By week</option>
+          </select>
+        </label>
+        <label id="lbDateWrap" style="display:none">Date
+          <input type="date" id="lbDate">
+        </label>
+        <label id="lbWeekWrap" style="display:none">Week
+          <input type="week" id="lbWeek">
+        </label>
+        <span id="lbMsg" class="hint"></span>
+      </div>
+      <div id="lbProductivity" class="hint" style="margin:6px 0 4px;"></div>
+      <input type="text" class="table-filter" data-target="ownerTable" placeholder="🔍 Filter owner...">
       <table id="ownerTable" class="data-table">
         <thead>
           <tr>
-            <th>#</th><th>Owner</th><th>Đã fix (khác nhau)</th><th>Hết lỗi hẳn</th>
-            <th>Resolution Rate</th><th>Verified</th><th>Reopen</th><th>Chờ</th>
-            <th>Verification Rate</th><th>Đang phụ trách (còn lỗi)</th>
+            <th title="Thứ hạng trong khoảng thời gian đang chọn (Ngày/Tuần/Cộng dồn)">#</th>
+            <th title="Tên thành viên team">Owner</th>
+            <th title="Số script viết mới đã hoàn thành (trạng thái DONE) trong khoảng thời gian đang chọn">Scripts Written</th>
+            <th title="Số lần ghi nhận fix trong khoảng thời gian đang chọn">Fixes</th>
+            <th title="Số script KHÁC NHAU mà người này từng fix ít nhất 1 lần (tính từ trước đến nay, không giới hạn theo range đang chọn)">Distinct Fixed</th>
+            <th title="Trong số script đã fix, số script nay đã hết lỗi hoàn toàn trên MỌI model (tính từ trước đến nay)">Fully Resolved</th>
+            <th title="= Fully Resolved / Distinct Fixed — KPI chính đánh giá chất lượng fix, luôn tính theo toàn bộ lịch sử bất kể đang chọn range nào">Resolution Rate</th>
+            <th title="Số lần fix được xác nhận đúng ngay ở cycle chạy lại tiếp theo (tính từ trước đến nay)">Verified</th>
+            <th title="Số lần fix xong nhưng cycle sau lại fail lại (tái lỗi, tính từ trước đến nay)">Reopen</th>
+            <th title="= Verified / (Verified + Reopen) — tỷ lệ fix đúng ngay lần đầu không bị tái lỗi, luôn tính theo toàn bộ lịch sử">Verification Rate</th>
+            <th title="Số script hiện đang được gán cho người này mà vẫn còn lỗi (tier P0–P3)">Open Workload</th>
           </tr>
         </thead>
         <tbody></tbody>
       </table>
     </div>
     <div class="card wide">
-      <h3>📦 Theo Test Suite</h3>
-      <input type="text" class="table-filter" data-target="suiteTable" placeholder="🔍 Lọc test suite...">
+      <h3>📦 By Test Suite</h3>
+      <input type="text" class="table-filter" data-target="suiteTable" placeholder="🔍 Filter test suite...">
       <table id="suiteTable" class="data-table">
         <thead>
-          <tr><th>Test suite</th><th>Tổng script</th><th>Đã xong</th><th>Đang xác minh</th><th>Còn lỗi</th><th>% hoàn thành</th></tr>
+          <tr>
+            <th title="Tên item / test suite">Test Suite</th>
+            <th title="Tổng số script (test case) thuộc suite này">Total Scripts</th>
+            <th title="Số script đã hết lỗi và đủ số cycle pass liên tiếp để xác nhận ổn định (tier Done)">Done</th>
+            <th title="Số script đã hết lỗi nhưng CHƯA đủ số cycle pass liên tiếp cần thiết để tính Done — đang trong giai đoạn theo dõi xác minh (tier Verify)">Verifying</th>
+            <th title="Số script hiện vẫn còn lỗi, cần fix tiếp (tier P0–P3)">Still Failing</th>
+            <th title="Tỷ lệ hoàn thành = Done / Total Scripts">Done %</th>
+          </tr>
         </thead>
         <tbody></tbody>
       </table>
@@ -298,8 +346,17 @@ Browser_000202&#9;tuyen.bv1"></textarea>
     <table id="newScriptsTable" class="data-table ns-table">
       <thead>
         <tr>
-          <th style="width:9%">Item</th><th style="width:12%">TC ID</th><th style="width:10%">Member</th><th style="width:8%">Team</th><th style="width:5%">Week</th>
-          <th style="width:9%">Completed date</th><th style="width:7%">Status</th><th style="width:12%">Model đã viết</th><th style="width:7%">SDF ID</th><th>Remark</th><th style="width:6%">Sửa</th>
+          <th style="width:9%" title="Test suite / Item chứa test case này">Item</th>
+          <th style="width:12%" title="Mã test case (duy nhất)">TC ID</th>
+          <th style="width:10%" title="Người viết script">Member</th>
+          <th style="width:8%" title="Team của người viết">Team</th>
+          <th style="width:5%" title="Tuần được assign viết script">Week</th>
+          <th style="width:9%" title="Ngày hoàn thành (DONE)">Completed date</th>
+          <th style="width:7%" title="DONE = đã xong · ASSIGNED = đang làm · SKIP = bỏ qua">Status</th>
+          <th style="width:12%" title="Danh sách model đã viết script cho TC này">Model đã viết</th>
+          <th style="width:7%" title="Mã SDF liên quan (nếu có)">SDF ID</th>
+          <th title="Ghi chú thêm">Remark</th>
+          <th style="width:6%">Sửa</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -366,7 +423,7 @@ Browser_000202&#9;tuyen.bv1"></textarea>
           <option value="">— Chọn nhóm nguyên nhân —</option>
         </select>
       </label>
-      <label class="full">Chi tiết nguyên nhân <span class="hint" style="font-weight:normal">(mô tả cụ thể — nên điền)</span>
+      <label class="full">Chi tiết nguyên nhân <span style="color:#e74c3c">*bắt buộc</span> <span class="hint" style="font-weight:normal">(mô tả cụ thể — cần cho Pareto & đối chiếu)</span>
         <textarea id="fRootCause" rows="2" placeholder="VD: locator button submit bị đổi ID sau update UI; hoặc: server trả timeout do data test hết hạn..."></textarea>
       </label>
       <label class="full">Ghi chú thêm (tuỳ chọn)
@@ -474,9 +531,19 @@ Browser_000202&#9;tuyen.bv1"></textarea>
     <table id="fixTrackingTable" class="data-table">
       <thead>
         <tr>
-          <th>Trạng thái</th><th>Owner</th><th>Team</th><th>Test suite</th><th>Test Case</th>
-          <th>Model đã fix</th><th>Root cause</th><th>Fix sau cycle</th><th>Cycle chạy lại</th>
-          <th>Lần chạy sau</th><th>Số fail sau</th><th>Ngày fix</th><th>Ghi chú</th>
+          <th title="✅ Đã hết lỗi · ⚠️ Hết rồi fail lại · ❌ Chưa hết lỗi · ⏳ Chờ dữ liệu cycle sau">Trạng thái</th>
+          <th title="Người ghi nhận fix">Owner</th>
+          <th title="Team của người fix">Team</th>
+          <th title="Item / test suite chứa script">Test suite</th>
+          <th title="Tên test case / script">Test Case</th>
+          <th title="Model được fix (hoặc 'All Models')">Model đã fix</th>
+          <th title="Nguyên nhân đã ghi nhận khi fix">Root cause</th>
+          <th title="Cycle mà fix này được ghi nhận là fix sau đó">Fix sau cycle</th>
+          <th title="Cycle chạy lại để xác minh fix">Cycle chạy lại</th>
+          <th title="Tổng số lượt chạy ở cycle xác minh">Lần chạy sau</th>
+          <th title="Số lượt fail ở cycle xác minh">Số fail sau</th>
+          <th title="Ngày ghi nhận fix">Ngày fix</th>
+          <th title="Ghi chú thêm">Ghi chú</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -504,6 +571,7 @@ Browser_000202&#9;tuyen.bv1"></textarea>
       </label>
       <button class="btn-primary" id="btnGenReport">🔄 Tạo báo cáo</button>
       <button class="btn-secondary" id="btnCopyReport" style="display:none">📋 Copy markdown</button>
+      <button class="btn-secondary" id="btnExportReport" style="display:none">📥 Tải xuống Excel</button>
       <span id="rpMsg"></span>
     </div>
     <pre id="reportPreview" class="report-pre" style="display:none"></pre>
@@ -709,6 +777,21 @@ Browser_000202&#9;tuyen.bv1"></textarea>
         <tbody></tbody>
       </table>
       <span id="modelListMsg" class="hint"></span>
+    </div>
+
+    <div class="card">
+      <h3>🏷️ Nhóm nguyên nhân gốc (Root cause)</h3>
+      <p class="hint">Nhóm chuẩn dùng cho dropdown khi <b>Ghi nhận Fix</b> + Pareto nguyên nhân. Bấm "Đổi tên" khi muốn chỉnh nhãn nhóm — toàn bộ fix log cũ tự chuyển sang tên mới (giữ nguyên thống kê). "Xoá" chỉ thực hiện được nếu chưa có fix nào dùng nhóm đó.</p>
+      <div class="form-row">
+        <input type="text" id="newGroupName" placeholder="Tên nhóm mới">
+        <button class="btn-primary" id="btnAddGroup">+ Thêm</button>
+      </div>
+      <input type="text" class="table-filter" data-target="groupListTable" placeholder="🔍 Lọc...">
+      <table class="data-table" id="groupListTable">
+        <thead><tr><th>Tên nhóm</th><th style="width:200px">Hành động</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <span id="groupListMsg" class="hint"></span>
     </div>
 
     <div class="card wide">
