@@ -3907,7 +3907,8 @@ def build_export_workbook(db):
 def normalize_farm_rows(test_id, payload):
     """Chuyen JSON tra ve tu farm API (GET .../result?...&requestId={test_id}) thanh list row
     cho insert_result_rows(). Payload dang {"message","data":{"content":[...]},"success"}, moi
-    phan tu content[i] = 1 lan chay script (deviceList[0].model = model that su chay).
+    phan tu content[i] = 1 lan chay script (deviceList[0].model = model that su chay,
+    deviceList[0].deviceSN = SN thiet bi that da chay).
     Bo qua record thieu model/scriptPath (khong du du lieu de chen mot cach an toan)."""
     data = payload.get("data") if isinstance(payload, dict) else None
     content = data.get("content") if isinstance(data, dict) else None
@@ -3923,13 +3924,16 @@ def normalize_farm_rows(test_id, payload):
         if not isinstance(rec, dict):
             continue
         device_list = rec.get("deviceList") or []
-        model = device_list[0].get("model") if device_list and isinstance(device_list[0], dict) else None
+        device0 = device_list[0] if device_list and isinstance(device_list[0], dict) else {}
+        model = device0.get("model")
+        serial = device0.get("deviceSN") or ""
         script_path = rec.get("scriptPath") or ""
         if not model or not script_path:
             continue
         rows.append({
             "test_id": rec.get("requestId") or test_id,
             "model": model,
+            "serial": serial,
             "test_suite": rec.get("testFilePath") or "",
             "test_case": script_path,
             "state": rec.get("state") or "",
