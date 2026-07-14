@@ -13,6 +13,7 @@ const state = {
   newScriptItems: [],
   prioritySort: { key: "rank", dir: 1 },
   priorityColumnFilters: {},
+  priorityPage: 1,
   charts: {},
   currentUser: localStorage.getItem("tracker_user") || "",
   me: null,   // {username, role, permissions} - phien dang nhap hien tai
@@ -766,7 +767,74 @@ async function refreshDashboard() {
 // + nút xuất Excel/CSV. Áp dụng cho MỌI bảng data-table (kể cả bảng có header
 // động như matrix). Tự re-apply sau mỗi lần render lại tbody (MutationObserver).
 // ============================================================
-const TT = {}; // tableId -> { sortCol, sortDir, filters:{colIdx:val}, globalSearch, _suppress }
+const TT = {}; // tableId -> { sortCol, sortDir, filters:{colIdx:val}, globalSearch, page, allRows, _obs }
+
+// ---- Phan trang (client-side) dung chung cho moi bang data-table ----
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
+const PAGE_SIZE_DEFAULT = 50;
+
+function ttPageSizeRaw(id) {
+  const raw = localStorage.getItem("pgsize:" + id);
+  if (raw === "all") return "all";
+  const n = parseInt(raw, 10);
+  return (n && n > 0) ? String(n) : String(PAGE_SIZE_DEFAULT);
+}
+function ttPageSize(id) {
+  const raw = ttPageSizeRaw(id);
+  return raw === "all" ? Infinity : parseInt(raw, 10);
+}
+
+// Dung thanh dieu khien phan trang trong `bar`. info={total,start,end,page,totalPages}.
+// onGo(pageNumber), onSize(rawValue). An hoan toan khi it dong (1 trang & <= muc nho nhat).
+function ttBuildPagerBar(bar, id, info, onGo, onSize) {
+  const smallest = PAGE_SIZE_OPTIONS[0];
+  const sizeRaw = ttPageSizeRaw(id);
+  if (info.totalPages <= 1 && info.total <= smallest && sizeRaw !== "all") {
+    bar.style.display = "none";
+    bar.innerHTML = "";
+    return;
+  }
+  bar.style.display = "flex";
+  const opts = PAGE_SIZE_OPTIONS.map((n) =>
+    `<option value="${n}"${sizeRaw === String(n) ? " selected" : ""}>${n}/trang</option>`).join("") +
+    `<option value="all"${sizeRaw === "all" ? " selected" : ""}>Tất cả</option>`;
+  const showFrom = info.total === 0 ? 0 : info.start + 1;
+  bar.innerHTML =
+    `<select class="tt-pgsize" title="Số dòng mỗi trang">${opts}</select>` +
+    `<button class="tt-pg-first" ${info.page <= 1 ? "disabled" : ""} title="Trang đầu">⏮</button>` +
+    `<button class="tt-pg-prev" ${info.page <= 1 ? "disabled" : ""} title="Trang trước">◀</button>` +
+    `<span class="tt-pg-label">${showFrom}–${info.end} / ${info.total}</span>` +
+    `<button class="tt-pg-next" ${info.page >= info.totalPages ? "disabled" : ""} title="Trang sau">▶</button>` +
+    `<button class="tt-pg-last" ${info.page >= info.totalPages ? "disabled" : ""} title="Trang cuối">⏭</button>` +
+    `<span class="tt-pg-pages">Trang ${info.page}/${info.totalPages}</span>`;
+  bar.querySelector(".tt-pgsize").onchange = (e) => { localStorage.setItem("pgsize:" + id, e.target.value); onSize(e.target.value); };
+  bar.querySelector(".tt-pg-first").onclick = () => onGo(1);
+  bar.querySelector(".tt-pg-prev").onclick = () => onGo(info.page - 1);
+  bar.querySelector(".tt-pg-next").onclick = () => onGo(info.page + 1);
+  bar.querySelector(".tt-pg-last").onclick = () => onGo(info.totalPages);
+}
+
+// Tinh thong tin trang tu tong so dong da loc + trang hien tai + id (de doc pageSize).
+function ttPageInfo(id, total, page) {
+  const pageSize = ttPageSize(id);
+  const totalPages = pageSize === Infinity ? 1 : Math.max(1, Math.ceil(total / pageSize));
+  let p = page || 1;
+  if (p > totalPages) p = totalPages;
+  if (p < 1) p = 1;
+  const start = pageSize === Infinity ? 0 : (p - 1) * pageSize;
+  const end = pageSize === Infinity ? total : Math.min(total, start + pageSize);
+  return { total, start, end, page: p, totalPages, pageSize };
+}
+
+function ttEnsurePager(table) {
+  if (table._ttPager) return table._ttPager;
+  const bar = document.createElement("div");
+  bar.className = "tt-pager";
+  bar.style.display = "none";
+  table.parentNode.insertBefore(bar, table);
+  table._ttPager = bar;
+  return bar;
+}
 
 function ttClean(text) {
   return (text || "").replace(/\s+/g, " ").trim();
@@ -828,7 +896,7 @@ function ttEnsureFilterRow(table) {
     inp.placeholder = "Lọc...";
     inp.value = st.filters[i] || "";
     inp.addEventListener("click", (e) => e.stopPropagation());
-    inp.addEventListener("input", () => { st.filters[i] = inp.value; ttApply(table); });
+    inp.addEventListener("input", () => { st.filters[i] = inp.value; st.page = 1; ttApply(table); });
     th.appendChild(inp);
     fr.appendChild(th);
   }
@@ -846,52 +914,78 @@ function ttWireSort(table) {
     th.addEventListener("click", () => {
       const st = TT[table.id];
       if (st.sortCol === i) st.sortDir *= -1; else { st.sortCol = i; st.sortDir = 1; }
+      st.page = 1;
       ttApply(table);
     });
   });
 }
 
+// Loc mang dong theo global-search + filter tung cot (khong sort, khong phan trang).
+function ttFilterRows(st, rows) {
+  const gs = (st.globalSearch || "").toLowerCase().trim();
+  const active = Object.entries(st.filters).filter(([, v]) => v);
+  if (!gs && !active.length) return rows.slice();
+  return rows.filter((r) => {
+    if (gs && !r.textContent.toLowerCase().includes(gs)) return false;
+    for (const [col, val] of active) {
+      const cell = r.cells[col];
+      const text = ttClean(cell ? cell.textContent : "").toLowerCase();
+      if (!text.includes(val.toLowerCase())) return false;
+    }
+    return true;
+  });
+}
+
+// Mo hinh "kho dong day du + chi render trang hien tai vao DOM" (giam that so node DOM):
+// - Thu hoach (harvest) toan bo dong data khi tbody vua bi render lai tu ben ngoai
+//   (phat hien qua tham chieu node: dong moi khong nam trong kho cu -> la noi dung moi).
+// - Loc + sort + phan trang tren mang JS day du (st.allRows), roi chi gan lat-cat trang
+//   hien tai vao DOM. Total-row luon o cuoi & phan anh TOAN BO du lieu (khong theo loc).
 function ttApply(table) {
   const st = TT[table.id];
   const headerRow = ttHeaderRow(table);
   const tbody = table.tBodies[0];
   if (!st || !headerRow || !tbody) return;
   const nCols = headerRow.cells.length;
-  // Dong Total (.total-row) luon dung yen o cuoi bang - khong tham gia sort/filter,
-  // khong bao gio bi an (tong luon phan anh toan bo du lieu, khong theo bo loc).
-  const totalRows = Array.from(tbody.rows).filter((r) => r.classList.contains("total-row"));
-  const dataRows = Array.from(tbody.rows).filter((r) => r.cells.length === nCols && !r.classList.contains("total-row"));
-  totalRows.forEach((r) => { r.style.display = ""; });
 
-  const gs = (st.globalSearch || "").toLowerCase().trim();
-  for (const r of dataRows) {
-    let show = true;
-    if (gs && !r.textContent.toLowerCase().includes(gs)) show = false;
-    if (show) {
-      for (const [col, val] of Object.entries(st.filters)) {
-        if (!val) continue;
-        const cell = r.cells[col];
-        const text = ttClean(cell ? cell.textContent : "").toLowerCase();
-        if (!text.includes(val.toLowerCase())) { show = false; break; }
-      }
-    }
-    r.style.display = show ? "" : "none";
+  const curData = Array.from(tbody.rows).filter((r) => r.cells.length === nCols && !r.classList.contains("total-row"));
+  const known = st._allSet || new Set();
+  const isFresh = !st.allRows || curData.some((r) => !known.has(r));
+  if (isFresh) {
+    st.allRows = curData;
+    st._allSet = new Set(curData);
+    st.totalRows = Array.from(tbody.rows).filter((r) => r.classList.contains("total-row"));
+    st.otherRows = Array.from(tbody.rows).filter((r) => r.cells.length !== nCols && !r.classList.contains("total-row"));
+    // Giu nguyen st.page qua cac lan render lai (polling) -> clamp o duoi neu vuot pham vi.
   }
-  // Rows không khớp số cột (VD dòng "không có dữ liệu" colspan): luôn hiện nếu không có bộ lọc nào.
-  const anyFilter = gs || Object.values(st.filters).some((v) => v);
-  Array.from(tbody.rows).filter((r) => r.cells.length !== nCols && !r.classList.contains("total-row")).forEach((r) => {
-    r.style.display = anyFilter ? "none" : "";
-  });
 
+  const anyFilter = !!(st.globalSearch || "").trim() || Object.values(st.filters).some((v) => v);
+  let visible = ttFilterRows(st, st.allRows);
   if (st.sortCol != null) {
-    const sorted = dataRows.slice().sort((a, b) => ttCompare(a, b, st.sortCol, st.sortDir));
-    // Ngắt observer khi tự sắp xếp lại DOM để tránh vòng lặp vô hạn (MutationObserver
-    // callback chạy bất đồng bộ nên cờ boolean không đủ — phải disconnect thật sự).
-    if (st._obs) st._obs.disconnect();
-    for (const r of sorted) tbody.appendChild(r);
-    for (const r of totalRows) tbody.appendChild(r); // giu Total luon o day cung
-    if (st._obs) { st._obs.takeRecords(); st._obs.observe(tbody, { childList: true }); }
+    visible = visible.slice().sort((a, b) => ttCompare(a, b, st.sortCol, st.sortDir));
   }
+
+  const info = ttPageInfo(table.id, visible.length, st.page);
+  st.page = info.page;
+  const slice = visible.slice(info.start, info.end);
+
+  // Ngat observer khi tu dung lai DOM (tranh vong lap MutationObserver bat dong bo).
+  if (st._obs) st._obs.disconnect();
+  st.allRows.forEach((r) => { if (r.parentNode) r.parentNode.removeChild(r); });
+  st.otherRows.forEach((r) => { if (r.parentNode) r.parentNode.removeChild(r); });
+  st.totalRows.forEach((r) => { if (r.parentNode) r.parentNode.removeChild(r); });
+  // Placeholder ("khong co du lieu"/colspan): chi hien khi khong co dong data nao va
+  // khong co bo loc dang bat (giu dung hanh vi cu).
+  if (visible.length === 0 && !anyFilter) {
+    st.otherRows.forEach((r) => { r.style.display = ""; tbody.appendChild(r); });
+  }
+  slice.forEach((r) => { r.style.display = ""; tbody.appendChild(r); });
+  st.totalRows.forEach((r) => { r.style.display = ""; tbody.appendChild(r); });
+  if (st._obs) { st._obs.takeRecords(); st._obs.observe(tbody, { childList: true }); }
+
+  ttBuildPagerBar(ttEnsurePager(table), table.id, info,
+    (p) => { st.page = p; ttApply(table); },
+    () => { st.page = 1; ttApply(table); });
 }
 
 function ttExport(table) {
@@ -900,7 +994,17 @@ function ttExport(table) {
   const nCols = headerRow.cells.length;
   const headers = Array.from(headerRow.cells).map((th) => ttClean(th.textContent));
   const tbody = table.tBodies[0];
-  const rows = Array.from(tbody.rows).filter((r) => r.cells.length === nCols && r.style.display !== "none");
+  // Xuat TOAN BO dong da loc (theo bo loc/tim kiem hien hanh) - KHONG chi trang hien tai.
+  // Uu tien kho dong day du st.allRows; fallback ve DOM neu bang chua duoc TT quan ly.
+  const st = TT[table.id];
+  let rows;
+  if (st && st.allRows) {
+    let filtered = ttFilterRows(st, st.allRows);
+    if (st.sortCol != null) filtered = filtered.slice().sort((a, b) => ttCompare(a, b, st.sortCol, st.sortDir));
+    rows = filtered;
+  } else {
+    rows = Array.from(tbody.rows).filter((r) => r.cells.length === nCols && r.style.display !== "none");
+  }
   const esc = (s) => {
     s = ttClean(s);
     return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
@@ -938,7 +1042,7 @@ function ttRefresh(table) {
 
 function ttSetup(table) {
   if (!table || !table.tHead || !table.tBodies[0]) return;
-  if (!TT[table.id]) TT[table.id] = { sortCol: null, sortDir: 1, filters: {}, globalSearch: "", _obs: null };
+  if (!TT[table.id]) TT[table.id] = { sortCol: null, sortDir: 1, filters: {}, globalSearch: "", _obs: null, page: 1, allRows: null };
   ttAddExportButton(table);
   ttEnsureFilterRow(table);
   ttWireSort(table);
@@ -978,7 +1082,7 @@ function applyTableFilter(input) {
   const id = input.dataset.target;
   const table = document.getElementById(id);
   if (!table) return;
-  if (TT[id]) { TT[id].globalSearch = input.value; ttApply(table); return; }
+  if (TT[id]) { TT[id].globalSearch = input.value; TT[id].page = 1; ttApply(table); return; }
   const q = input.value.toLowerCase().trim();
   table.querySelectorAll("tbody tr").forEach((tr) => {
     tr.style.display = (!q || tr.textContent.toLowerCase().includes(q)) ? "" : "none";
@@ -1703,6 +1807,7 @@ function renderPriorityTableHead() {
       const key = th.dataset.key;
       if (state.prioritySort.key === key) state.prioritySort.dir *= -1;
       else state.prioritySort = { key, dir: 1 };
+      state.priorityPage = 1;
       renderPriorityTable();
     });
   });
@@ -1712,6 +1817,7 @@ function renderPriorityTableHead() {
     inp.addEventListener("click", (e) => e.stopPropagation());
     inp.addEventListener("input", () => {
       state.priorityColumnFilters[inp.dataset.key] = inp.value;
+      state.priorityPage = 1;
       renderPriorityTable();
     });
   });
@@ -1754,7 +1860,16 @@ function renderPriorityTable() {
     return 0;
   });
   const ncols = 14 + state.models.length + 1;
-  $("#priorityTable tbody").innerHTML = rows.map((r) => {
+  // Phan trang phia client: chi render dong cua trang hien tai (giam so node DOM -> chua lag).
+  // Loc + sort van tren TOAN BO state.priority o tren; chi cat-lat de hien thi.
+  const info = ttPageInfo("priorityTable", rows.length, state.priorityPage);
+  state.priorityPage = info.page;
+  const pageRows = rows.slice(info.start, info.end);
+  const prioTable = $("#priorityTable");
+  ttBuildPagerBar(ttEnsurePager(prioTable), "priorityTable", info,
+    (p) => { state.priorityPage = p; renderPriorityTable(); },
+    () => { state.priorityPage = 1; renderPriorityTable(); });
+  $("#priorityTable tbody").innerHTML = pageRows.map((r) => {
     let modelCells = state.models.map((m) => `<td>${modelBadge(r.model_detail[m])}</td>`).join("");
     return `
     <tr>
@@ -1936,8 +2051,8 @@ function initCycleMatrix() {
 
 function initPriorityTable() {
   renderPriorityTableHead();
-  $("#prioSearch").addEventListener("input", renderPriorityTable);
-  $("#prioTierFilter").addEventListener("change", renderPriorityTable);
+  $("#prioSearch").addEventListener("input", () => { state.priorityPage = 1; renderPriorityTable(); });
+  $("#prioTierFilter").addEventListener("change", () => { state.priorityPage = 1; renderPriorityTable(); });
   $("#priorityTable").addEventListener("click", (e) => {
     const assignBtn = e.target.closest('button[data-action="assign"]');
     if (assignBtn) {

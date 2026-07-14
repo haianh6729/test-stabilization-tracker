@@ -133,6 +133,10 @@ def get_db():
         g.db.row_factory = sqlite3.Row
         g.db.execute("PRAGMA journal_mode=WAL;")
         g.db.execute("PRAGMA foreign_keys=ON;")
+        # Tang toc doc, van an toan voi WAL: synchronous=NORMAL (khong fsync moi commit,
+        # WAL checkpoint van dam bao ben vung); cache_size=-8000 = ~8MB page cache/ket noi.
+        g.db.execute("PRAGMA synchronous=NORMAL;")
+        g.db.execute("PRAGMA cache_size=-8000;")
     return g.db
 
 
@@ -436,6 +440,30 @@ def init_db():
         conn.execute("UPDATE fixes SET root_cause_group=? WHERE id=?",
                      (classify_root_cause_group(r["root_cause"]), r["id"]))
 
+    # Performance indexes (idempotent). Dat o day - SAU cac ALTER TABLE ADD COLUMN o tren -
+    # de index tren cot moi (VD root_cause_group) khong loi tren DB cu chua co cot.
+    # KHONG doi logic truy van, chi tang toc (planner tu chon dung index).
+    perf_indexes = (
+        # results (bang lon nhat, tac dong cao nhat)
+        "CREATE INDEX IF NOT EXISTS idx_results_result           ON results(result)",
+        "CREATE INDEX IF NOT EXISTS idx_results_suite_case        ON results(test_suite, test_case)",
+        "CREATE INDEX IF NOT EXISTS idx_results_suite_case_cycle  ON results(test_suite, test_case, cycle)",
+        "CREATE INDEX IF NOT EXISTS idx_results_model_cycle       ON results(model, cycle)",
+        "CREATE INDEX IF NOT EXISTS idx_results_suite_model_cycle ON results(test_suite, model, cycle)",
+        # fixes
+        "CREATE INDEX IF NOT EXISTS idx_fixes_fix_date            ON fixes(fix_date)",
+        "CREATE INDEX IF NOT EXISTS idx_fixes_root_cause_group    ON fixes(root_cause_group)",
+        # new_scripts
+        "CREATE INDEX IF NOT EXISTS idx_new_scripts_status        ON new_scripts(status)",
+        "CREATE INDEX IF NOT EXISTS idx_new_scripts_status_date   ON new_scripts(status, completed_date)",
+        "CREATE INDEX IF NOT EXISTS idx_new_scripts_member_status ON new_scripts(member, status)",
+        # owners
+        "CREATE INDEX IF NOT EXISTS idx_owners_active             ON owners(active)",
+    )
+    for stmt in perf_indexes:
+        conn.execute(stmt)
+    conn.execute("ANALYZE")  # cap nhat thong ke de planner dung index moi hieu qua
+
     conn.commit()
     conn.close()
 
@@ -638,9 +666,27 @@ def _http_json(url, token="", method="GET", payload=None, timeout=15):
         raise RuntimeError("API trả về dữ liệu không phải JSON — kiểm tra lại URL endpoint.")
 
 
+def _settings_cache(db):
+    """Cache toan bo bang settings (nho, ~30 dong) vao request context (g) o lan doc dau,
+    tranh round-trip SQLite lap lai nhieu lan/1 request. Tu dong huy khi request ket thuc.
+    Phai goi _invalidate_settings_cache() sau moi lan GHI settings de tranh doc gia tri cu."""
+    cache = g.get("_settings_cache")
+    if cache is None:
+        cache = {r["key"]: r["value"]
+                 for r in db.execute("SELECT key, value FROM settings").fetchall()}
+        g._settings_cache = cache
+    return cache
+
+
+def _invalidate_settings_cache():
+    """Xoa cache settings (goi sau khi INSERT/UPDATE settings trong cung request)."""
+    if g.get("_settings_cache") is not None:
+        g._settings_cache = None
+
+
 def get_setting(db, key, default=""):
-    row = db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
-    return row["value"] if row and row["value"] is not None else default
+    val = _settings_cache(db).get(key)
+    return val if val is not None else default
 
 
 def get_setting_int(db, key, default):
@@ -1405,6 +1451,7 @@ def _persist_root_cause_groups(db, groups):
         "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
         (json.dumps(groups, ensure_ascii=False),),
     )
+    _invalidate_settings_cache()
 
 
 @app.route("/api/lists/root_cause_groups", methods=["POST"])
@@ -1643,6 +1690,7 @@ def api_settings():
                 (k, str(v)),
             )
             changed.append(k)
+        _invalidate_settings_cache()
         if changed:
             log_audit(db, "settings.update", detail="keys: " + ", ".join(sorted(changed)))
         db.commit()
@@ -2126,24 +2174,34 @@ def compute_fix_tracking(db):
     """Làm giàu mỗi dòng fix với trạng thái resolution + thông tin lần chạy sau fix."""
     fixes = db.execute("SELECT * FROM fixes ORDER BY id DESC").fetchall()
     owner_team = {r["name"]: r["team"] for r in db.execute("SELECT name, team FROM owners").fetchall()}
+    if not fixes:
+        return []
+    # Prefetch cac lan chay "sau fix" trong 1 truy van thay vi N truy van/fix (chong N+1).
+    # Chi lay results thuoc suite co fix va cycle > nguong nho nhat (min fixed_after_cycle);
+    # loc chi tiet theo (case, model, cycle>after_cycle) trong Python - cho ket qua Y HET
+    # vong lap cu (status/count/min deu doc lap thu tu nen khong can ORDER BY).
+    suites = sorted({f["test_suite"] for f in fixes})
+    min_after = min(f["fixed_after_cycle"] for f in fixes)
+    ph = ",".join("?" * len(suites))
+    by_pair = {}
+    for r in db.execute(
+        f"SELECT test_suite, test_case, model, cycle, result FROM results "
+        f"WHERE test_suite IN ({ph}) AND cycle>?",
+        (*suites, min_after),
+    ).fetchall():
+        by_pair.setdefault((r["test_suite"], r["test_case"]), []).append(r)
     out = []
     for f in fixes:
         suite, case = f["test_suite"], f["test_case"]
         after_cycle = f["fixed_after_cycle"]
         model_fixed = f["model_fixed"]
+        pair_rows = by_pair.get((suite, case), ())
         if model_fixed and model_fixed != "All Models":
-            after_rows = db.execute(
-                "SELECT cycle, result FROM results WHERE test_suite=? AND test_case=? "
-                "AND model=? AND cycle>? ORDER BY cycle",
-                (suite, case, model_fixed, after_cycle),
-            ).fetchall()
+            after_rows = [{"cycle": r["cycle"], "result": r["result"]} for r in pair_rows
+                          if r["model"] == model_fixed and r["cycle"] > after_cycle]
         else:
-            after_rows = db.execute(
-                "SELECT cycle, result FROM results WHERE test_suite=? AND test_case=? "
-                "AND cycle>? ORDER BY cycle",
-                (suite, case, after_cycle),
-            ).fetchall()
-        after_rows = [dict(r) for r in after_rows]
+            after_rows = [{"cycle": r["cycle"], "result": r["result"]} for r in pair_rows
+                          if r["cycle"] > after_cycle]
         status = _status_from_after_rows(after_rows)
         next_cycle = min((r["cycle"] for r in after_rows), default=None)
         n_fail_after = sum(1 for r in after_rows if r["result"] == "Fail")
@@ -2378,10 +2436,28 @@ def get_owner_stats(db, priority=None):
         if p and p["priority_tier"] in ("P0", "P1", "P2", "P3"):
             open_workload[r["owner"]] = open_workload.get(r["owner"], 0) + 1
 
+    # Prefetch (chong N+1): gom tat ca fixes theo owner trong 1 truy van, va tinh san
+    # so lieu verify (total / fail) cho moi (suite, case, model, cycle) + ban gop-moi-model
+    # (suite, case, cycle). Thay cho 1 SELECT fixes/owner + 2 COUNT/fix. Ket qua Y HET.
+    fixes_by_owner = {}
+    for f in db.execute("SELECT * FROM fixes ORDER BY owner, id").fetchall():
+        fixes_by_owner.setdefault(f["owner"], []).append(f)
+    agg_model = {}   # (suite, case, model, cycle) -> [total, fail]
+    agg_allmod = {}  # (suite, case, cycle)        -> [total, fail]  (gop moi model)
+    for r in db.execute(
+        "SELECT test_suite, test_case, model, cycle, COUNT(*) total, "
+        "SUM(CASE WHEN result='Fail' THEN 1 ELSE 0 END) fail "
+        "FROM results GROUP BY test_suite, test_case, model, cycle"
+    ).fetchall():
+        agg_model[(r["test_suite"], r["test_case"], r["model"], r["cycle"])] = (r["total"], r["fail"])
+        k2 = (r["test_suite"], r["test_case"], r["cycle"])
+        t, fl = agg_allmod.get(k2, (0, 0))
+        agg_allmod[k2] = (t + r["total"], fl + (r["fail"] or 0))
+
     owner_stats = []
     for orow in owner_rows:
         owner = orow["name"]
-        fx = db.execute("SELECT * FROM fixes WHERE owner=? ORDER BY id", (owner,)).fetchall()
+        fx = fixes_by_owner.get(owner, [])
         if not fx and owner not in open_workload and not written_map.get(owner):
             continue
         seen = set()
@@ -2401,23 +2477,11 @@ def get_owner_stats(db, priority=None):
             verify_cycle = f["fixed_after_cycle"] + 1
             model_fixed = f["model_fixed"]
             if model_fixed == "All Models":
-                after_total = db.execute(
-                    "SELECT COUNT(*) c FROM results WHERE test_suite=? AND test_case=? AND cycle=?",
-                    (f["test_suite"], f["test_case"], verify_cycle),
-                ).fetchone()["c"]
-                after_fail = db.execute(
-                    "SELECT COUNT(*) c FROM results WHERE test_suite=? AND test_case=? AND cycle=? AND result='Fail'",
-                    (f["test_suite"], f["test_case"], verify_cycle),
-                ).fetchone()["c"]
+                after_total, after_fail = agg_allmod.get(
+                    (f["test_suite"], f["test_case"], verify_cycle), (0, 0))
             else:
-                after_total = db.execute(
-                    "SELECT COUNT(*) c FROM results WHERE test_suite=? AND test_case=? AND model=? AND cycle=?",
-                    (f["test_suite"], f["test_case"], model_fixed, verify_cycle),
-                ).fetchone()["c"]
-                after_fail = db.execute(
-                    "SELECT COUNT(*) c FROM results WHERE test_suite=? AND test_case=? AND model=? AND cycle=? AND result='Fail'",
-                    (f["test_suite"], f["test_case"], model_fixed, verify_cycle),
-                ).fetchone()["c"]
+                after_total, after_fail = agg_model.get(
+                    (f["test_suite"], f["test_case"], model_fixed, verify_cycle), (0, 0))
             if after_total == 0:
                 pending += 1
             elif after_fail == 0:
@@ -3275,10 +3339,14 @@ def build_export_workbook(db):
     trend = compute_cycle_trend(db)
 
     latest_cycle = trend[-1]["cycle"] if trend else 0
+    # 1 GROUP BY thay cho 2 COUNT/model (chong N+1). Ket qua Y HET: model khong co du lieu
+    # o latest_cycle -> khong co trong map -> (0,0) -> None, dung nhu vong lap cu.
+    _mc = {r["model"]: (r["total"], r["pass_count"]) for r in db.execute(
+        "SELECT model, COUNT(*) total, SUM(CASE WHEN result='Pass' THEN 1 ELSE 0 END) pass_count "
+        "FROM results WHERE cycle=? GROUP BY model", (latest_cycle,)).fetchall()}
     model_pass_rate = {}
     for m in models_list:
-        tot = db.execute("SELECT COUNT(*) c FROM results WHERE model=? AND cycle=?", (m, latest_cycle)).fetchone()["c"]
-        pas = db.execute("SELECT COUNT(*) c FROM results WHERE model=? AND cycle=? AND result='Pass'", (m, latest_cycle)).fetchone()["c"]
+        tot, pas = _mc.get(m, (0, 0))
         model_pass_rate[m] = (pas / tot) if tot else None
 
     tier_counts = {"P0": 0, "P1": 0, "P2": 0, "P3": 0, "Verify": 0, "Done": 0}
@@ -6035,4 +6103,12 @@ if __name__ == "__main__":
     print(" May nay:        http://localhost:5000")
     print(" May khac trong LAN: http://<IP-may-ban>:5000")
     print("=" * 60)
-    app.run(host="0.0.0.0", port=5000, threaded=True, debug=False)
+    # Uu tien waitress (WSGI production-grade, chiu tai tot hon dev server).
+    # Neu chua cai waitress -> fallback ve Flask dev server (van chay duoc ngay).
+    try:
+        from waitress import serve
+        print(" Server: waitress (production) | threads=8")
+        serve(app, host="0.0.0.0", port=5000, threads=8)
+    except ImportError:
+        print(" Server: Flask dev (chua cai waitress -> 'pip install -r requirements.txt')")
+        app.run(host="0.0.0.0", port=5000, threaded=True, debug=False)

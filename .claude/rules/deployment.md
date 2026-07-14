@@ -32,7 +32,7 @@ python app.py        # 0.0.0.0:5000
 - Không có build step, không có test runner
 - Không có linter/formatter setup
 - Database (tracker.db, users.db) tạo tự động lần đầu; backup tự động vào `backups/` (daemon thread trong app, không cần cron)
-- Chủ dự án chọn giữ Flask dev server đơn giản (không cài thêm WSGI server) — HTTP outbound dùng `urllib` stdlib, không thêm pip package
+- **Server WSGI (mới 2026-07-14)**: `python app.py` ưu tiên chạy bằng **waitress** (production-grade, `threads=8`) nếu đã `pip install`; nếu chưa có waitress → **tự fallback** về Flask dev server (`app.run`). Xem khối `if __name__ == "__main__":` cuối `app.py`. `waitress>=3.0` đã thêm vào `requirements.txt`. HTTP outbound vẫn dùng `urllib` stdlib
 - **Restart server để áp dụng code mới**: server production chạy nền trên port 5000 — sau khi sửa code phải kill process cũ rồi `python app.py` lại (migration tự chạy)
 
 ## Cập nhật code

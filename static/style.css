@@ -193,6 +193,38 @@ main { padding: 20px; max-width: 1400px; margin: 0 auto; }
   position: sticky;
   top: 28px;
 }
+
+/* ===== Thanh phan trang (client-side) - dung chung cho app + admin ===== */
+.tt-pager {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 4px 0 8px;
+  font-size: 12px;
+  color: #444;
+}
+.tt-pager select.tt-pgsize {
+  font-size: 12px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+}
+.tt-pager button {
+  min-width: 30px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.tt-pager button:hover:not(:disabled) { background: #eef2f7; }
+.tt-pager button:disabled { opacity: 0.4; cursor: default; }
+.tt-pager .tt-pg-label { font-weight: 600; }
+.tt-pager .tt-pg-pages { color: #888; margin-left: 4px; }
 .tt-export-btn { display: inline-block; }
 
 .tag {

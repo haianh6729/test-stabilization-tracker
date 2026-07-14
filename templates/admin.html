@@ -787,11 +787,61 @@ async function searchResults() {
   displayResults(data);
 }
 
+// ===== Phan trang phia client cho bang admin: CHI render dong cua trang hien tai vao DOM
+// (giam so node DOM -> chua giat lag). Search/filter van chay o server (LIMIT), phan trang
+// chi tren tap da tra ve. Luu so dong/trang theo tung bang qua localStorage. =====
+const ADM = {};
+const ADM_SIZES = [25, 50, 100, 200];
+function admSizeRaw(id) { const r = localStorage.getItem('pgsize:' + id); if (r === 'all') return 'all'; const n = parseInt(r, 10); return (n && n > 0) ? String(n) : '50'; }
+function admSize(id) { const r = admSizeRaw(id); return r === 'all' ? Infinity : parseInt(r, 10); }
+function admEnsurePager(id) {
+  const table = document.getElementById(id);
+  if (!table) return null;
+  if (table._pg) return table._pg;
+  const bar = document.createElement('div'); bar.className = 'tt-pager'; bar.style.display = 'none';
+  table.parentNode.insertBefore(bar, table);
+  table._pg = bar; return bar;
+}
+// Tra ve {start,end,page} da clamp; ve thanh dieu khien; an neu it dong.
+function admPager(id, total, page, onGo) {
+  const size = admSize(id);
+  const totalPages = size === Infinity ? 1 : Math.max(1, Math.ceil(total / size));
+  if (page > totalPages) page = totalPages; if (page < 1) page = 1;
+  const start = size === Infinity ? 0 : (page - 1) * size;
+  const end = size === Infinity ? total : Math.min(total, start + size);
+  const bar = admEnsurePager(id);
+  if (bar) {
+    const sizeRaw = admSizeRaw(id), smallest = ADM_SIZES[0];
+    if (totalPages <= 1 && total <= smallest && sizeRaw !== 'all') { bar.style.display = 'none'; bar.innerHTML = ''; }
+    else {
+      bar.style.display = 'flex';
+      const opts = ADM_SIZES.map(n => `<option value="${n}"${sizeRaw === String(n) ? ' selected' : ''}>${n}/trang</option>`).join('') + `<option value="all"${sizeRaw === 'all' ? ' selected' : ''}>Tất cả</option>`;
+      bar.innerHTML = `<select class="tt-pgsize" title="Số dòng mỗi trang">${opts}</select>`
+        + `<button ${page <= 1 ? 'disabled' : ''} data-go="1">⏮</button>`
+        + `<button ${page <= 1 ? 'disabled' : ''} data-go="${page - 1}">◀</button>`
+        + `<span class="tt-pg-label">${total === 0 ? 0 : start + 1}–${end} / ${total}</span>`
+        + `<button ${page >= totalPages ? 'disabled' : ''} data-go="${page + 1}">▶</button>`
+        + `<button ${page >= totalPages ? 'disabled' : ''} data-go="${totalPages}">⏭</button>`
+        + `<span class="tt-pg-pages">Trang ${page}/${totalPages}</span>`;
+      bar.querySelector('.tt-pgsize').onchange = (e) => { localStorage.setItem('pgsize:' + id, e.target.value); onGo(1); };
+      bar.querySelectorAll('button[data-go]').forEach(b => b.onclick = () => onGo(parseInt(b.dataset.go, 10)));
+    }
+  }
+  return { start, end, page };
+}
+
 function displayResults(results) {
+  ADM.resultsTable = ADM.resultsTable || { page: 1 };
+  ADM.resultsTable.data = results; ADM.resultsTable.page = 1;
+  admRenderResults();
+}
+function admRenderResults() {
+  const c = ADM.resultsTable, data = c.data || [];
+  const pg = admPager('resultsTable', data.length, c.page, (p) => { c.page = p; admRenderResults(); });
+  c.page = pg.page;
   const tbody = document.getElementById('resultsBody');
   tbody.innerHTML = '';
-
-  results.forEach((r, idx) => {
+  data.slice(pg.start, pg.end).forEach((r, idx) => {
     const row = tbody.insertRow();
     row.innerHTML = `
       <td>${r.id}</td>
@@ -814,7 +864,7 @@ function displayResults(results) {
     `;
   });
 
-  document.getElementById('resultCount').textContent = `Tổng: ${results.length} kết quả`;
+  document.getElementById('resultCount').textContent = `Tổng: ${data.length} kết quả`;
 }
 
 function openEditModal(id, result) {
@@ -910,10 +960,18 @@ async function nsSearch() {
 }
 
 function nsDisplay(rows) {
+  ADM.nsTable = ADM.nsTable || { page: 1 };
+  ADM.nsTable.data = rows; ADM.nsTable.page = 1;
+  admRenderNs();
+}
+function admRenderNs() {
+  const c = ADM.nsTable, rows = c.data || [];
+  const pg = admPager('nsTable', rows.length, c.page, (p) => { c.page = p; admRenderNs(); });
+  c.page = pg.page;
   const tbody = document.getElementById('nsBody');
   tbody.innerHTML = '';
 
-  rows.forEach((r) => {
+  rows.slice(pg.start, pg.end).forEach((r) => {
     const row = tbody.insertRow();
     row.innerHTML = `
       <td>${r.id}</td>
@@ -938,6 +996,7 @@ function nsDisplay(rows) {
 
   document.getElementById('nsCount').textContent = `Tổng: ${rows.length} dòng`;
 }
+
 
 function nsOpenEditModal(id, row) {
   nsCurrentEditId = id;
@@ -1077,10 +1136,18 @@ async function searchFixes() {
 }
 
 function displayFixes(fixes) {
+  ADM.fixesTable = ADM.fixesTable || { page: 1 };
+  ADM.fixesTable.data = fixes; ADM.fixesTable.page = 1;
+  admRenderFixes();
+}
+function admRenderFixes() {
+  const c = ADM.fixesTable, fixes = c.data || [];
+  const pg = admPager('fixesTable', fixes.length, c.page, (p) => { c.page = p; admRenderFixes(); });
+  c.page = pg.page;
   const tbody = document.getElementById('fixesBody');
   tbody.innerHTML = '';
 
-  fixes.forEach((f) => {
+  fixes.slice(pg.start, pg.end).forEach((f) => {
     const row = tbody.insertRow();
     row.innerHTML = `
       <td>${f.id}</td>
@@ -1259,10 +1326,18 @@ async function asgSearch() {
 }
 
 function asgDisplay(rows) {
+  ADM.asgTable = ADM.asgTable || { page: 1 };
+  ADM.asgTable.data = rows; ADM.asgTable.page = 1;
+  admRenderAsg();
+}
+function admRenderAsg() {
+  const c = ADM.asgTable, rows = c.data || [];
+  const pg = admPager('asgTable', rows.length, c.page, (p) => { c.page = p; admRenderAsg(); });
+  c.page = pg.page;
   const tbody = document.getElementById('asgBody');
   tbody.innerHTML = '';
 
-  rows.forEach((r) => {
+  rows.slice(pg.start, pg.end).forEach((r) => {
     const row = tbody.insertRow();
     row.innerHTML = `
       <td>${r.test_suite}</td>
@@ -1407,9 +1482,17 @@ async function usrLoadAll() {
 }
 
 function usrDisplay(users) {
+  ADM.usersTable = ADM.usersTable || { page: 1 };
+  ADM.usersTable.data = users; ADM.usersTable.page = 1;
+  admRenderUsers();
+}
+function admRenderUsers() {
+  const c = ADM.usersTable, users = c.data || [];
+  const pg = admPager('usersTable', users.length, c.page, (p) => { c.page = p; admRenderUsers(); });
+  c.page = pg.page;
   const tbody = document.getElementById('usersBody');
   tbody.innerHTML = '';
-  users.forEach((u) => {
+  users.slice(pg.start, pg.end).forEach((u) => {
     const uj = JSON.stringify(u.username);
     const roleSel = ['admin', 'moderator', 'user'].map((r) =>
       `<option value="${r}" ${u.role === r ? 'selected' : ''}>${r}</option>`).join('');
@@ -1499,9 +1582,17 @@ async function ownLoadAll() {
 }
 
 function ownDisplay(rows) {
+  ADM.ownersTable = ADM.ownersTable || { page: 1 };
+  ADM.ownersTable.data = rows; ADM.ownersTable.page = 1;
+  admRenderOwners();
+}
+function admRenderOwners() {
+  const c = ADM.ownersTable, rows = c.data || [];
+  const pg = admPager('ownersTable', rows.length, c.page, (p) => { c.page = p; admRenderOwners(); });
+  c.page = pg.page;
   const tbody = document.getElementById('ownersBody');
   tbody.innerHTML = '';
-  rows.forEach((o) => {
+  rows.slice(pg.start, pg.end).forEach((o) => {
     const nj = JSON.stringify(o.name);
     const activeTag = o.active
       ? '<span style="color:#1e8449;font-weight:600;">● Hoạt động</span>'
@@ -1613,9 +1704,17 @@ async function auditSearch() {
 }
 
 function auditDisplay(rows) {
+  ADM.auditTable = ADM.auditTable || { page: 1 };
+  ADM.auditTable.data = rows || []; ADM.auditTable.page = 1;
+  admRenderAudit();
+}
+function admRenderAudit() {
+  const c = ADM.auditTable, rows = c.data || [];
+  const pg = admPager('auditTable', rows.length, c.page, (p) => { c.page = p; admRenderAudit(); });
+  c.page = pg.page;
   const tbody = document.getElementById('auditBody');
   tbody.innerHTML = '';
-  (rows || []).forEach((r) => {
+  rows.slice(pg.start, pg.end).forEach((r) => {
     const row = tbody.insertRow();
     row.innerHTML = `
       <td style="white-space:nowrap">${auditEsc(r.ts)}</td>
