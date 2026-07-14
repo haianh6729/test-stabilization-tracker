@@ -2016,18 +2016,21 @@ def insert_result_rows(db, rows, created_by):
             test_suite = derive_test_suite(test_case, raw_test_suite)
             test_id = str(row.get("test_id") or "")
             description = str(row.get("description") or "")
+            serial = str(row.get("serial") or "").strip()
 
-            # Kiem tra trung: cung Test ID + Test Case + Model + State + Description
+            # Kiem tra trung: cung Test ID + Test Case + Model + State + Description + SN
             # thi coi la ban ghi da co san, bo qua khong chen lai (tranh nhan doi Fail_Count).
+            # SN khac nhau (VD 2 thiet bi khac nhau chay ra cung 1 ket qua) -> KHONG coi trung.
             existing = db.execute(
-                "SELECT 1 FROM results WHERE test_id=? AND test_case=? AND model=? AND state=? AND description=? LIMIT 1",
-                (test_id, test_case, model, state, description),
+                "SELECT 1 FROM results WHERE test_id=? AND test_case=? AND model=? AND state=? AND description=? AND serial=? LIMIT 1",
+                (test_id, test_case, model, state, description, serial),
             ).fetchone()
             if existing:
                 skipped_duplicate += 1
                 duplicates.append({
                     "row_index": i, "test_id": test_id, "model": model,
                     "test_suite": test_suite, "test_case": test_case, "state": state,
+                    "serial": serial,
                 })
                 continue
 
@@ -2040,7 +2043,6 @@ def insert_result_rows(db, rows, created_by):
             cycle = 0
             author = str(row.get("author") or "").strip()
             team = str(row.get("team") or "").strip()
-            serial = str(row.get("serial") or "").strip()
             result = classify_result(state)
             # Whitelist loi nhieu: mo ta khop -> luu nhung KHONG tinh vao thong ke (result='Excluded').
             if matches_whitelist(description, whitelist):
