@@ -811,7 +811,8 @@ def compute_root_cause_pareto(db, limit=15, english=False):
     for label, cnt in ordered:
         pct = (cnt / total_fail) if total_fail else 0
         cum += pct
-        out.append({"description": _translate_root_cause_label(label) if english else label,
+        out.append({"key": label,
+                    "description": _translate_root_cause_label(label) if english else label,
                     "count": cnt, "pct": pct, "cum_pct": cum})
     return out
 
@@ -2683,6 +2684,80 @@ def api_script_fail_details(suite, case):
         (suite, case),
     ).fetchall()
     return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/root-cause/breakdown")
+def api_root_cause_breakdown():
+    """Drill-down cho Pareto 'dang fail vi gi': voi 1 nhan root-cause (query param `label`,
+    nhan VN goc tu summarize_root_cause), tra ve danh sach item x model DANG FAIL HIEN TAI
+    (latest status = Fail, khong phai toan bo lich su Fail) khop nhan do, kem owner/team,
+    de gom batch giao nguoi fix. Khong truyen `label` -> tra ve tong hop theo nhan (groups)."""
+    db = get_db()
+    label = (request.args.get("label") or "").strip()
+
+    latest_fails = db.execute(
+        """
+        SELECT test_suite, test_case, model, description, test_id, cycle, cycle_date
+        FROM (
+            SELECT *, ROW_NUMBER() OVER (
+                PARTITION BY test_suite, test_case, model
+                ORDER BY cycle DESC, id DESC
+            ) as rn
+            FROM results
+        )
+        WHERE rn = 1 AND result='Fail'
+        """
+    ).fetchall()
+
+    owner_map = {(r["test_suite"], r["test_case"]): r["owner"]
+                 for r in db.execute("SELECT test_suite, test_case, owner FROM assignments")}
+    team_map = {r["name"]: r["team"] for r in db.execute("SELECT name, team FROM owners")}
+
+    if not label:
+        groups = {}
+        for r in latest_fails:
+            key = summarize_root_cause(r["description"], "")
+            g = groups.setdefault(key, {"key": key, "current_fail_count": 0, "scripts": set()})
+            g["current_fail_count"] += 1
+            g["scripts"].add((r["test_suite"], r["test_case"]))
+        out = sorted(
+            [{"key": g["key"], "label_en": _translate_root_cause_label(g["key"]),
+              "current_fail_count": g["current_fail_count"], "affected_scripts": len(g["scripts"])}
+             for g in groups.values()],
+            key=lambda x: -x["current_fail_count"],
+        )
+        return jsonify({"groups": out})
+
+    items = []
+    scripts = set()
+    for r in latest_fails:
+        if summarize_root_cause(r["description"], "") != label:
+            continue
+        owner = owner_map.get((r["test_suite"], r["test_case"]), "")
+        items.append({
+            "test_suite": r["test_suite"], "test_case": r["test_case"], "test_id": r["test_id"],
+            "model": r["model"], "cycle": r["cycle"], "cycle_date": r["cycle_date"],
+            "owner": owner or "", "team": team_map.get(owner, "") if owner else "",
+            "description": r["description"],
+        })
+        scripts.add((r["test_suite"], r["test_case"]))
+    items.sort(key=lambda x: (x["test_suite"], x["test_case"], x["model"]))
+
+    by_model = {}
+    by_suite = {}
+    for it in items:
+        by_model[it["model"]] = by_model.get(it["model"], 0) + 1
+        by_suite[it["test_suite"]] = by_suite.get(it["test_suite"], 0) + 1
+
+    return jsonify({
+        "label": label,
+        "label_en": _translate_root_cause_label(label),
+        "current_fail_count": len(items),
+        "affected_scripts": len(scripts),
+        "items": items,
+        "by_model": sorted([{"model": k, "count": v} for k, v in by_model.items()], key=lambda x: -x["count"]),
+        "by_suite": sorted([{"test_suite": k, "count": v} for k, v in by_suite.items()], key=lambda x: -x["count"]),
+    })
 
 
 @app.route("/api/assignments", methods=["GET"])

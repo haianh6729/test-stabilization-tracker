@@ -367,6 +367,12 @@ function renderCharts(d) {
         y: { position: "left", title: { display: true, text: "Fail Count" } },
         y1: { position: "right", min: 0, max: 100, grid: { drawOnChartArea: false }, ticks: { callback: (v) => v + "%" } },
       },
+      onHover: (evt, els) => { evt.native.target.style.cursor = els.length ? "pointer" : "default"; },
+      onClick: (evt, els) => {
+        if (!els.length) return;
+        const rc = d.root_causes[els[0].index];
+        if (rc) openRcBreakdown(rc.key);
+      },
     },
   });
 
@@ -1948,6 +1954,116 @@ async function showFailDetails(suite, testCase) {
     $("#failDetailsModal").style.display = "flex";
   } catch (e) {
     alert("Lỗi tải chi tiết: " + e.message);
+  }
+}
+
+// navigator.clipboard chi co o secure context (localhost/https) - LAN HTTP phai fallback execCommand.
+async function copyTextToClipboard(text) {
+  let ok = false;
+  try {
+    if (navigator.clipboard) { await navigator.clipboard.writeText(text); ok = true; }
+  } catch (e) { ok = false; }
+  if (!ok) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    ta.remove();
+  }
+  return ok;
+}
+
+async function openRcBreakdown(labelKey) {
+  $("#rcbTitle").textContent = "Chi tiết nguyên nhân";
+  $("#rcbContent").innerHTML = "Loading...";
+  $("#rcBreakdownModal").style.display = "flex";
+  try {
+    const d = await api("/api/root-cause/breakdown?label=" + encodeURIComponent(labelKey));
+    state.lastRcBreakdown = d;
+
+    $("#rcbTitle").textContent = d.label + " — " + d.affected_scripts + " script / " + d.current_fail_count + " lần đang fail hiện tại";
+
+    let html = `<p style="margin:0 0 12px; padding:10px; background:#e3f2fd; border-radius:4px; font-size:12px; color:#555; border-left:3px solid #2196F3;">
+      💡 Danh sách item×model <b>đang fail ở lần chạy gần nhất</b> (không phải toàn bộ lịch sử fail) do nhóm nguyên nhân này gây ra — dùng để gom batch giao người fix.
+    </p>`;
+
+    html += `<div style="display:flex; gap:16px; margin-bottom:16px; flex-wrap:wrap;">
+      <div style="flex:1; min-width:220px;">
+        <h4 style="margin:0 0 6px;">Theo Model</h4>
+        <table style="width:100%; border-collapse:collapse; font-size:13px;">
+          <thead><tr style="background:#f5f5f5;"><th style="border:1px solid #ddd; padding:6px; text-align:left;">Model</th><th style="border:1px solid #ddd; padding:6px; text-align:right;">Số fail</th></tr></thead>
+          <tbody>${d.by_model.map((m) => `<tr><td style="border:1px solid #ddd; padding:6px;">${escAttr(m.model)}</td><td style="border:1px solid #ddd; padding:6px; text-align:right;">${m.count}</td></tr>`).join("")}</tbody>
+        </table>
+      </div>
+      <div style="flex:1; min-width:220px;">
+        <h4 style="margin:0 0 6px;">Theo Suite</h4>
+        <table style="width:100%; border-collapse:collapse; font-size:13px;">
+          <thead><tr style="background:#f5f5f5;"><th style="border:1px solid #ddd; padding:6px; text-align:left;">Suite</th><th style="border:1px solid #ddd; padding:6px; text-align:right;">Số fail</th></tr></thead>
+          <tbody>${d.by_suite.map((s) => `<tr><td style="border:1px solid #ddd; padding:6px;">${escAttr(s.test_suite)}</td><td style="border:1px solid #ddd; padding:6px; text-align:right;">${s.count}</td></tr>`).join("")}</tbody>
+        </table>
+      </div>
+    </div>`;
+
+    html += `<div style="margin-bottom:10px;">
+      <button class="btn-tiny" id="btnRcbCopy">📋 Copy Test IDs</button>
+      <button class="btn-tiny" id="btnRcbExport">📥 Export CSV</button>
+      <span id="rcbMsg" style="margin-left:10px; font-size:12px; color:#2ecc71;"></span>
+    </div>`;
+
+    html += `<table style="width:100%; border-collapse:collapse; font-size:13px;">
+      <thead><tr style="background:#f5f5f5;">
+        <th style="border:1px solid #ddd; padding:8px; text-align:left;">Item</th>
+        <th style="border:1px solid #ddd; padding:8px; text-align:left;">TC ID</th>
+        <th style="border:1px solid #ddd; padding:8px; text-align:left;">Test ID</th>
+        <th style="border:1px solid #ddd; padding:8px; text-align:left;">Model</th>
+        <th style="border:1px solid #ddd; padding:8px; text-align:left;">Cycle</th>
+        <th style="border:1px solid #ddd; padding:8px; text-align:left;">Owner</th>
+        <th style="border:1px solid #ddd; padding:8px; text-align:left;">Team</th>
+        <th style="border:1px solid #ddd; padding:8px; text-align:left;">Mô tả</th>
+      </tr></thead>
+      <tbody>`;
+    for (const it of d.items) {
+      html += `<tr style="border-bottom:1px solid #eee;">
+        <td style="border:1px solid #ddd; padding:8px;">${escAttr(it.test_suite)}</td>
+        <td style="border:1px solid #ddd; padding:8px;">${escAttr(it.test_case)}</td>
+        <td style="border:1px solid #ddd; padding:8px; font-family:monospace; color:#2196F3; font-weight:bold; cursor:pointer; user-select:all;" title="Click to copy" onclick="copyTextToClipboard('${escAttr(it.test_id)}')">${escAttr(it.test_id)}</td>
+        <td style="border:1px solid #ddd; padding:8px;">${escAttr(it.model)}</td>
+        <td style="border:1px solid #ddd; padding:8px;">${it.cycle}</td>
+        <td style="border:1px solid #ddd; padding:8px;">${it.owner ? escAttr(it.owner) : '<span style="color:#bbb">—</span>'}</td>
+        <td style="border:1px solid #ddd; padding:8px;">${it.team ? escAttr(it.team) : '<span style="color:#bbb">—</span>'}</td>
+        <td style="border:1px solid #ddd; padding:8px; max-width:300px; word-break:break-word; font-size:12px; color:#555; cursor:help;" title="${escAttr(it.description || "")}">${escAttr((it.description || "—").length > 150 ? (it.description || "").slice(0, 150) + "…" : (it.description || "—"))}</td>
+      </tr>`;
+    }
+    html += `</tbody></table>`;
+
+    if (!d.items.length) {
+      html += `<p style="color:#888; padding:10px;">Không có script nào đang fail vì nguyên nhân này ở lần chạy gần nhất.</p>`;
+    }
+
+    $("#rcbContent").innerHTML = html;
+
+    $("#btnRcbCopy").addEventListener("click", async () => {
+      const ok = await copyTextToClipboard(d.items.map((it) => it.test_id).join("\n"));
+      $("#rcbMsg").textContent = ok ? "📋 Đã copy " + d.items.length + " Test ID." : "Không copy tự động được.";
+    });
+    $("#btnRcbExport").addEventListener("click", () => {
+      const header = ["Item", "TC ID", "Test ID", "Model", "Cycle", "Cycle Date", "Owner", "Team", "Mô tả"];
+      const rows = d.items.map((it) => [it.test_suite, it.test_case, it.test_id, it.model, it.cycle, it.cycle_date, it.owner, it.team, it.description]);
+      const csv = [header, ...rows]
+        .map((row) => row.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","))
+        .join("\r\n");
+      const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "root_cause_" + labelKey.replace(/[^\w]+/g, "_").slice(0, 40) + ".csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    });
+  } catch (e) {
+    $("#rcbContent").innerHTML = `<p style="color:#e74c3c;">Lỗi tải chi tiết: ${escAttr(e.message)}</p>`;
   }
 }
 
