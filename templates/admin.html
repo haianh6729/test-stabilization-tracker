@@ -276,6 +276,7 @@
           <th>Test Suite</th>
           <th>Test Case</th>
           <th>Model</th>
+          <th>SN</th>
           <th>State</th>
           <th>Result</th>
           <th>Author (Owner)</th>
@@ -383,6 +384,7 @@ SM-00-045	tuyen.bv1	SKIP	2026-06-08			TC trùng, không cần viết"></textarea
           <th>Model đã fix</th>
           <th>Fix sau cycle</th>
           <th>Root cause</th>
+          <th>SDF ID</th>
           <th>Ghi chú</th>
           <th>Tạo lúc</th>
           <th>Hành động</th>
@@ -705,6 +707,10 @@ Keyboard	SKBD_000123	tuyen.bv1"></textarea>
         <textarea id="fixRootCause"></textarea>
       </div>
       <div class="form-group">
+        <label>SDF ID (bằng chứng đã chạy lại):</label>
+        <input type="text" id="fixSdfId">
+      </div>
+      <div class="form-group">
         <label>Ghi chú:</label>
         <textarea id="fixNote"></textarea>
       </div>
@@ -849,8 +855,9 @@ function admRenderResults() {
       <td>${r.test_suite}</td>
       <td>${r.test_case}</td>
       <td>${r.model}</td>
+      <td style="font-family:monospace; font-size:12px;">${r.serial || '-'}</td>
       <td><strong>${r.state}</strong></td>
-      <td><span style="color: ${r.result === 'Pass' ? 'green' : 'red'}; font-weight: bold;">${r.result}</span></td>
+      <td><span style="color: ${r.result === 'Pass' ? 'green' : (r.result === 'Excluded' ? '#999' : 'red')}; font-weight: bold;">${r.result}</span></td>
       <td>${r.author || '-'}</td>
       <td>${r.team || '-'}</td>
       <td>${r.created_by || 'Unknown'}</td>
@@ -1158,6 +1165,7 @@ function admRenderFixes() {
       <td>${f.model_fixed}</td>
       <td>${f.fixed_after_cycle}</td>
       <td style="max-width:220px; word-break:break-word;">${f.root_cause || '-'}</td>
+      <td style="font-family:monospace; font-size:12px;">${f.sdf_id || '-'}</td>
       <td style="max-width:180px; word-break:break-word;">${f.note || '-'}</td>
       <td>${f.created_at ? f.created_at.split(' ')[0] : '-'}</td>
       <td>
@@ -1191,6 +1199,7 @@ function openEditFixModal(id, fix) {
   document.getElementById('fixModelFixed').value = fix.model_fixed || '';
   document.getElementById('fixFixedAfterCycle').value = fix.fixed_after_cycle;
   document.getElementById('fixRootCause').value = fix.root_cause || '';
+  document.getElementById('fixSdfId').value = fix.sdf_id || '';
   document.getElementById('fixNote').value = fix.note || '';
   document.getElementById('fixModal').classList.add('show');
 }
@@ -1211,6 +1220,7 @@ async function saveFix(event) {
     model_fixed: document.getElementById('fixModelFixed').value.trim(),
     fixed_after_cycle: parseInt(document.getElementById('fixFixedAfterCycle').value, 10),
     root_cause: document.getElementById('fixRootCause').value.trim(),
+    sdf_id: document.getElementById('fixSdfId').value.trim(),
     note: document.getElementById('fixNote').value.trim(),
   };
 

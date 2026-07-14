@@ -248,7 +248,7 @@ function renderCoverage(cov) {
   const color = cov.pct >= 0.85 ? "#1e8449" : (cov.pct >= 0.5 ? "#e67e22" : "#c0392b");
   box.innerHTML = `<div style="font-size:20px; font-weight:bold; color:${color}">
       ${cov.done} / ${cov.total_needed} (${fmtPct(cov.pct)})</div>
-    <span class="hint">SKIP on company side: ${cov.skip} (excluded from total)${cov.out_of_plan ? ` · DONE outside plan: ${cov.out_of_plan}` : ""} · Synced: ${cov.synced_at || "—"}</span>`;
+    <span class="hint">SKIP on company side: ${cov.skip} (excluded from total)${cov.target_pending ? ` · Target (to finish, not done): ${cov.target_pending}` : ""}${cov.out_of_plan ? ` · DONE outside plan: ${cov.out_of_plan}` : ""} · Synced: ${cov.synced_at || "—"}</span>`;
   if (table) {
     table.style.display = "";
     const rowsHtml = (cov.by_item || []).map((it) => `
@@ -1146,9 +1146,9 @@ function tokenizeDelimited(text, delim) {
   return rows;
 }
 
-// Nhan 2 dinh dang:
-//  - Cu (6 cot): Test ID, Model, Test suite, Test Case, State, Description
-//  - Moi (8 cot): Request ID, Model, Test Suite, Test Case, State, Description, Author, Team
+// Dinh dang MOI co Serial Number (SN = thiet bi that da chay ra ket qua), SN dung ngay sau Model:
+//  - 7-8 cot: Test ID, Model, SN, Test Suite, Test Case, State, Description
+//  - 9+ cot : Test ID, Model, SN, Test Suite, Test Case, State, Description, Author, Team
 // test_suite/test_case gui len o dang tho, server se tu trich xuat/chuan hoa ten.
 function parsePaste(text) {
   if (!text || !text.trim()) return [];
@@ -1158,19 +1158,20 @@ function parsePaste(text) {
   for (const parts of tokenRows) {
     const trimmed = parts.map((p) => p.trim());
     if (!trimmed.some((p) => p.length)) continue; // dong trong
-    if (trimmed.length < 6) continue;
+    if (trimmed.length < 7) continue;
     if (/^(test\s*id|request\s*id|sdf\s*id)$/i.test(trimmed[0]) || /^model$/i.test(trimmed[1])) continue; // header row
 
+    const test_id = trimmed[0], model = trimmed[1], serial = trimmed[2],
+      test_suite = trimmed[3], test_case = trimmed[4], state = trimmed[5];
     let row;
-    if (trimmed.length >= 8) {
-      const test_id = trimmed[0], model = trimmed[1], test_suite = trimmed[2], test_case = trimmed[3], state = trimmed[4];
+    if (trimmed.length >= 9) {
       const team = trimmed[trimmed.length - 1];
       const author = trimmed[trimmed.length - 2];
-      const description = trimmed.slice(5, trimmed.length - 2).join(" ");
-      row = { test_id, model, test_suite, test_case, state, description, author, team };
+      const description = trimmed.slice(6, trimmed.length - 2).join(" ");
+      row = { test_id, model, serial, test_suite, test_case, state, description, author, team };
     } else {
-      const [test_id, model, test_suite, test_case, state, ...descParts] = trimmed;
-      row = { test_id, model, test_suite, test_case, state, description: descParts.join(" ") || "" };
+      const description = trimmed.slice(6).join(" ") || "";
+      row = { test_id, model, serial, test_suite, test_case, state, description };
     }
     rows.push(row);
   }
@@ -1185,9 +1186,9 @@ function initInputResults() {
       return;
     }
     let html = `<p>Nhận diện <b>${rows.length}</b> dòng (Test suite/Test case sẽ được server tự chuẩn hoá tên khi lưu):</p><table class="data-table"><thead><tr>
-      <th>Test ID</th><th>Model</th><th>Suite (thô)</th><th>Case (thô)</th><th>State</th><th>Description</th><th>Author</th><th>Team</th></tr></thead><tbody>`;
+      <th>Test ID</th><th>Model</th><th>SN</th><th>Suite (thô)</th><th>Case (thô)</th><th>State</th><th>Description</th><th>Author</th><th>Team</th></tr></thead><tbody>`;
     rows.slice(0, 20).forEach((r) => {
-      html += `<tr><td>${r.test_id}</td><td>${r.model}</td><td>${r.test_suite}</td><td>${r.test_case}</td><td>${r.state}</td><td>${r.description}</td><td>${r.author || ""}</td><td>${r.team || ""}</td></tr>`;
+      html += `<tr><td>${r.test_id}</td><td>${r.model}</td><td>${r.serial || ""}</td><td>${r.test_suite}</td><td>${r.test_case}</td><td>${r.state}</td><td>${r.description}</td><td>${r.author || ""}</td><td>${r.team || ""}</td></tr>`;
     });
     html += "</tbody></table>";
     if (rows.length > 20) html += `<p style="color:#999">... và ${rows.length - 20} dòng khác</p>`;
@@ -1214,6 +1215,7 @@ function initInputResults() {
       let extra = "";
       if (res.skipped_running) extra += ` (${res.skipped_running} dòng RUNNING bị bỏ qua)`;
       if (res.skipped_duplicate) extra += ` (${res.skipped_duplicate} dòng trùng lặp bị bỏ qua — đã có sẵn cùng Test ID/Test Case/Model/State/Description)`;
+      if (res.excluded) extra += ` (${res.excluded} dòng khớp whitelist lỗi nhiễu — đã lưu nhưng KHÔNG tính vào thống kê pass/fail)`;
       if (res.errors.length) extra += ` (${res.errors.length} dòng lỗi)`;
       msg.textContent = `✅ Đã lưu ${res.inserted} dòng.` + extra;
       msg.className = res.errors.length ? "msg-err" : "msg-ok";
@@ -1319,6 +1321,7 @@ function initInputFix() {
       fixed_after_cycle: parseInt($("#fCycle").value, 10),
       root_cause_group: $("#fRootCauseGroup") ? $("#fRootCauseGroup").value : "",
       root_cause_detail: $("#fRootCause").value.trim(),
+      sdf_id: $("#fSdfId") ? $("#fSdfId").value.trim() : "",
       note: $("#fNote").value.trim(),
     };
     const msg = $("#fixMsg");
@@ -1339,6 +1342,12 @@ function initInputFix() {
       $("#fRootCause").focus();
       return;
     }
+    if (!payload.sdf_id) {
+      msg.textContent = "⚠️ Bắt buộc nhập SDF ID (bằng chứng đã chạy lại để đảm bảo fix) trước khi ghi nhận fix.";
+      msg.className = "msg-err";
+      $("#fSdfId")?.focus();
+      return;
+    }
     try {
       const res = await api("/api/fixes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (res.status === "updated") {
@@ -1349,6 +1358,7 @@ function initInputFix() {
       msg.className = "msg-ok";
       if ($("#fRootCauseGroup")) $("#fRootCauseGroup").value = "";
       $("#fRootCause").value = "";
+      if ($("#fSdfId")) $("#fSdfId").value = "";
       $("#fNote").value = "";
       await loadReferenceData();
       await loadFailingScripts();
@@ -1756,6 +1766,7 @@ function renderFixTracking() {
       <td>${r.test_case}</td>
       <td>${r.model_fixed}</td>
       <td style="max-width:220px; word-break:break-word; font-size:11px; color:#444">${r.root_cause || '<span style="color:#bbb">—</span>'}</td>
+      <td style="font-family:monospace; font-size:11px">${r.sdf_id ? escAttr(r.sdf_id) : '<span style="color:#bbb">—</span>'}</td>
       <td>${r.fixed_after_cycle}</td>
       <td>${r.next_cycle_after_fix ?? "—"}</td>
       <td>${r.runs_after}</td>
@@ -1763,7 +1774,7 @@ function renderFixTracking() {
       <td>${r.fix_date}</td>
       <td style="max-width:200px; word-break:break-word; font-size:11px; color:#666">${r.note || "—"}</td>
     </tr>`;
-  }).join("") || `<tr><td colspan="13" style="color:#999">Chưa có lần fix nào khớp.</td></tr>`;
+  }).join("") || `<tr><td colspan="14" style="color:#999">Chưa có lần fix nào khớp.</td></tr>`;
 }
 
 function initFixTracking() {
@@ -1783,6 +1794,7 @@ function renderPriorityTableHead() {
     ["test_case", "Test Case", "Tên test case / script"],
     ["priority_tier", "Tier", "P0-P3 = còn lỗi (mức độ ưu tiên); Verify = hết lỗi nhưng chưa đủ cycle xác nhận; Done = đã xác nhận ổn định"],
     ["is_flaky", "Flaky", "Script đổi kết quả pass/fail nhiều lần trong các cycle gần nhất"],
+    ["is_persistent", "Persistent", "Fail liên tục ≥ N cycle gần nhất (chưa từng pass xen kẽ) — lỗi bền vững, cần xử lý dứt điểm"],
     ["reopen_count", "Reopen", "Số lần script đã fix xong nhưng fail lại (toàn bộ lịch sử)"],
     ["priority_score", "Điểm ưu tiên", "fail_count × số model fail — điểm càng cao càng cần ưu tiên fix"],
     ["fail_count", "Tổng Fail", "Tổng số lượt fail qua tất cả cycle và model"],
@@ -1839,6 +1851,7 @@ function priorityCellValue(r, key) {
   if (key.startsWith("model_")) return r.model_detail[key.slice(6)] || "—";
   if (key === "current_owner") return r.current_owner || "(chưa gán)";
   if (key === "is_flaky") return r.is_flaky ? "Flaky" : "";
+  if (key === "is_persistent") return r.is_persistent ? "Persistent" : "";
   return r[key];
 }
 
@@ -1848,7 +1861,8 @@ function renderPriorityTable() {
   const colFilters = state.priorityColumnFilters || {};
   let rows = state.priority.filter((r) => {
     const matchSearch = !search || r.test_suite.toLowerCase().includes(search) || r.test_case.toLowerCase().includes(search);
-    const matchTier = !tierFilter || r.priority_tier === tierFilter;
+    // Filter dac biet "__persistent__" = chi hien script fail dai dang; con lai loc theo tier.
+    const matchTier = !tierFilter || (tierFilter === "__persistent__" ? r.is_persistent : r.priority_tier === tierFilter);
     if (!matchSearch || !matchTier) return false;
     for (const [key, val] of Object.entries(colFilters)) {
       if (!val) continue;
@@ -1865,7 +1879,7 @@ function renderPriorityTable() {
     if (av > bv) return 1 * dir;
     return 0;
   });
-  const ncols = 14 + state.models.length + 1;
+  const ncols = 15 + state.models.length + 1;
   // Phan trang phia client: chi render dong cua trang hien tai (giam so node DOM -> chua lag).
   // Loc + sort van tren TOAN BO state.priority o tren; chi cat-lat de hien thi.
   const info = ttPageInfo("priorityTable", rows.length, state.priorityPage);
@@ -1884,6 +1898,7 @@ function renderPriorityTable() {
       <td>${r.test_case}</td>
       <td><span class="tag tag-${r.priority_tier}">${r.priority_tier}</span></td>
       <td>${r.is_flaky ? `<span class="tag tag-flaky" title="Đổi pass/fail ${r.flip_count} lần trong cửa sổ cycle gần nhất">🌀 Flaky</span>` : '<span style="color:#bbb">—</span>'}</td>
+      <td>${r.is_persistent ? `<span class="tag" style="background:#c0392b" title="Fail liên tục nhiều cycle gần nhất — lỗi bền vững">🔴 Persistent</span>` : '<span style="color:#bbb">—</span>'}</td>
       <td>${r.reopen_count > 0 ? `<b style="color:#e67e22">${r.reopen_count}</b>` : (r.reopen_count ?? 0)}</td>
       <td><b style="color:#c0392b">${r.priority_score}</b></td>
       <td>${r.fail_count}</td>
@@ -1931,6 +1946,7 @@ async function showFailDetails(suite, testCase) {
         <th style="border:1px solid #ddd; padding:10px; text-align:left;">Cycle</th>
         <th style="border:1px solid #ddd; padding:10px; text-align:left;">Test ID</th>
         <th style="border:1px solid #ddd; padding:10px; text-align:left;">Model</th>
+        <th style="border:1px solid #ddd; padding:10px; text-align:left;" title="Serial Number — thiết bị thật đã chạy ra kết quả này (truy vết trên farm)">SN</th>
         <th style="border:1px solid #ddd; padding:10px; text-align:left;">State</th>
         <th style="border:1px solid #ddd; padding:10px; text-align:left;">Description</th>
       </tr></thead>
@@ -1940,6 +1956,7 @@ async function showFailDetails(suite, testCase) {
         <td style="border:1px solid #ddd; padding:10px;">${f.cycle}</td>
         <td style="border:1px solid #ddd; padding:10px; font-family:monospace; color:#2196F3; font-weight:bold; cursor:pointer; user-select:all;" title="Click to copy" onclick="navigator.clipboard.writeText('${f.test_id}'); this.style.background='#d4edda'; setTimeout(() => this.style.background='', 500);">${f.test_id}</td>
         <td style="border:1px solid #ddd; padding:10px;">${f.model}</td>
+        <td style="border:1px solid #ddd; padding:10px; font-family:monospace; font-size:12px;">${escAttr(f.serial || "—")}</td>
         <td style="border:1px solid #ddd; padding:10px;"><span style="color:#fff; background:#e74c3c; padding:4px 8px; border-radius:3px; font-weight:bold;">${f.state}</span></td>
         <td style="border:1px solid #ddd; padding:10px; max-width:350px; word-break:break-word; font-size:12px; color:#555; cursor:help;" title="${escAttr(f.description || "")}">${escAttr((f.description || "—").length > 200 ? (f.description || "").slice(0, 200) + "…" : (f.description || "—"))}</td>
       </tr>`;
@@ -2438,6 +2455,7 @@ async function initSettings() {
     $("#sExitCriteria").value = s.exit_criteria_cycles || "2";
     $("#sFlakyWindow").value = s.flaky_window || "5";
     $("#sFlakyFlips").value = s.flaky_min_flips || "2";
+    if ($("#sPersistFail")) $("#sPersistFail").value = s.persistent_fail_cycles || "3";
     $("#sExcludeNew").value = s.exclude_new_scripts_cycles || "0";
     $("#btnSaveCriteria")?.addEventListener("click", async () => {
       const msg = $("#criteriaMsg");
@@ -2446,9 +2464,38 @@ async function initSettings() {
           exit_criteria_cycles: $("#sExitCriteria").value || "2",
           flaky_window: $("#sFlakyWindow").value || "5",
           flaky_min_flips: $("#sFlakyFlips").value || "2",
+          persistent_fail_cycles: ($("#sPersistFail") ? $("#sPersistFail").value : "") || "3",
           exclude_new_scripts_cycles: $("#sExcludeNew").value || "0",
         }) });
         msg.textContent = "Đã lưu — Dashboard/Bảng ưu tiên sẽ tính lại theo tiêu chí mới.";
+        msg.className = "msg-ok";
+        await loadPriority();
+        renderPriorityTable();
+        await refreshDashboard();
+      } catch (e) { msg.textContent = "Lỗi: " + e.message; msg.className = "msg-err"; }
+    });
+  }
+
+  // ----- Whitelist lỗi nhiễu (loại khỏi thống kê pass/fail) -----
+  if ($("#sErrorWhitelist")) {
+    $("#sErrorWhitelist").value = s.error_whitelist || "";
+    $("#btnSaveWhitelist")?.addEventListener("click", async () => {
+      const msg = $("#whitelistMsg");
+      try {
+        await api("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+          error_whitelist: $("#sErrorWhitelist").value || "",
+        }) });
+        msg.textContent = "Đã lưu whitelist. Kết quả nhập từ giờ khớp whitelist sẽ tự loại khỏi thống kê. Dùng nút bên dưới để áp dụng cho dữ liệu đã có.";
+        msg.className = "msg-ok";
+      } catch (e) { msg.textContent = "Lỗi: " + e.message; msg.className = "msg-err"; }
+    });
+    $("#btnApplyWhitelist")?.addEventListener("click", async () => {
+      const msg = $("#whitelistMsg");
+      if (!confirm("Quét toàn bộ kết quả Pass/Fail đã có và loại (Excluded) các dòng có mô tả khớp whitelist? Thao tác này thay đổi thống kê (chỉ đi 1 chiều, không tự khôi phục).")) return;
+      msg.textContent = "Đang áp dụng..."; msg.className = "";
+      try {
+        const res = await api("/api/settings/apply-whitelist", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        msg.textContent = `✅ Đã loại ${res.updated} dòng cũ khớp whitelist khỏi thống kê (result=Excluded).`;
         msg.className = "msg-ok";
         await loadPriority();
         renderPriorityTable();

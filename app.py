@@ -70,6 +70,8 @@ SETTINGS_MASK = "********"
 # "excluded" = vocab TC Hub that; "skip" = giu tuong thich voi vocab paste tay cu.
 COMPANY_PERFORMED_STATES = {"performed"}
 COMPANY_SKIP_STATES = {"skip", "excluded"}
+# "target" (automationTarget) = TC CAN hoan thanh script nhung CHUA xong (khac performed/excluded).
+COMPANY_TARGET_STATES = {"target"}
 
 BACKUP_DIR = "backups"
 
@@ -296,7 +298,11 @@ def init_db():
         "flaky_window": "5",             # so cycle gan nhat de xet flaky
         "flaky_min_flips": "2",          # so lan doi pass<->fail toi thieu de coi la flaky
         "exit_criteria_cycles": "2",     # Done = pass N cycle lien tiep tren moi model
+        "persistent_fail_cycles": "3",   # TC fail lien tiep >= N cycle gan nhat -> "dai dang"
         "exclude_new_scripts_cycles": "0",  # >0: them pass rate phu loai script moi N cycle dau
+        # Whitelist loi nhieu (moi dong 1 cum, match substring khong phan biet hoa/thuong):
+        # ket qua co mo ta khop -> luu voi result='Excluded' (KHONG tinh vao thong ke pass/fail).
+        "error_whitelist": "",
         # --- Backup ---
         "backup_enabled": "1",
         "backup_retention": "30",
@@ -327,6 +333,8 @@ def init_db():
         "ALTER TABLE owners ADD COLUMN team TEXT",
         "ALTER TABLE fixes ADD COLUMN root_cause TEXT",
         "ALTER TABLE fixes ADD COLUMN root_cause_group TEXT",
+        "ALTER TABLE fixes ADD COLUMN sdf_id TEXT",
+        "ALTER TABLE results ADD COLUMN serial TEXT",
         "ALTER TABLE test_suites ADD COLUMN script_path TEXT DEFAULT ''",
     ):
         try:
@@ -641,7 +649,7 @@ def log_audit(db, action, target="", detail=""):
     )
 
 
-def _http_json(url, token="", method="GET", payload=None, timeout=15, cookie=""):
+def _http_json(url, token="", method="GET", payload=None, timeout=30, cookie=""):
     """Goi HTTP JSON ra ngoai (farm API / TC Hub / GitHub) bang urllib stdlib.
     Tra ve object da parse JSON; nem RuntimeError voi message tieng Viet de hien thang
     len UI khi loi (khong ket noi duoc / HTTP status loi / body khong phai JSON).
@@ -708,6 +716,22 @@ def classify_result(state):
 
 def is_skip_state(state):
     return state.strip().lower() in SKIP_STATES
+
+
+def get_error_whitelist(db):
+    """List cac cum tu whitelist loi nhieu (setting 'error_whitelist', moi dong 1 cum).
+    Ket qua co Description khop 1 trong cac cum nay se duoc luu voi result='Excluded'
+    (khong tinh vao thong ke pass/fail) de khong gay nhieu viec fix."""
+    raw = get_setting(db, "error_whitelist", "") or ""
+    return [line.strip() for line in raw.splitlines() if line.strip()]
+
+
+def matches_whitelist(description, patterns):
+    """True neu description chua bat ky cum whitelist nao (substring, khong phan biet hoa/thuong)."""
+    if not patterns:
+        return False
+    low = str(description or "").lower()
+    return any(p.lower() in low for p in patterns)
 
 
 # ------------------------------------------------------------------
@@ -830,7 +854,7 @@ def compute_cycle_trend(db):
         SELECT cycle, MIN(cycle_date) as cycle_date, COUNT(*) as total,
                SUM(CASE WHEN LOWER(TRIM(state)) IN ('pass','check','manual check') THEN 1 ELSE 0 END) as pass_like_count,
                SUM(CASE WHEN LOWER(TRIM(state))='na' THEN 1 ELSE 0 END) as na_count
-        FROM results GROUP BY cycle ORDER BY cycle
+        FROM results WHERE result <> 'Excluded' GROUP BY cycle ORDER BY cycle
         """
     ).fetchall()
     trend = []
@@ -882,7 +906,7 @@ def compute_adjusted_trend(db, exclude_n):
         SELECT test_suite, test_case, cycle, COUNT(*) as total,
                SUM(CASE WHEN LOWER(TRIM(state)) IN ('pass','check','manual check') THEN 1 ELSE 0 END) as pass_like,
                SUM(CASE WHEN LOWER(TRIM(state))='na' THEN 1 ELSE 0 END) as na
-        FROM results GROUP BY test_suite, test_case, cycle
+        FROM results WHERE result <> 'Excluded' GROUP BY test_suite, test_case, cycle
         """
     ).fetchall()
     first_cycle = {}
@@ -920,12 +944,16 @@ def compute_coverage(db):
 
     needed = {}   # tc_id_norm -> item
     skip_ids = set()
+    target_ids = set()   # TC status 'target' = can hoan thanh nhung chua xong
     for r in comp_rows:
         item = (r["item"] or "").strip() or item_from_tc_id(r["tc_id"]) or "Unknown"
-        if (r["status"] or "").strip().lower() in COMPANY_SKIP_STATES:
+        status_l = (r["status"] or "").strip().lower()
+        if status_l in COMPANY_SKIP_STATES:
             skip_ids.add(norm(r["tc_id"]))
         else:
             needed[norm(r["tc_id"])] = item
+            if status_l in COMPANY_TARGET_STATES:
+                target_ids.add(norm(r["tc_id"]))
 
     done_in_plan = set()
     out_of_plan = []
@@ -952,12 +980,16 @@ def compute_coverage(db):
     ]
     total_needed = len(needed)
     done_n = len(done_in_plan)
+    # TC status 'target' con lai (chua ghi nhan DONE ben new_scripts) = viec con phai lam.
+    target_pending = len(target_ids - done_in_plan)
     synced_at = max((r["synced_at"] or "" for r in comp_rows), default="")
     return {
         "configured": True,
         "total_needed": total_needed,
         "skip": len(skip_ids),
         "done": done_n,
+        "target": len(target_ids),
+        "target_pending": target_pending,
         "pct": (done_n / total_needed) if total_needed else 0,
         "out_of_plan": len(out_of_plan),
         "by_item": by_item,
@@ -992,7 +1024,7 @@ def compute_script_cycle_matrix(db, group_by_model=False):
         SELECT {group_cols}, COUNT(*) as total,
                SUM(CASE WHEN LOWER(TRIM(state)) IN ('pass','check','manual check') THEN 1 ELSE 0 END) as pass_like_count,
                SUM(CASE WHEN LOWER(TRIM(state))='na' THEN 1 ELSE 0 END) as na_count
-        FROM results GROUP BY {group_cols}
+        FROM results WHERE result <> 'Excluded' GROUP BY {group_cols}
         """
     ).fetchall()
 
@@ -1094,7 +1126,7 @@ def compute_suite_model_matrix(db):
         SELECT test_suite, model, cycle, COUNT(*) as total,
                SUM(CASE WHEN LOWER(TRIM(state)) IN ('pass','check','manual check') THEN 1 ELSE 0 END) as pass_like,
                SUM(CASE WHEN LOWER(TRIM(state))='na' THEN 1 ELSE 0 END) as na
-        FROM results GROUP BY test_suite, model, cycle
+        FROM results WHERE result <> 'Excluded' GROUP BY test_suite, model, cycle
         """
     ).fetchall()
     by_key = {}
@@ -1110,7 +1142,7 @@ def compute_suite_model_matrix(db):
         SELECT cycle, COUNT(*) as total,
                SUM(CASE WHEN LOWER(TRIM(state)) IN ('pass','check','manual check') THEN 1 ELSE 0 END) as pass_like,
                SUM(CASE WHEN LOWER(TRIM(state))='na' THEN 1 ELSE 0 END) as na
-        FROM results GROUP BY cycle
+        FROM results WHERE result <> 'Excluded' GROUP BY cycle
         """
     ).fetchall()
     overall_by_cycle = {r["cycle"]: cell(r["total"], r["pass_like"], r["na"]) for r in overall_raw}
@@ -1712,6 +1744,29 @@ def api_settings():
     return jsonify(out)
 
 
+@app.route("/api/settings/apply-whitelist", methods=["POST"])
+@require_perm("settings")
+def api_apply_whitelist():
+    """Ap dung whitelist loi nhieu cho DU LIEU DA CO: quet cac ket qua Pass/Fail co mo ta
+    khop whitelist -> reclass sang result='Excluded' (loai khoi thong ke). Dung khi nguoi
+    dung vua tinh chinh whitelist va muon loai ca noise cu. Chi dong theo 1 chieu (khong tu
+    dua Excluded ve lai Pass/Fail)."""
+    db = get_db()
+    whitelist = get_error_whitelist(db)
+    if not whitelist:
+        return jsonify({"error": "Whitelist đang trống — nhập ít nhất 1 cụm từ trong ô 'Whitelist lỗi nhiễu' rồi lưu trước khi áp dụng."}), 400
+    updated = 0
+    for r in db.execute(
+        "SELECT id, description FROM results WHERE result IN ('Pass','Fail')"
+    ).fetchall():
+        if matches_whitelist(r["description"], whitelist):
+            db.execute("UPDATE results SET result='Excluded' WHERE id=?", (r["id"],))
+            updated += 1
+    log_audit(db, "results.apply_whitelist", detail=f"reclassified {updated} rows to Excluded")
+    db.commit()
+    return jsonify({"status": "ok", "updated": updated})
+
+
 # ------------------------------------------------------------------
 # New scripts (Script viet moi) - ghi nhan script duoc viet moi cho tung Test Case
 # ------------------------------------------------------------------
@@ -1934,9 +1989,12 @@ def insert_result_rows(db, rows, created_by):
     ).fetchone()
     existing_min_date = min_row["d"] if min_row else None
 
+    whitelist = get_error_whitelist(db)
+
     inserted = 0
     skipped_running = 0
     skipped_duplicate = 0
+    excluded = 0
     errors = []
     duplicates = []
     warnings = []
@@ -1982,11 +2040,16 @@ def insert_result_rows(db, rows, created_by):
             cycle = 0
             author = str(row.get("author") or "").strip()
             team = str(row.get("team") or "").strip()
+            serial = str(row.get("serial") or "").strip()
             result = classify_result(state)
+            # Whitelist loi nhieu: mo ta khop -> luu nhung KHONG tinh vao thong ke (result='Excluded').
+            if matches_whitelist(description, whitelist):
+                result = "Excluded"
+                excluded += 1
             db.execute(
-                "INSERT INTO results (cycle, cycle_date, test_id, model, test_suite, test_case, state, description, result, created_by, author, team) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                (cycle, cycle_date, test_id, model, test_suite, test_case, state, description, result, created_by, author, team),
+                "INSERT INTO results (cycle, cycle_date, test_id, model, test_suite, test_case, state, description, result, created_by, author, team, serial) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (cycle, cycle_date, test_id, model, test_suite, test_case, state, description, result, created_by, author, team, serial),
             )
             db.execute("INSERT OR IGNORE INTO test_suites (name) VALUES (?)", (test_suite,))
             if db.execute("SELECT 1 FROM models WHERE name=?", (model,)).fetchone() is None:
@@ -2017,6 +2080,7 @@ def insert_result_rows(db, rows, created_by):
         "inserted": inserted,
         "skipped_running": skipped_running,
         "skipped_duplicate": skipped_duplicate,
+        "excluded": excluded,
         "duplicates": duplicates,
         "errors": errors,
         "warnings": warnings,
@@ -2087,12 +2151,17 @@ def api_add_fix():
     group = str(row.get("root_cause_group") or "").strip()
     detail = str(row.get("root_cause_detail") or "").strip()
     root_cause = str(row.get("root_cause") or "").strip()
+    sdf_id = str(row.get("sdf_id") or "").strip()
     if group:
         if group not in valid_groups:
             return jsonify({"error": "Nhóm nguyên nhân không hợp lệ. Chọn 1 trong: " + ", ".join(valid_groups)}), 400
         # Chi tiet nguyen nhan BAT BUOC (form UI). Bulk import free-text di nhanh 'elif' ben duoi.
         if not detail:
             return jsonify({"error": "Bắt buộc nhập Chi tiết nguyên nhân (mô tả cụ thể) khi ghi nhận fix."}), 400
+        # SDF ID BAT BUOC khi ghi fix qua form (bang chung da chay lai de dam bao fix hieu qua).
+        # Bulk import admin di nhanh 'elif' ben duoi -> khong bat buoc (tuong thich du lieu cu).
+        if not sdf_id:
+            return jsonify({"error": "Bắt buộc nhập SDF ID (bằng chứng đã chạy lại để đảm bảo fix)."}), 400
         root_cause = f"{group} - {detail}"
     elif root_cause:
         group = classify_root_cause_group(root_cause)
@@ -2115,8 +2184,8 @@ def api_add_fix():
     ).fetchone()
     if existing:
         db.execute(
-            "UPDATE fixes SET fix_date=?, note=?, root_cause=?, root_cause_group=? WHERE id=?",
-            (row["fix_date"], note, root_cause, group, existing["id"]),
+            "UPDATE fixes SET fix_date=?, note=?, root_cause=?, root_cause_group=?, sdf_id=? WHERE id=?",
+            (row["fix_date"], note, root_cause, group, sdf_id, existing["id"]),
         )
         db.commit()
         return jsonify({
@@ -2125,9 +2194,9 @@ def api_add_fix():
         })
 
     db.execute(
-        "INSERT INTO fixes (fix_date, owner, test_suite, test_case, model_fixed, fixed_after_cycle, note, root_cause, root_cause_group) "
-        "VALUES (?,?,?,?,?,?,?,?,?)",
-        (row["fix_date"], owner_name, test_suite, test_case, model_fixed, fixed_after_cycle, note, root_cause, group),
+        "INSERT INTO fixes (fix_date, owner, test_suite, test_case, model_fixed, fixed_after_cycle, note, root_cause, root_cause_group, sdf_id) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (row["fix_date"], owner_name, test_suite, test_case, model_fixed, fixed_after_cycle, note, root_cause, group, sdf_id),
     )
     db.commit()
     return jsonify({"status": "ok"})
@@ -2193,7 +2262,7 @@ def compute_fix_tracking(db):
     by_pair = {}
     for r in db.execute(
         f"SELECT test_suite, test_case, model, cycle, result FROM results "
-        f"WHERE test_suite IN ({ph}) AND cycle>?",
+        f"WHERE test_suite IN ({ph}) AND cycle>? AND result <> 'Excluded'",
         (*suites, min_after),
     ).fetchall():
         by_pair.setdefault((r["test_suite"], r["test_case"]), []).append(r)
@@ -2219,6 +2288,7 @@ def compute_fix_tracking(db):
             "fixed_after_cycle": after_cycle, "note": f["note"],
             "root_cause": (f["root_cause"] if "root_cause" in f.keys() else "") or "",
             "root_cause_group": (f["root_cause_group"] if "root_cause_group" in f.keys() else "") or "",
+            "sdf_id": (f["sdf_id"] if "sdf_id" in f.keys() else "") or "",
             "status": status, "status_label": FIX_STATUS_LABEL[status],
             "next_cycle_after_fix": next_cycle,
             "runs_after": len(after_rows), "fails_after": n_fail_after,
@@ -2265,7 +2335,7 @@ def get_latest_status(db):
                 PARTITION BY test_suite, test_case, model
                 ORDER BY cycle DESC, id DESC
             ) as rn
-            FROM results
+            FROM results WHERE result <> 'Excluded'
         )
         WHERE rn = 1
         """
@@ -2292,6 +2362,7 @@ def get_script_priority(db):
     exit_n = max(1, get_setting_int(db, "exit_criteria_cycles", 2))
     flaky_window = max(2, get_setting_int(db, "flaky_window", 5))
     flaky_min_flips = max(1, get_setting_int(db, "flaky_min_flips", 2))
+    persist_n = max(2, get_setting_int(db, "persistent_fail_cycles", 3))
 
     # Chuoi verdict theo cycle cua tung (script, model) va tung script (gop moi model).
     # Verdict cua 1 (model, cycle) = ket qua cua LAN CHAY CUOI CUNG trong cycle do
@@ -2306,7 +2377,7 @@ def get_script_priority(db):
             SELECT *, ROW_NUMBER() OVER (
                 PARTITION BY test_suite, test_case, model, cycle
                 ORDER BY id DESC
-            ) as rn FROM results
+            ) as rn FROM results WHERE result <> 'Excluded'
         ) WHERE rn = 1 ORDER BY cycle
         """
     ).fetchall():
@@ -2394,6 +2465,11 @@ def get_script_priority(db):
             1 for j in range(1, len(verdicts)) if verdicts[j] and not verdicts[j - 1]
         )  # số lần Pass -> Fail (tái lỗi)
         is_flaky = flip_count >= flaky_min_flips
+        # Persistent (dai dang): fail lien tuc >= persist_n cycle GAN NHAT (khong pass xen ke),
+        # va cycle moi nhat cung fail -> loi ben vung, uu tien xu ly dut diem. Khac flaky.
+        is_persistent = (
+            fail_latest > 0 and len(verdicts) >= persist_n and all(verdicts[-persist_n:])
+        )
 
         out.append({
             "test_suite": suite, "test_case": case,
@@ -2408,6 +2484,7 @@ def get_script_priority(db):
             "current_owner": current_owner,
             "team": owner_team.get(current_owner, ""),  # Team (nhóm nhỏ) của người phụ trách
             "is_flaky": is_flaky,
+            "is_persistent": is_persistent, # fail liên tục >= persistent_fail_cycles cycle gần nhất
             "flip_count": flip_count,       # số lần đổi pass<->fail trong flaky_window cycle gần nhất
             "flips_total": flips_total,     # tổng số lần đổi trên toàn lịch sử
             "reopen_count": reopen_count,   # số lần Pass->Fail toàn lịch sử (tái lỗi)
@@ -2454,7 +2531,7 @@ def get_owner_stats(db, priority=None):
     for r in db.execute(
         "SELECT test_suite, test_case, model, cycle, COUNT(*) total, "
         "SUM(CASE WHEN result='Fail' THEN 1 ELSE 0 END) fail "
-        "FROM results GROUP BY test_suite, test_case, model, cycle"
+        "FROM results WHERE result <> 'Excluded' GROUP BY test_suite, test_case, model, cycle"
     ).fetchall():
         agg_model[(r["test_suite"], r["test_case"], r["model"], r["cycle"])] = (r["total"], r["fail"])
         k2 = (r["test_suite"], r["test_case"], r["cycle"])
@@ -2676,7 +2753,7 @@ def api_script_fail_details(suite, case):
     db = get_db()
     rows = db.execute(
         """
-        SELECT id, cycle, cycle_date, test_id, model, state, description, result
+        SELECT id, cycle, cycle_date, test_id, model, serial, state, description, result
         FROM results
         WHERE test_suite=? AND test_case=? AND result='Fail'
         ORDER BY cycle DESC, id DESC
@@ -2703,7 +2780,7 @@ def api_root_cause_breakdown():
                 PARTITION BY test_suite, test_case, model
                 ORDER BY cycle DESC, id DESC
             ) as rn
-            FROM results
+            FROM results WHERE result <> 'Excluded'
         )
         WHERE rn = 1 AND result='Fail'
         """
@@ -2846,7 +2923,7 @@ def api_dashboard():
         SELECT model,
                COUNT(*) as total,
                SUM(CASE WHEN result='Pass' THEN 1 ELSE 0 END) as pass_count
-        FROM results WHERE cycle=? GROUP BY model
+        FROM results WHERE cycle=? AND result <> 'Excluded' GROUP BY model
         """,
         (latest_cycle,),
     ).fetchall()
@@ -3424,7 +3501,7 @@ def build_export_workbook(db):
     # o latest_cycle -> khong co trong map -> (0,0) -> None, dung nhu vong lap cu.
     _mc = {r["model"]: (r["total"], r["pass_count"]) for r in db.execute(
         "SELECT model, COUNT(*) total, SUM(CASE WHEN result='Pass' THEN 1 ELSE 0 END) pass_count "
-        "FROM results WHERE cycle=? GROUP BY model", (latest_cycle,)).fetchall()}
+        "FROM results WHERE cycle=? AND result <> 'Excluded' GROUP BY model", (latest_cycle,)).fetchall()}
     model_pass_rate = {}
     for m in models_list:
         tot, pas = _mc.get(m, (0, 0))
@@ -4080,10 +4157,12 @@ def api_company_testcases():
     total = len(rows)
     skip = sum(1 for r in rows if (r["status"] or "").strip().lower() in COMPANY_SKIP_STATES)
     performed = sum(1 for r in rows if (r["status"] or "").strip().lower() in COMPANY_PERFORMED_STATES)
+    # "target" (automationTarget) = TC can hoan thanh script nhung chua xong.
+    target = sum(1 for r in rows if (r["status"] or "").strip().lower() in COMPANY_TARGET_STATES)
     synced_at = max((r["synced_at"] or "" for r in rows), default="")
     return jsonify({
         "summary": {"total": total, "total_needed": total - skip, "skip": skip,
-                    "performed": performed, "synced_at": synced_at},
+                    "performed": performed, "target": target, "synced_at": synced_at},
         "rows": [dict(r) for r in rows],
     })
 
@@ -4640,7 +4719,7 @@ def build_daily_report(db, date_str=None):
     if entry is not None:
         model_rows = db.execute(
             "SELECT model, COUNT(*) t, SUM(CASE WHEN result='Pass' THEN 1 ELSE 0 END) p "
-            "FROM results WHERE cycle=? GROUP BY model", (entry["cycle"],),
+            "FROM results WHERE cycle=? AND result <> 'Excluded' GROUP BY model", (entry["cycle"],),
         ).fetchall()
         worst = min(((r["p"] / r["t"], r["model"]) for r in model_rows if r["t"]), default=None)
         if worst:
@@ -5841,12 +5920,12 @@ def admin_create_fix():
     root_cause = data.get("root_cause", "").strip()
     group = str(data.get("root_cause_group") or "").strip() or classify_root_cause_group(root_cause)
     db.execute(
-        """INSERT INTO fixes (fix_date, owner, test_suite, test_case, model_fixed, fixed_after_cycle, note, root_cause, root_cause_group)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO fixes (fix_date, owner, test_suite, test_case, model_fixed, fixed_after_cycle, note, root_cause, root_cause_group, sdf_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             data["fix_date"], data["owner"].strip(), data["test_suite"].strip(), data["test_case"].strip(),
             normalize_model_name(data["model_fixed"].strip()), int(data["fixed_after_cycle"]),
-            data.get("note", "").strip(), root_cause, group,
+            data.get("note", "").strip(), root_cause, group, str(data.get("sdf_id") or "").strip(),
         )
     )
     log_audit(db, "admin.fix.create", target=data["test_case"].strip())
@@ -5863,7 +5942,7 @@ def admin_update_fix(fix_id):
     data = request.get_json(force=True)
     db = get_db()
 
-    allowed_fields = ["fix_date", "owner", "test_suite", "test_case", "model_fixed", "fixed_after_cycle", "note", "root_cause", "root_cause_group"]
+    allowed_fields = ["fix_date", "owner", "test_suite", "test_case", "model_fixed", "fixed_after_cycle", "note", "root_cause", "root_cause_group", "sdf_id"]
     updates = []
     values = []
     for field in allowed_fields:

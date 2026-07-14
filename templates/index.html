@@ -369,14 +369,14 @@ Browser_000202&#9;tuyen.bv1"></textarea>
 <section id="tab-input-results" class="tab-panel">
   <div class="card">
     <h3>📥 Nhập kết quả chạy (dán từ Excel / test farm export)</h3>
-    <p class="hint">Dán dữ liệu theo đúng thứ tự cột — hỗ trợ cả 2 định dạng: <b>6 cột</b> (Test ID, Model, Test suite, Test Case, State, Description) hoặc <b>8 cột</b> (Request ID, Model, Test Suite, Test Case, State, Description, Author, Team) — copy thẳng từ Excel/SDF export là được (tab phân cách). Test Suite/Test Case sẽ được hệ thống <b>tự nhận diện và chuẩn hoá tên</b> (VD: <code>Internet/test suite/Internet_ui90_part4.ts</code> hoặc <code>Browser_000118.py</code> đều tự suy ra đúng Test Suite là <b>Internet</b>, Test Case là <b>Browser_000118</b>). State <b>RUNNING</b> sẽ tự động bị bỏ qua (chưa chạy xong).</p>
+    <p class="hint">Dán dữ liệu theo đúng thứ tự cột, có cột <b>SN (Serial Number)</b> ngay sau Model — hỗ trợ <b>7 cột</b> (Test ID, Model, <b>SN</b>, Test Suite, Test Case, State, Description) hoặc <b>9 cột</b> (Test ID, Model, <b>SN</b>, Test Suite, Test Case, State, Description, Author, Team) — copy thẳng từ Excel/SDF export là được (tab phân cách). SN = thiết bị thật đã chạy ra kết quả (để truy vết trên farm). Test Suite/Test Case sẽ được hệ thống <b>tự nhận diện và chuẩn hoá tên</b> (VD: <code>Internet/test suite/Internet_ui90_part4.ts</code> hoặc <code>Browser_000118.py</code> đều tự suy ra đúng Test Suite là <b>Internet</b>, Test Case là <b>Browser_000118</b>). State <b>RUNNING</b> sẽ tự động bị bỏ qua (chưa chạy xong).</p>
     <p class="hint" style="background:#e3f2fd; padding:8px 10px; border-left:3px solid #2196F3; border-radius:4px;">🗓️ <b>Cycle tự động theo ngày:</b> hệ thống lấy ngày tạo từ Test ID (VD <code>260706</code>-xxx = 06/07/2026). Các Test ID cùng ngày = cùng 1 cycle; ngày sau = cycle kế tiếp. Bạn <b>không cần nhập cycle thủ công</b>. (Nếu Test ID không mã hoá ngày, hệ thống dùng ngày chạy nhập tay bên dưới.)</p>
     <div class="form-row">
       <label>Ngày chạy (chỉ dùng khi Test ID không có mã ngày) <input type="date" id="rDate"></label>
     </div>
-    <textarea id="pasteArea" rows="12" placeholder="Request ID	Model	Test Suite	Test Case	State	Description	Author	Team
-260706-01949	SM-X526B	Internet/test suite/Internet_ui90_part4.ts	Browser_000117.py	PASS	Test case pass successfully!	vu.thuhoai	duyhung.tr
-260706-01949	SM-X526B	Weather/test suite/Weather_ui90.ts	Weather_A135.py	FAIL	this is not Fold device	duc.chinh	manh.thuong"></textarea>
+    <textarea id="pasteArea" rows="12" placeholder="Request ID	Model	SN	Test Suite	Test Case	State	Description	Author	Team
+260706-01949	SM-X526B	R3CW90ABCDE	Internet/test suite/Internet_ui90_part4.ts	Browser_000117.py	PASS	Test case pass successfully!	vu.thuhoai	duyhung.tr
+260706-01949	SM-X526B	R3CW90XYZFG	Weather/test suite/Weather_ui90.ts	Weather_A135.py	FAIL	this is not Fold device	duc.chinh	manh.thuong"></textarea>
     <div class="form-row">
       <button class="btn-primary" id="btnParsePreview">Xem trước</button>
       <button class="btn-primary" id="btnSubmitResults">Gửi dữ liệu</button>
@@ -427,6 +427,9 @@ Browser_000202&#9;tuyen.bv1"></textarea>
       <label class="full">Chi tiết nguyên nhân <span style="color:#e74c3c">*bắt buộc</span> <span class="hint" style="font-weight:normal">(mô tả cụ thể — cần cho Pareto & đối chiếu)</span>
         <textarea id="fRootCause" rows="2" placeholder="VD: locator button submit bị đổi ID sau update UI; hoặc: server trả timeout do data test hết hạn..."></textarea>
       </label>
+      <label class="full">SDF ID <span style="color:#e74c3c">*bắt buộc</span> <span class="hint" style="font-weight:normal">(bằng chứng đã chạy lại sau khi fix để đảm bảo fix hiệu quả)</span>
+        <input type="text" id="fSdfId" placeholder="VD: 260713-03127 (Request ID lần chạy lại xác nhận fix)">
+      </label>
       <label class="full">Ghi chú thêm (tuỳ chọn)
         <input type="text" id="fNote" placeholder="VD: đã cập nhật lại locator, chờ cycle sau verify">
       </label>
@@ -453,6 +456,7 @@ Browser_000202&#9;tuyen.bv1"></textarea>
         <option value="P3">P3</option>
         <option value="Verify">Verify (đang xác minh)</option>
         <option value="Done">Done</option>
+        <option value="__persistent__">🔴 Persistent (fail dai dẳng)</option>
       </select>
       <button class="btn-secondary" id="btnExportExcel">⬇️ Xuất Excel</button>
       <button class="btn-secondary" id="btnExportCsvResults">⬇️ CSV kết quả thô</button>
@@ -539,6 +543,7 @@ Browser_000202&#9;tuyen.bv1"></textarea>
           <th title="Tên test case / script">Test Case</th>
           <th title="Model được fix (hoặc 'All Models')">Model đã fix</th>
           <th title="Nguyên nhân đã ghi nhận khi fix">Root cause</th>
+          <th title="SDF ID — bằng chứng đã chạy lại sau khi fix để đảm bảo fix hiệu quả">SDF ID</th>
           <th title="Cycle mà fix này được ghi nhận là fix sau đó">Fix sau cycle</th>
           <th title="Cycle chạy lại để xác minh fix">Cycle chạy lại</th>
           <th title="Tổng số lượt chạy ở cycle xác minh">Lần chạy sau</th>
@@ -679,6 +684,9 @@ Browser_000202&#9;tuyen.bv1"></textarea>
       <label>Số lần đổi tối thiểu → Flaky
         <input type="number" id="sFlakyFlips" min="1" max="10" step="1">
       </label>
+      <label>Fail dai dẳng (Persistent) = fail liên tiếp ≥ N cycle
+        <input type="number" id="sPersistFail" min="2" max="20" step="1">
+      </label>
       <label>Loại script mới khỏi pass rate (cycle đầu, 0 = tắt)
         <input type="number" id="sExcludeNew" min="0" max="10" step="1">
       </label>
@@ -686,6 +694,21 @@ Browser_000202&#9;tuyen.bv1"></textarea>
     <div class="form-row">
       <button class="btn-primary" id="btnSaveCriteria">Lưu</button>
       <span id="criteriaMsg"></span>
+    </div>
+  </div>
+
+  <div class="card wide">
+    <h3>🧹 Whitelist lỗi nhiễu (loại khỏi thống kê)</h3>
+    <p class="hint">Mỗi dòng 1 cụm từ. Kết quả có <b>mô tả (Description)</b> chứa 1 trong các cụm này sẽ được <b>lưu nhưng đánh dấu <code>Excluded</code></b> — <b>không</b> tính vào pass/fail, Pareto, pass rate (tránh nhiễu việc fix). Match theo chuỗi con, không phân biệt hoa/thường. VD: <code>TIMEOUT</code>, <code>some device is not Free</code>. Kết quả nhập từ khi lưu sẽ tự loại; bấm "Áp dụng cho dữ liệu đã có" để loại cả noise cũ.</p>
+    <div class="form-grid">
+      <label class="full">Danh sách cụm từ whitelist (mỗi dòng 1 cụm)
+        <textarea id="sErrorWhitelist" rows="5" placeholder="TIMEOUT&#10;some device is not Free&#10;FAIL TO CONNECT STP"></textarea>
+      </label>
+    </div>
+    <div class="form-row">
+      <button class="btn-primary" id="btnSaveWhitelist">Lưu whitelist</button>
+      <button class="btn-secondary" id="btnApplyWhitelist">Áp dụng cho dữ liệu đã có</button>
+      <span id="whitelistMsg"></span>
     </div>
   </div>
 
