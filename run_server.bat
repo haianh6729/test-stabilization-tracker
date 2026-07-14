@@ -14,5 +14,5 @@ REM Start the server
 echo Starting Test Stabilization Tracker on http://localhost:5000
 echo Press Ctrl+C to stop the server.
 echo.
-python app.py
+waitress-serve --host=0.0.0.0 --port=5000 --threads=4 app:app
 pause
