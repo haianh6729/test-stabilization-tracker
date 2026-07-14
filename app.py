@@ -63,12 +63,13 @@ ROOT_CAUSE_GROUPS = [
 ]
 
 # Cac setting nhay cam (token/API key): GET /api/settings tra ve mask, POST bo qua gia tri mask.
-SENSITIVE_SETTINGS = {"farm_api_token", "company_api_token", "github_token", "import_token"}
+SENSITIVE_SETTINGS = {"farm_api_token", "github_token", "import_token", "company_cookie"}
 SETTINGS_MASK = "********"
 
-# Trang thai ben he thong cong ty duoc coi la "da hoan thanh script" (so sanh lowercase).
-# Cap nhat khi co tai lieu API that neu he thong dung tu khac.
+# Trang thai ben TC Hub duoc coi la "da hoan thanh script" / "loai tru" (so sanh lowercase).
+# "excluded" = vocab TC Hub that; "skip" = giu tuong thich voi vocab paste tay cu.
 COMPANY_PERFORMED_STATES = {"performed"}
+COMPANY_SKIP_STATES = {"skip", "excluded"}
 
 BACKUP_DIR = "backups"
 
@@ -285,7 +286,8 @@ def init_db():
         "farm_api_token": "",
         "import_token": "",
         "company_api_url": "",
-        "company_api_token": "",
+        "company_cookie": "",
+        "company_items": "",
         "github_api_base": "https://api.github.com",
         "github_repo": "",       # dang owner/repo
         "github_branch": "main",
@@ -639,13 +641,17 @@ def log_audit(db, action, target="", detail=""):
     )
 
 
-def _http_json(url, token="", method="GET", payload=None, timeout=15):
-    """Goi HTTP JSON ra ngoai (farm API / he thong cong ty / GitHub) bang urllib stdlib.
+def _http_json(url, token="", method="GET", payload=None, timeout=15, cookie=""):
+    """Goi HTTP JSON ra ngoai (farm API / TC Hub / GitHub) bang urllib stdlib.
     Tra ve object da parse JSON; nem RuntimeError voi message tieng Viet de hien thang
-    len UI khi loi (khong ket noi duoc / HTTP status loi / body khong phai JSON)."""
+    len UI khi loi (khong ket noi duoc / HTTP status loi / body khong phai JSON).
+    token -> header Authorization: Bearer (farm dung JWT). cookie -> header Cookie
+    (TC Hub dung cookie phien dang nhap san, khong dung Bearer)."""
     headers = {"User-Agent": "test-stabilization-tracker", "Accept": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    if cookie:
+        headers["Cookie"] = cookie
     body = None
     if payload is not None:
         body = json.dumps(payload).encode("utf-8")
@@ -915,7 +921,7 @@ def compute_coverage(db):
     skip_ids = set()
     for r in comp_rows:
         item = (r["item"] or "").strip() or item_from_tc_id(r["tc_id"]) or "Unknown"
-        if (r["status"] or "").strip().upper() == "SKIP":
+        if (r["status"] or "").strip().lower() in COMPANY_SKIP_STATES:
             skip_ids.add(norm(r["tc_id"]))
         else:
             needed[norm(r["tc_id"])] = item
@@ -3745,13 +3751,37 @@ def build_export_workbook(db):
 # (bao loi ro rang khi chua cau hinh); fallback nhap tay hoat dong day du.
 # ==================================================================
 def normalize_farm_rows(test_id, payload):
-    """Chuyen JSON tra ve tu farm API thanh list row cho insert_result_rows().
-    STUB: cap nhat ham nay khi co tai lieu API farm (schema response) tu cong ty.
-    Row output can: {test_id, model, test_suite, test_case, state, description?, author?, team?}."""
-    raise ValueError(
-        "Chưa xác định schema API farm — cần cập nhật normalize_farm_rows() trong app.py "
-        "khi có tài liệu API từ công ty."
-    )
+    """Chuyen JSON tra ve tu farm API (GET .../result?...&requestId={test_id}) thanh list row
+    cho insert_result_rows(). Payload dang {"message","data":{"content":[...]},"success"}, moi
+    phan tu content[i] = 1 lan chay script (deviceList[0].model = model that su chay).
+    Bo qua record thieu model/scriptPath (khong du du lieu de chen mot cach an toan)."""
+    data = payload.get("data") if isinstance(payload, dict) else None
+    content = data.get("content") if isinstance(data, dict) else None
+    if content is None:
+        raise ValueError(
+            "Response farm không đúng định dạng — thiếu data.content, kiểm tra lại URL API."
+        )
+    if not isinstance(content, list):
+        raise ValueError("Response farm không đúng định dạng — data.content không phải danh sách.")
+
+    rows = []
+    for rec in content:
+        if not isinstance(rec, dict):
+            continue
+        device_list = rec.get("deviceList") or []
+        model = device_list[0].get("model") if device_list and isinstance(device_list[0], dict) else None
+        script_path = rec.get("scriptPath") or ""
+        if not model or not script_path:
+            continue
+        rows.append({
+            "test_id": rec.get("requestId") or test_id,
+            "model": model,
+            "test_suite": rec.get("testFilePath") or "",
+            "test_case": script_path,
+            "state": rec.get("state") or "",
+            "description": rec.get("description") or "",
+        })
+    return rows
 
 
 def farm_fetch_results(db, test_ids):
@@ -3849,19 +3879,52 @@ def api_farm_fetch():
 # He thong cong ty: tong so test case can script (dong), status Performed/SKIP...
 # ------------------------------------------------------------------
 def company_fetch_testcases(db):
-    """Goi API he thong cong ty lay danh sach test case + status. STUB nhu farm.
-    Khi co tai lieu API: parse response thanh list {tc_id, status, item?, raw?}."""
-    url = get_setting(db, "company_api_url").strip()
-    token = get_setting(db, "company_api_token").strip()
-    if not url:
+    """Goi API TC Hub (GET .../api/tc/{item}, tra ve list TC cua 1 item/request) lay danh sach
+    test case + automationTarget (performed/excluded/target) cho tung item. Danh sach item lay
+    tu setting 'company_items' (CSV), rong -> fallback toan bo test_suites. Auth bang cookie
+    phien dang nhap (setting 'company_cookie'), KHONG dung Bearer token.
+    Tra ve (rows, errors) - loi 1 item khong chan cac item con lai. Row: {tc_id, item, status, raw}."""
+    url_tpl = get_setting(db, "company_api_url").strip()
+    if not url_tpl:
         raise RuntimeError(
-            "API hệ thống công ty chưa được cấu hình — điền 'URL API hệ thống công ty' trong tab Cài đặt trước."
+            "API TC Hub chưa được cấu hình — điền 'URL API TC Hub' trong tab Cài đặt trước."
         )
-    payload = _http_json(url, token=token)  # noqa: F841 - dung khi co schema that
-    raise RuntimeError(
-        "Chưa xác định schema API hệ thống công ty — cần cập nhật company_fetch_testcases() "
-        "trong app.py khi có tài liệu API. Tạm thời dùng ô 'Nhập tay danh sách TC' bên dưới."
-    )
+    cookie = get_setting(db, "company_cookie").strip()
+    items_raw = get_setting(db, "company_items").strip()
+    if items_raw:
+        items = [s.strip() for s in items_raw.split(",") if s.strip()]
+    else:
+        items = [r["name"] for r in db.execute("SELECT name FROM test_suites ORDER BY name").fetchall()]
+    if not items:
+        raise RuntimeError(
+            "Không có Item nào để đồng bộ — điền 'Danh sách Item' trong Cài đặt hoặc thêm Test Suite trước."
+        )
+
+    rows, errors = [], []
+    for item in items:
+        try:
+            if "{item}" in url_tpl:
+                url = url_tpl.replace("{item}", urllib.parse.quote(str(item)))
+            else:
+                url = url_tpl.rstrip("/") + "/" + urllib.parse.quote(str(item))
+            data = _http_json(url, cookie=cookie)
+            if not isinstance(data, list):
+                raise ValueError("response không phải danh sách TC")
+            for rec in data:
+                if not isinstance(rec, dict):
+                    continue
+                tc_id = str(rec.get("id") or "").strip()
+                if not tc_id:
+                    continue
+                rows.append({
+                    "tc_id": tc_id,
+                    "item": str(rec.get("app") or item).strip() or item,
+                    "status": str(rec.get("automationTarget") or "").strip(),
+                    "raw": "",
+                })
+        except (RuntimeError, ValueError) as e:
+            errors.append({"item": item, "error": str(e)})
+    return rows, errors
 
 
 def _replace_company_testcases(db, rows, source):
@@ -3889,13 +3952,15 @@ def _replace_company_testcases(db, rows, source):
 def api_company_sync():
     db = get_db()
     try:
-        rows = company_fetch_testcases(db)
+        rows, errors = company_fetch_testcases(db)
     except RuntimeError as e:
         return jsonify({"error": str(e)}), 400
+    if not rows and errors:
+        return jsonify({"error": "Đồng bộ thất bại toàn bộ item.", "errors": errors}), 400
     n = _replace_company_testcases(db, rows, "api")
-    log_audit(db, "integrations.company_sync", detail=f"synced={n}")
+    log_audit(db, "integrations.company_sync", detail=f"synced={n}, errors={len(errors)}")
     db.commit()
-    return jsonify({"status": "ok", "synced": n})
+    return jsonify({"status": "ok", "synced": n, "errors": errors})
 
 
 @app.route("/api/integrations/company/manual", methods=["POST"])
@@ -3938,7 +4003,7 @@ def api_company_testcases():
         "SELECT tc_id, item, status, source, synced_at FROM company_testcases ORDER BY item, tc_id"
     ).fetchall()
     total = len(rows)
-    skip = sum(1 for r in rows if (r["status"] or "").strip().upper() == "SKIP")
+    skip = sum(1 for r in rows if (r["status"] or "").strip().lower() in COMPANY_SKIP_STATES)
     performed = sum(1 for r in rows if (r["status"] or "").strip().lower() in COMPANY_PERFORMED_STATES)
     synced_at = max((r["synced_at"] or "" for r in rows), default="")
     return jsonify({
@@ -4030,9 +4095,11 @@ def api_integrations_status():
 @app.route("/api/integrations/reconcile")
 @require_login
 def api_reconcile():
-    """Doi chieu 3 chieu: new_scripts DONE <-> status Performed ben he thong cong ty
-    <-> file script ton tai tren nhanh main cua repo GitHub (dung thu muc cua Item neu
-    Item da cau hinh script_path)."""
+    """Doi chieu 3 chieu, ca DONE lan SKIP:
+    - DONE: ky vong status Performed ben TC Hub + CO file script that tren nhanh main.
+    - SKIP: ky vong status Excluded ben TC Hub + KHONG CON file script (da xoa).
+    Member/Team tu dong dien (khi new_scripts chua co san) bang cach tra assignment hien tai
+    cua TC do + team cua owner do (chi tinh luc doi chieu, khong ghi de DB)."""
     db = get_db()
     comp_status = {}
     comp_synced = ""
@@ -4056,38 +4123,69 @@ def api_reconcile():
         r["name"]: (r["script_path"] or "").strip().strip("/")
         for r in db.execute("SELECT name, script_path FROM test_suites").fetchall()
     }
+    assign_owner = {
+        (r["test_suite"], str(r["test_case"]).strip().lower()): r["owner"]
+        for r in db.execute("SELECT test_suite, test_case, owner FROM assignments").fetchall()
+    }
+    owner_team = {
+        r["name"]: (r["team"] or "")
+        for r in db.execute("SELECT name, team FROM owners").fetchall()
+    }
 
     rows_out = []
     n_ok = n_missing_company = n_wrong_company = n_missing_github = 0
+    n_skip_wrong_company = n_skip_has_github = 0
+    total_done = total_skip = 0
     done_ids = set()
     for r in db.execute(
         "SELECT tc_id, item, member, team, status, completed_date FROM new_scripts "
-        "WHERE status='DONE' ORDER BY item, tc_id"
+        "WHERE status IN ('DONE','SKIP') ORDER BY item, tc_id"
     ).fetchall():
+        kind = r["status"]
         tc_norm = str(r["tc_id"]).strip().lower()
-        done_ids.add(tc_norm)
+        if kind == "DONE":
+            done_ids.add(tc_norm)
+            total_done += 1
+        else:
+            total_skip += 1
         company_status = comp_status.get(tc_norm)
-        company_ok = bool(company_status) and company_status.lower() in COMPANY_PERFORMED_STATES
-        if has_company:
-            if company_status is None:
-                n_missing_company += 1
-            elif not company_ok:
-                n_wrong_company += 1
+
         sp = suite_paths.get(r["item"], "")
         matched_path = None
         for p in stem_index.get(tc_norm, []):
             if not sp or p.lower().startswith(sp.lower() + "/"):
                 matched_path = p
                 break
-        github_ok = matched_path is not None
-        if has_github and not github_ok:
-            n_missing_github += 1
+        has_file = matched_path is not None
+
+        if kind == "DONE":
+            company_ok = bool(company_status) and company_status.lower() in COMPANY_PERFORMED_STATES
+            github_ok = has_file
+            if has_company:
+                if company_status is None:
+                    n_missing_company += 1
+                elif not company_ok:
+                    n_wrong_company += 1
+            if has_github and not github_ok:
+                n_missing_github += 1
+        else:  # SKIP: nguoc lai - khong lam nen khong can Performed, khong can con file
+            company_ok = bool(company_status) and company_status.lower() in COMPANY_SKIP_STATES
+            github_ok = not has_file
+            if has_company and not company_ok:
+                n_skip_wrong_company += 1
+            if has_github and has_file:
+                n_skip_has_github += 1
+
         ok = (company_ok or not has_company) and (github_ok or not has_github)
         if ok and (has_company or has_github):
             n_ok += 1
+
+        member = r["member"] or assign_owner.get((r["item"], tc_norm), "") or ""
+        team = r["team"] or owner_team.get(member, "") or ""
+
         rows_out.append({
-            "tc_id": r["tc_id"], "item": r["item"], "member": r["member"] or "",
-            "team": r["team"] or "", "completed_date": r["completed_date"] or "",
+            "kind": kind, "tc_id": r["tc_id"], "item": r["item"], "member": member,
+            "team": team, "completed_date": r["completed_date"] or "",
             "company_status": company_status,
             "company_ok": company_ok if has_company else None,
             "github_ok": github_ok if has_github else None,
@@ -4096,7 +4194,7 @@ def api_reconcile():
             "ok": ok,
         })
 
-    # Chieu nguoc: cong ty bao Performed nhung he thong chua ghi DONE (top 50)
+    # Chieu nguoc: TC Hub bao Performed nhung he thong chua ghi DONE (top 50)
     performed_not_done = []
     if has_company:
         for tc_norm, status in comp_status.items():
@@ -4107,11 +4205,14 @@ def api_reconcile():
 
     return jsonify({
         "summary": {
-            "total_done": len(rows_out),
+            "total_done": total_done,
+            "total_skip": total_skip,
             "ok_all": n_ok,
             "missing_company": n_missing_company,
             "wrong_company_status": n_wrong_company,
             "missing_github": n_missing_github,
+            "skip_wrong_company": n_skip_wrong_company,
+            "skip_has_github": n_skip_has_github,
             "has_company_data": has_company,
             "has_github_data": has_github,
             "company_synced_at": comp_synced,

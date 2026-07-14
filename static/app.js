@@ -2346,7 +2346,8 @@ async function initSettings() {
     $("#sFarmUrl").value = s.farm_api_url || "";
     $("#sFarmToken").value = s.farm_api_token || "";
     $("#sCompanyUrl").value = s.company_api_url || "";
-    $("#sCompanyToken").value = s.company_api_token || "";
+    $("#sCompanyCookie").value = s.company_cookie || "";
+    $("#sCompanyItems").value = s.company_items || "";
     $("#sGithubRepo").value = s.github_repo || "";
     $("#sGithubBranch").value = s.github_branch || "main";
     $("#sGithubToken").value = s.github_token || "";
@@ -2359,7 +2360,8 @@ async function initSettings() {
           farm_api_url: $("#sFarmUrl").value.trim(),
           farm_api_token: $("#sFarmToken").value.trim(),
           company_api_url: $("#sCompanyUrl").value.trim(),
-          company_api_token: $("#sCompanyToken").value.trim(),
+          company_cookie: $("#sCompanyCookie").value.trim(),
+          company_items: $("#sCompanyItems").value.trim(),
           github_repo: $("#sGithubRepo").value.trim(),
           github_branch: $("#sGithubBranch").value.trim() || "main",
           github_token: $("#sGithubToken").value.trim(),
@@ -2516,7 +2518,7 @@ async function loadIntegrationsStatus() {
       : "🟡 Farm API: <b>chưa cấu hình</b> — điền URL/token ở tab ⚙️ Cài đặt (mục Tích hợp & API).";
     const comp = $("#intCompanyStatus");
     if (comp) comp.innerHTML =
-      (st.company_configured ? "🟢 API công ty: đã cấu hình. " : "🟡 API công ty: <b>chưa cấu hình</b> — dùng paste tay bên dưới. ") +
+      (st.company_configured ? "🟢 API TC Hub: đã cấu hình. " : "🟡 API TC Hub: <b>chưa cấu hình</b> — dùng paste tay bên dưới. ") +
       (st.company_cache.rows
         ? `Cache hiện có <b>${st.company_cache.rows}</b> TC (nguồn: ${st.company_cache.source}, lúc: ${st.company_cache.synced_at}).`
         : "Cache đang trống.");
@@ -2549,18 +2551,25 @@ function renderReconcile() {
   const s = data.summary;
   $("#reconcileKpiRow").innerHTML =
     kpiCard("Script DONE", s.total_done) +
-    kpiCard("✅ Khớp cả 3 chiều", s.ok_all, s.ok_all === s.total_done ? "good" : "") +
+    kpiCard("Script SKIP", s.total_skip) +
+    kpiCard("✅ Khớp cả 3 chiều", s.ok_all, s.ok_all === (s.total_done + s.total_skip) ? "good" : "") +
     (s.has_company_data
-      ? kpiCard("⚠️ Không có bên công ty", s.missing_company, s.missing_company ? "warn" : "good") +
-        kpiCard("⚠️ Chưa Performed", s.wrong_company_status, s.wrong_company_status ? "warn" : "good")
-      : kpiCard("Công ty", "chưa có dữ liệu")) +
+      ? kpiCard("⚠️ Không có bên TC Hub", s.missing_company, s.missing_company ? "warn" : "good") +
+        kpiCard("⚠️ Chưa Performed", s.wrong_company_status, s.wrong_company_status ? "warn" : "good") +
+        kpiCard("⚠️ SKIP chưa Excluded", s.skip_wrong_company, s.skip_wrong_company ? "warn" : "good")
+      : kpiCard("TC Hub", "chưa có dữ liệu")) +
     (s.has_github_data
-      ? kpiCard("❌ Thiếu file GitHub", s.missing_github, s.missing_github ? "bad" : "good")
+      ? kpiCard("❌ Thiếu file GitHub", s.missing_github, s.missing_github ? "bad" : "good") +
+        kpiCard("❌ SKIP còn file GitHub", s.skip_has_github, s.skip_has_github ? "bad" : "good")
       : kpiCard("GitHub", "chưa có dữ liệu"));
 
   const onlyDiff = $("#reconcileOnlyDiff")?.checked;
   const rows = (data.rows || []).filter((r) => !onlyDiff || !r.ok);
   $("#reconcileTable tbody").innerHTML = rows.map((r) => {
+    const isSkip = r.kind === "SKIP";
+    const kindTag = isSkip
+      ? `<span class="tag" style="background:#95a5a6">SKIP</span>`
+      : `<span class="tag" style="background:#3498db">DONE</span>`;
     const okTag = r.ok
       ? `<span class="tag" style="background:#2ecc71">✅ OK</span>`
       : `<span class="tag" style="background:#e74c3c">✗ Lệch</span>`;
@@ -2571,25 +2580,35 @@ function renderReconcile() {
     else compCell = `<span class="tag" style="background:#e67e22">${escAttr(r.company_status)}</span>`;
     let ghCell;
     if (!s.has_github_data) ghCell = '<span style="color:#bbb">(chưa có dữ liệu)</span>';
-    else if (r.github_ok) ghCell = `<span class="tag" style="background:#2ecc71" title="${escAttr(r.matched_path || "")}">✅ có file</span> <span class="hint">${escAttr(r.matched_path || "")}</span>`;
-    else ghCell = `<span class="tag" style="background:#e74c3c">❌ thiếu file</span>${r.path_configured ? "" : ' <span class="hint">(Item chưa cấu hình đường dẫn — tìm toàn repo)</span>'}`;
+    else if (isSkip) {
+      // SKIP: ky vong KHONG con file - dao mau/nhan so voi DONE
+      ghCell = r.github_ok
+        ? `<span class="tag" style="background:#2ecc71">✅ đã xoá</span>`
+        : `<span class="tag" style="background:#e74c3c" title="${escAttr(r.matched_path || "")}">❌ còn file</span> <span class="hint">${escAttr(r.matched_path || "")}</span>`;
+    } else if (r.github_ok) {
+      ghCell = `<span class="tag" style="background:#2ecc71" title="${escAttr(r.matched_path || "")}">✅ có file</span> <span class="hint">${escAttr(r.matched_path || "")}</span>`;
+    } else {
+      ghCell = `<span class="tag" style="background:#e74c3c">❌ thiếu file</span>${r.path_configured ? "" : ' <span class="hint">(Item chưa cấu hình đường dẫn — tìm toàn repo)</span>'}`;
+    }
     return `<tr>
       <td>${okTag}</td>
+      <td>${kindTag}</td>
       <td>${escAttr(r.tc_id)}</td>
       <td>${escAttr(r.item)}</td>
       <td>${escAttr(r.member)}</td>
+      <td>${escAttr(r.team)}</td>
       <td>${escAttr(r.completed_date)}</td>
       <td>${compCell}</td>
       <td>${ghCell}</td>
     </tr>`;
-  }).join("") || `<tr><td colspan="7" style="color:#999">${onlyDiff ? "Không có dòng lệch nào 🎉" : "Chưa có script DONE nào."}</td></tr>`;
+  }).join("") || `<tr><td colspan="9" style="color:#999">${onlyDiff ? "Không có dòng lệch nào 🎉" : "Chưa có script DONE/SKIP nào."}</td></tr>`;
 
   const rev = $("#reconcileReverse");
   if (rev) {
     const list = data.company_performed_not_done || [];
     rev.innerHTML = list.length
-      ? `⚠️ <b>Chiều ngược</b>: ${list.length}${list.length >= 50 ? "+" : ""} TC bên công ty đã <b>Performed</b> nhưng hệ thống này chưa ghi DONE: <code>${list.slice(0, 15).map(escAttr).join(", ")}</code>${list.length > 15 ? " …" : ""}`
-      : (s.has_company_data ? "✅ Không có TC nào Performed bên công ty mà thiếu DONE ở đây." : "");
+      ? `⚠️ <b>Chiều ngược</b>: ${list.length}${list.length >= 50 ? "+" : ""} TC bên TC Hub đã <b>Performed</b> nhưng hệ thống này chưa ghi DONE: <code>${list.slice(0, 15).map(escAttr).join(", ")}</code>${list.length > 15 ? " …" : ""}`
+      : (s.has_company_data ? "✅ Không có TC nào Performed bên TC Hub mà thiếu DONE ở đây." : "");
   }
 }
 
@@ -2627,8 +2646,10 @@ function initIntegrations() {
     msg.textContent = "Đang sync..."; msg.className = "";
     try {
       const res = await api("/api/integrations/company/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-      msg.textContent = `✅ Đã đồng bộ ${res.synced} TC từ hệ thống công ty.`;
-      msg.className = "msg-ok";
+      let text = `✅ Đã đồng bộ ${res.synced} TC từ TC Hub.`;
+      if ((res.errors || []).length) text += ` ⚠️ ${res.errors.length} item lỗi: ` + res.errors.map((e) => `${e.item} (${e.error})`).join("; ");
+      msg.textContent = text;
+      msg.className = (res.errors || []).length ? "msg-err" : "msg-ok";
       await loadIntegrationsStatus();
       await refreshDashboard();
     } catch (e) { msg.textContent = "Lỗi: " + e.message; msg.className = "msg-err"; }

@@ -118,7 +118,7 @@
       <table id="coverageTable" class="data-table" style="display:none">
         <thead><tr>
           <th title="Tên item / test suite">Item</th>
-          <th title="Tổng số TC (test case) cần viết script cho item này, lấy từ hệ thống công ty (TC bị đánh dấu SKIP bên đó không tính vào tổng)">Total TC</th>
+          <th title="Tổng số TC (test case) cần viết script cho item này, lấy từ TC Hub (TC bị đánh dấu SKIP/Excluded bên đó không tính vào tổng)">Total TC</th>
           <th title="Số TC đã có script viết xong (trạng thái DONE) và nằm trong kế hoạch cần làm">Done</th>
           <th title="Tỷ lệ hoàn thành = Done / Total TC">%</th>
         </tr></thead>
@@ -594,11 +594,11 @@ Browser_000202&#9;tuyen.bv1"></textarea>
   </div>
 
   <div class="card">
-    <h3>🏢 Hệ thống công ty — tổng TC cần script</h3>
-    <p class="hint">Nguồn <b>tổng số test case cần viết script</b> (con số động; TC status <b>SKIP</b> không tính vào tổng; <b>Performed</b> = đã hoàn thành bên hệ thống công ty). Khi có API sẽ bấm Sync tự động; tạm thời dùng ô paste tay bên dưới (mỗi dòng: <code>TC_ID⇥Status</code> hoặc <code>TC_ID⇥Status⇥Item</code>, copy từ Excel; thiếu Status → mặc định "Not Performed").</p>
+    <h3>🏢 TC Hub — tổng TC cần script</h3>
+    <p class="hint">Nguồn <b>tổng số test case cần viết script</b> (con số động; TC status <b>SKIP/Excluded</b> không tính vào tổng; <b>Performed</b> = đã hoàn thành bên TC Hub). Khi có API sẽ bấm Sync tự động; tạm thời dùng ô paste tay bên dưới (mỗi dòng: <code>TC_ID⇥Status</code> hoặc <code>TC_ID⇥Status⇥Item</code>, copy từ Excel; thiếu Status → mặc định "Not Performed").</p>
     <div id="intCompanyStatus" class="hint"></div>
     <div class="form-row">
-      <button class="btn-primary" id="btnCompanySync">🔄 Sync từ API công ty</button>
+      <button class="btn-primary" id="btnCompanySync">🔄 Sync từ API TC Hub</button>
       <span id="companySyncMsg"></span>
     </div>
     <textarea id="companyPasteArea" rows="6" placeholder="Browser_000117&#9;Performed&#10;Browser_000118&#9;Not Performed&#10;Weather_A135&#9;SKIP"></textarea>
@@ -625,8 +625,8 @@ Browser_000202&#9;tuyen.bv1"></textarea>
   </div>
 
   <div class="card wide">
-    <h3>🔍 Đối chiếu 3 chiều: DONE ↔ Công ty (Performed) ↔ File trên GitHub</h3>
-    <p class="hint">Mỗi script <b>DONE</b> trên hệ thống phải: (1) có status <b>Performed</b> bên hệ thống công ty, và (2) có <b>file script thật</b> trên nhánh main (đúng thư mục của Item nếu đã cấu hình đường dẫn). Dòng lệch = cần xử lý.</p>
+    <h3>🔍 Đối chiếu 3 chiều: DONE/SKIP ↔ TC Hub (Performed/Excluded) ↔ File trên GitHub</h3>
+    <p class="hint">Mỗi script <b>DONE</b> phải: (1) có status <b>Performed</b> bên TC Hub, và (2) có <b>file script thật</b> trên nhánh main (đúng thư mục của Item nếu đã cấu hình đường dẫn). Mỗi script <b>SKIP</b> thì NGƯỢC LẠI: phải có status <b>Excluded</b> bên TC Hub và KHÔNG còn file trên GitHub (đã xoá). Dòng lệch = cần xử lý.</p>
     <div class="form-row">
       <button class="btn-primary" id="btnReconcile">🔍 Chạy đối chiếu</button>
       <label class="ns-inline" style="margin-left:10px"><input type="checkbox" id="reconcileOnlyDiff"> Chỉ hiện dòng lệch</label>
@@ -636,8 +636,8 @@ Browser_000202&#9;tuyen.bv1"></textarea>
     <table id="reconcileTable" class="data-table">
       <thead>
         <tr>
-          <th>Kết quả</th><th>TC ID</th><th>Item</th><th>Member</th><th>Ngày DONE</th>
-          <th>Status công ty</th><th>File trên GitHub</th>
+          <th>Kết quả</th><th>Loại</th><th>TC ID</th><th>Item</th><th>Member</th><th>Team</th><th>Ngày DONE</th>
+          <th>Status TC Hub</th><th>File trên GitHub</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -690,19 +690,22 @@ Browser_000202&#9;tuyen.bv1"></textarea>
 
   <div class="card wide">
     <h3>🔗 Tích hợp &amp; API</h3>
-    <p class="hint">Điền khi có tài liệu API từ công ty. Token đã lưu hiển thị dạng <code>********</code> — để nguyên nghĩa là <b>không đổi</b>, gõ giá trị mới để thay. URL farm có thể chứa <code>{test_id}</code> làm chỗ chèn Test ID (không có thì Test ID được nối vào cuối URL).</p>
+    <p class="hint">Điền khi có tài liệu API từ công ty. Token/Cookie đã lưu hiển thị dạng <code>********</code> — để nguyên nghĩa là <b>không đổi</b>, gõ giá trị mới để thay. URL farm có thể chứa <code>{test_id}</code> làm chỗ chèn Test ID (không có thì Test ID được nối vào cuối URL). URL TC Hub có thể chứa <code>{item}</code> làm chỗ chèn tên Item.</p>
     <div class="form-grid">
       <label>URL API farm (lấy kết quả theo Test ID)
-        <input type="text" id="sFarmUrl" placeholder="VD: http://farm.company.com/api/results/{test_id}">
+        <input type="text" id="sFarmUrl" placeholder="VD: http://farm.company.com/api/result?requestId={test_id}">
       </label>
-      <label>Token API farm
-        <input type="text" id="sFarmToken" placeholder="(chưa đặt)" autocomplete="off">
+      <label>JWT API farm
+        <input type="text" id="sFarmToken" placeholder="(dán JWT, chưa đặt)" autocomplete="off">
       </label>
-      <label>URL API hệ thống công ty (danh sách TC)
-        <input type="text" id="sCompanyUrl" placeholder="VD: http://tcms.company.com/api/testcases">
+      <label>URL API TC Hub (danh sách TC theo Item)
+        <input type="text" id="sCompanyUrl" placeholder="VD: http://10.244.29.55/api/tc/{item}">
       </label>
-      <label>Token API hệ thống công ty
-        <input type="text" id="sCompanyToken" placeholder="(chưa đặt)" autocomplete="off">
+      <label>Cookie phiên TC Hub
+        <input type="text" id="sCompanyCookie" placeholder="(dán cookie phiên đăng nhập TC Hub)" autocomplete="off">
+      </label>
+      <label>Danh sách Item TC Hub <span class="hint" style="font-weight:normal">(để trống = tự lấy toàn bộ Test Suite)</span>
+        <input type="text" id="sCompanyItems" placeholder="Weather, Internet, SamsungMember">
       </label>
       <label>GitHub repo (owner/repo)
         <input type="text" id="sGithubRepo" placeholder="VD: company/qa-scripts">
