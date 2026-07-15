@@ -350,6 +350,23 @@ SM-00-045	tuyen.bv1	SKIP	2026-06-08			TC trùng, không cần viết"></textarea
     </div>
     <div id="nsBulkResult" class="bulk-result"></div>
   </div>
+
+  <div class="bulk-box">
+    <h3 style="margin-top:0;">🔁 Đổi Member hàng loạt (chỉ áp dụng cho TC đang ASSIGNED)</h3>
+    <p class="hint" style="margin-bottom:8px;">
+      Dán nhiều dòng, 2 cột phân cách bằng <b>Tab</b>, theo đúng thứ tự:<br>
+      <code>TC ID&nbsp;&nbsp;Member mới</code><br>
+      Chỉ đổi được Member cho TC ID đã tồn tại và đang ở trạng thái <b>ASSIGNED</b> (chưa DONE/SKIP) — tránh đổi nhầm người phụ trách của TC đã hoàn thành.
+      Các field khác (Status, Model, Completed date, Remark...) giữ nguyên.
+    </p>
+    <textarea id="nsReassignArea" placeholder="Browser_000006	tuyen.bv1
+SM-00-045	duyhung.tr"></textarea>
+    <div style="margin-top:10px; display:flex; gap:10px; align-items:center;">
+      <button class="btn-primary" onclick="nsBulkReassign()">🔁 Đổi Member hàng loạt</button>
+      <span id="nsReassignMsg"></span>
+    </div>
+    <div id="nsReassignResult" class="bulk-result"></div>
+  </div>
 </div>
 </div>
 
@@ -1118,6 +1135,51 @@ async function nsBulkImport() {
     ).join('');
   }
   document.getElementById('nsBulkArea').value = '';
+  nsLoadAll();
+}
+
+function nsParseReassign(text) {
+  const rows = [];
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const parts = line.split('\t').map((p) => p.trim());
+    if (!parts[0]) continue;
+    if (/^tc\s*id$/i.test(parts[0])) continue; // dòng header
+    const [tc_id, member] = parts;
+    rows.push({ tc_id, member: member || '' });
+  }
+  return rows;
+}
+
+async function nsBulkReassign() {
+  const text = document.getElementById('nsReassignArea').value;
+  const rows = nsParseReassign(text);
+  const msg = document.getElementById('nsReassignMsg');
+  const resultBox = document.getElementById('nsReassignResult');
+  resultBox.innerHTML = '';
+  if (!rows.length) {
+    msg.textContent = 'Không nhận diện được dòng dữ liệu nào.';
+    return;
+  }
+  msg.textContent = `Đang đổi Member cho ${rows.length} dòng...`;
+
+  const response = await fetch('/api/admin/new-scripts/bulk-reassign', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Admin-Key': ADMIN_KEY },
+    body: JSON.stringify({ rows })
+  });
+  const res = await response.json();
+  if (!response.ok) {
+    msg.textContent = '❌ Lỗi: ' + (res.error || 'không rõ lý do');
+    return;
+  }
+  msg.textContent = `✅ Đã đổi Member ${res.updated}/${rows.length} dòng.` + (res.errors.length ? ` (${res.errors.length} dòng lỗi bên dưới)` : '');
+  if (res.errors.length) {
+    resultBox.innerHTML = res.errors.map((e) =>
+      `<div class="err-row">Dòng ${e.row_index + 1} (${e.tc_id || '?'}): ${e.error}</div>`
+    ).join('');
+  }
+  document.getElementById('nsReassignArea').value = '';
   nsLoadAll();
 }
 

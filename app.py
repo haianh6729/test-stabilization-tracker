@@ -1863,6 +1863,40 @@ def insert_new_script_row(db, row):
             db.execute("UPDATE owners SET team=? WHERE name=?", (row["team"], row["member"]))
 
 
+def validate_reassign_row(db, data):
+    """Validate 1 dong doi Member cho TC ID DA TON TAI (khac validate_new_script_row -
+    day la UPDATE, khong phai INSERT, nen khong dung check trung tc_id). Chi cho phep
+    doi Member khi dong dang o status ASSIGNED (chua lam/chua DONE) - tranh vo tinh doi
+    nguoi phu trach cua TC da hoan thanh (DONE) hoac da SKIP.
+    Tra ve (row_dict, None) hop le hoac (None, error_message)."""
+    raw_tc = str(data.get("tc_id") or "").strip()
+    if not raw_tc:
+        return None, "Vui lòng nhập TC ID."
+    tc_id = extract_test_case_name(raw_tc)
+
+    member = str(data.get("member") or "").strip()
+    if not member:
+        return None, "Vui lòng nhập Member mới."
+
+    existing = db.execute("SELECT id, status FROM new_scripts WHERE tc_id=?", (tc_id,)).fetchone()
+    if not existing:
+        return None, f"TC ID '{tc_id}' chưa tồn tại trong hệ thống."
+    if existing["status"] != "ASSIGNED":
+        return None, f"TC ID '{tc_id}' đang ở trạng thái {existing['status']} — chỉ đổi được Member cho TC đang ASSIGNED."
+
+    team_row = db.execute("SELECT team FROM owners WHERE name=?", (member,)).fetchone()
+    team = team_row["team"] if team_row and team_row["team"] else ""
+
+    return {"id": existing["id"], "tc_id": tc_id, "member": member, "team": team}, None
+
+
+def apply_reassign_row(db, row):
+    db.execute("UPDATE new_scripts SET member=?, team=? WHERE id=?", (row["member"], row["team"], row["id"]))
+    db.execute("INSERT OR IGNORE INTO owners (name, active) VALUES (?, 1)", (row["member"],))
+    if row["team"]:
+        db.execute("UPDATE owners SET team=? WHERE name=?", (row["team"], row["member"]))
+
+
 @app.route("/api/new-scripts", methods=["GET", "POST"])
 def api_new_scripts():
     db = get_db()
@@ -5927,6 +5961,35 @@ def admin_bulk_new_scripts():
     log_audit(db, "admin.new_script.bulk", detail=f"inserted={inserted}, errors={len(errors)}")
     db.commit()
     return jsonify({"inserted": inserted, "errors": errors})
+
+
+@app.route("/api/admin/new-scripts/bulk-reassign", methods=["POST"])
+def admin_bulk_reassign_new_scripts():
+    """Doi Member hang loat cho cac TC ID DA TON TAI va dang ASSIGNED (nhan { rows:
+    [ {tc_id, member}, ... ] }). Khac /bulk (chi INSERT): day la UPDATE tai cho, khong
+    dung lai check-trung-tc_id cua validate_new_script_row."""
+    secret_key = request.headers.get("X-Admin-Key", "")
+    if secret_key != ADMIN_SECRET_KEY:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    payload = request.get_json(force=True)
+    rows_in = payload.get("rows", [])
+    if not rows_in:
+        return jsonify({"error": "Không có dòng dữ liệu nào."}), 400
+
+    db = get_db()
+    updated = 0
+    errors = []
+    for i, raw in enumerate(rows_in):
+        row, error = validate_reassign_row(db, raw)
+        if error:
+            errors.append({"row_index": i, "tc_id": raw.get("tc_id", ""), "error": error})
+            continue
+        apply_reassign_row(db, row)
+        updated += 1
+    log_audit(db, "admin.new_script.bulk_reassign", detail=f"updated={updated}, errors={len(errors)}")
+    db.commit()
+    return jsonify({"updated": updated, "errors": errors})
 
 
 # ------------------------------------------------------------------
