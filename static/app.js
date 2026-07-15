@@ -57,7 +57,10 @@ function initTabs() {
       $$(".tab-panel").forEach((p) => p.classList.remove("active"));
       btn.classList.add("active");
       $("#tab-" + btn.dataset.tab).classList.add("active");
-      if (btn.dataset.tab === "priority") { renderPriorityTableHead(); renderPriorityTable(); }
+      // Nạp dữ liệu tươi khi CHUYỂN sang tab (polling nền giờ chỉ refresh tab đang mở,
+      // nên click phải tự lấy dữ liệu mới — rẻ vì server đã cache 10s).
+      if (btn.dataset.tab === "dashboard") { refreshDashboard(); }
+      if (btn.dataset.tab === "priority") { loadPriority().then(() => { renderPriorityTableHead(); renderPriorityTable(); }); }
       if (btn.dataset.tab === "cycle-compare") { loadCycleMatrix(); }
       if (btn.dataset.tab === "fix-tracking") { loadFixTracking(); }
       if (btn.dataset.tab === "input-fix") { loadFailingScripts(); }
@@ -650,7 +653,7 @@ function exportSmMatrixExcel() {
 function renderOwnerTable(rows, totals) {
   const tbody = $("#ownerTable tbody");
   if (!rows || !rows.length) {
-    tbody.innerHTML = `<tr><td colspan="11" style="color:#999">No data in the selected range.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="12" style="color:#999">No data in the selected range.</td></tr>`;
     if ($("#lbProductivity")) $("#lbProductivity").textContent = "";
     return;
   }
@@ -659,6 +662,7 @@ function renderOwnerTable(rows, totals) {
       <td>${o.rank ?? ""}</td>
       <td>${o.owner}</td>
       <td>${o.scripts_written ?? 0}</td>
+      <td>${o.scripts_skipped ?? 0}</td>
       <td>${o.fixes_logged ?? 0}</td>
       <td>${o.distinct_scripts_fixed ?? 0}</td>
       <td>${o.distinct_scripts_fully_resolved ?? 0}</td>
@@ -674,6 +678,7 @@ function renderOwnerTable(rows, totals) {
     <tr class="total-row">
       <td></td><td>Total</td>
       <td>${sum("scripts_written")}</td>
+      <td>${sum("scripts_skipped")}</td>
       <td>${sum("fixes_logged")}</td>
       <td>${sum("distinct_scripts_fixed")}</td>
       <td>${sum("distinct_scripts_fully_resolved")}</td>
@@ -2568,6 +2573,7 @@ async function initSettings() {
     $("#sCompanyUrl").value = s.company_api_url || "";
     $("#sCompanyCookie").value = s.company_cookie || "";
     $("#sCompanyItems").value = s.company_items || "";
+    if ($("#sCompanyItemAliases")) $("#sCompanyItemAliases").value = s.company_item_aliases || "";
     $("#sGithubRepo").value = s.github_repo || "";
     $("#sGithubBranch").value = s.github_branch || "main";
     $("#sGithubToken").value = s.github_token || "";
@@ -2582,6 +2588,7 @@ async function initSettings() {
           company_api_url: $("#sCompanyUrl").value.trim(),
           company_cookie: $("#sCompanyCookie").value.trim(),
           company_items: $("#sCompanyItems").value.trim(),
+          company_item_aliases: $("#sCompanyItemAliases") ? $("#sCompanyItemAliases").value.trim() : "",
           github_repo: $("#sGithubRepo").value.trim(),
           github_branch: $("#sGithubBranch").value.trim() || "main",
           github_token: $("#sGithubToken").value.trim(),
@@ -2941,37 +2948,56 @@ async function init() {
   if (!state.me) { window.location = "/login"; return; }
   state.currentUser = state.me.username;
 
+  // BOOT SONG SONG: kích hoạt mọi request độc lập NGAY (thay vì await ~13 request nối
+  // tiếp) -> trang sẵn sàng nhanh hơn nhiều & mỗi kết nối giữ thread trong thời gian ngắn.
+  const pItems = api("/api/new-scripts/items").catch(() => []);
+  const pRefData = fetchReferenceData();
+  const pPriority = loadPriority();
+  const pFailing = loadFailingScripts();
+
+  // Wiring handler (đồng bộ, không tốn mạng) — chạy ngay trong lúc các request đang bay.
   initTabs();
   initAuthUI();
   initInputResults();
   initInputFix();
   initFixTracking();
   initCycleMatrix();
-  state.newScriptItems = await api("/api/new-scripts/items").catch(() => []);
-  initNewScripts();
   wireTableFilters();
   $("#btnExportSmMatrix")?.addEventListener("click", exportSmMatrixExcel);
-  await loadReferenceData();
   initPriorityTable();
   // Dashboard: click 1 nhom trong bang "Confirmed Root Causes" -> xem cac TC dang fail thuoc nhom.
   $("#fixParetoTable")?.addEventListener("click", (e) => {
     const cell = e.target.closest("td.rc-group-link");
     if (cell) showFixRootCauseFails(cell.dataset.group);
   });
-  await initSettings();
   initReports();
   initIntegrations();
   initLeaderboard();
-  await loadPriority();
-  await loadFailingScripts();
+
+  // new-scripts init cần danh sách items; reference data nuôi dropdown form.
+  state.newScriptItems = await pItems;
+  initNewScripts();
+  renderReferenceData(await pRefData);
+
+  // Ưu tiên hiển thị Dashboard (tab mặc định) SỚM NHẤT, các phần còn lại nạp nền.
+  await refreshDashboard();
+  await Promise.all([pPriority, pFailing]);
   renderPriorityTableHead();
   renderPriorityTable();
-  await refreshDashboard();
+
+  await initSettings();
   initTableTools();  // sort + filter mỗi cột + xuất Excel cho mọi bảng data-table
   applyPermissions();  // ẩn tab không có quyền + hiển thị topbar user (sau khi tab đã init)
 
+  // Polling nền: TRƯỚC ĐÂY mọi client mỗi 15s gọi lại TẤT CẢ (refdata ×5 + priority +
+  // failing + dashboard + leaderboard + suite-matrix) BẤT KỂ đang mở tab nào -> 50 client
+  // tạo burst đồng loạt làm nghẽn server (page load mới xếp hàng phía sau). Giờ chỉ:
+  //   - luôn đồng bộ quyền (fetchMe, rất nhẹ),
+  //   - chỉ refresh dữ liệu của TAB ĐANG MỞ.
+  // Kèm interval 30s (thay 15s) -> giảm nửa tần suất. Server-side đã cache 10s.
+  const tabActive = (name) => $(`#tab-${name}`)?.classList.contains("active") || false;
   setInterval(async () => {
-    // Đồng bộ phân quyền: admin đổi role/quyền hoặc vô hiệu hoá -> phản ánh sau ≤15s.
+    // Đồng bộ phân quyền: admin đổi role/quyền hoặc vô hiệu hoá -> phản ánh sau ≤30s.
     const me = await fetchMe();
     if (!me) { window.location = "/login"; return; }  // bị vô hiệu hoá/xoá -> đá về login
     const changed = JSON.stringify(me) !== JSON.stringify(state.me);
@@ -2979,20 +3005,22 @@ async function init() {
     state.currentUser = me.username;
     if (changed) { applyPermissions(); nsApplyExtraPerms(); }
 
-    // Tab "Ghi nhận Fix" đang mở -> chỉ lấy dữ liệu mới ở nền, không rebuild
-    // dropdown/field đang thao tác dở (tránh làm gián đoạn form đang điền).
-    const inputFixActive = isInputFixTabActive();
-    const refData = await fetchReferenceData();
-    if (!inputFixActive) renderReferenceData(refData);
-    await loadPriority();
-    await fetchFailingScripts();
-    if (!inputFixActive) renderFailingScriptOptions();
-    await refreshDashboard();
-    if ($("#tab-priority").classList.contains("active")) { renderPriorityTableHead(); renderPriorityTable(); }
-    if ($("#tab-cycle-compare").classList.contains("active")) { await loadCycleMatrix(); }
-    if ($("#tab-fix-tracking").classList.contains("active")) { await loadFixTracking(); }
-    if ($("#tab-new-scripts").classList.contains("active")) { await loadNewScripts(); }
-  }, 15000);
+    // Reference data + failing-scripts CHỈ cần cho form nhập (nuôi dropdown owner/suite/
+    // case/model + danh sách script fail). Chỉ nạp khi tab nhập đang mở. Tab "Ghi nhận Fix"
+    // đang mở -> lấy dữ liệu nền nhưng KHÔNG rebuild field đang thao tác dở.
+    if (tabActive("input-results") || tabActive("input-fix")) {
+      const inputFixActive = isInputFixTabActive();
+      const refData = await fetchReferenceData();
+      if (!inputFixActive) renderReferenceData(refData);
+      await fetchFailingScripts();
+      if (!inputFixActive) renderFailingScriptOptions();
+    }
+    if (tabActive("dashboard")) await refreshDashboard();
+    if (tabActive("priority")) { await loadPriority(); renderPriorityTableHead(); renderPriorityTable(); }
+    if (tabActive("cycle-compare")) await loadCycleMatrix();
+    if (tabActive("fix-tracking")) await loadFixTracking();
+    if (tabActive("new-scripts")) await loadNewScripts();
+  }, 30000);
 }
 
 init();

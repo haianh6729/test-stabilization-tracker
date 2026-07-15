@@ -234,6 +234,7 @@
             <th title="Thứ hạng trong khoảng thời gian đang chọn (Ngày/Tuần/Cộng dồn)">#</th>
             <th title="Tên thành viên team">Owner</th>
             <th title="Số script viết mới đã hoàn thành (trạng thái DONE) trong khoảng thời gian đang chọn">Scripts Written</th>
+            <th title="Số TC bị đánh SKIP (không cần viết script) của thành viên này trong khoảng thời gian đang chọn">Scripts SKIP</th>
             <th title="Số lần ghi nhận fix trong khoảng thời gian đang chọn">Fixes</th>
             <th title="Số script KHÁC NHAU mà người này từng fix ít nhất 1 lần (tính từ trước đến nay, không giới hạn theo range đang chọn)">Distinct Fixed</th>
             <th title="Trong số script đã fix, số script nay đã hết lỗi hoàn toàn trên MỌI model (tính từ trước đến nay)">Fully Resolved</th>
@@ -730,6 +731,9 @@ Browser_000202&#9;tuyen.bv1"></textarea>
       </label>
       <label>Danh sách Item TC Hub <span class="hint" style="font-weight:normal">(để trống = tự lấy toàn bộ Test Suite)</span>
         <input type="text" id="sCompanyItems" placeholder="Weather, Internet, SamsungMember">
+      </label>
+      <label>Ánh xạ Item→App ở endpoint TC Hub (JSON) <span class="hint" style="font-weight:normal">(khi tên Item khác tên app ở /api/tc/&lt;app&gt;; để trống = dùng mặc định)</span>
+        <input type="text" id="sCompanyItemAliases" placeholder='{"SamsungMember":"SamsungMembers","Now-brief":"NowBrief"}'>
       </label>
       <label>GitHub repo (owner/repo)
         <input type="text" id="sGithubRepo" placeholder="VD: company/qa-scripts">

@@ -73,6 +73,15 @@ COMPANY_SKIP_STATES = {"skip", "excluded"}
 # "target" (automationTarget) = TC CAN hoan thanh script nhung CHUA xong (khac performed/excluded).
 COMPANY_TARGET_STATES = {"target"}
 
+# Anh xa ten Item (test_suite trong he thong) -> ten dung o endpoint TC Hub /api/tc/{item}.
+# TC Hub dat endpoint theo TEN APP, doi khi khac ten suite noi bo (vd "SamsungMember" ->
+# endpoint "SamsungMembers", "Now-brief" -> "NowBrief"). Item khong co trong map giu nguyen ten.
+# Co the override qua settings key 'company_item_aliases' (JSON object) - xem get_company_item_aliases.
+COMPANY_ITEM_ENDPOINT_ALIAS = {
+    "SamsungMember": "SamsungMembers",
+    "Now-brief": "NowBrief",
+}
+
 BACKUP_DIR = "backups"
 
 
@@ -122,6 +131,41 @@ def get_root_cause_groups(db):
     return list(ROOT_CAUSE_GROUPS)
 
 
+def get_company_item_aliases(db):
+    """Map Item (test_suite) -> ten dung o endpoint TC Hub. Bat dau tu hang so
+    COMPANY_ITEM_ENDPOINT_ALIAS, cho phep override/them qua settings key
+    'company_item_aliases' (JSON object {item: alias}). Gia tri rong/sai dinh dang -> bo qua."""
+    aliases = dict(COMPANY_ITEM_ENDPOINT_ALIAS)
+    raw = get_setting(db, "company_item_aliases", "").strip()
+    if raw:
+        try:
+            extra = json.loads(raw)
+            if isinstance(extra, dict):
+                for k, v in extra.items():
+                    if isinstance(k, str) and isinstance(v, str) and k.strip() and v.strip():
+                        aliases[k.strip()] = v.strip()
+        except (ValueError, TypeError):
+            pass
+    return aliases
+
+
+def canonical_tc_id(raw_id, item_hint=None):
+    """Chuan hoa tc_id tu TC Hub ve dung dinh dang he thong (de khop new_scripts/assignments):
+    1) Bo moi khoang trang ben trong + strip  -> "Now Brief_000001" -> "NowBrief_000001".
+    2) Neu da nhan ra tien to suite (item_from_tc_id) -> giu nguyen (vd "SM-00-001", "Browser_x").
+    3) Neu chua co tien to (vd Weather tra "A001") -> prepend ten item_hint: "Weather_A001".
+    Idempotent voi id da chuan (chi bo khoang trang, khong doi gi khac)."""
+    s = re.sub(r"\s+", "", str(raw_id or "")).strip()
+    if not s:
+        return s
+    if item_from_tc_id(s) is not None:
+        return s
+    hint = str(item_hint or "").strip()
+    if hint and item_from_tc_id(hint + "_" + s) is not None:
+        return hint + "_" + s
+    return s
+
+
 app = Flask(__name__)
 # Session cookie (dang nhap). Hardcode cung mo hinh secret hien co (LAN noi bo).
 app.secret_key = "smartlab-tracker-session-2026-haianh6729"
@@ -151,6 +195,48 @@ def close_db(exception=None):
     udb = g.pop("users_db", None)
     if udb is not None:
         udb.close()
+
+
+# ------------------------------------------------------------------
+# TTL micro-cache cho cac read endpoint bi 50 client goi TRUNG payload
+# (dashboard/priority/...). 50 client trong 1 cua so 15s -> chi compute
+# 1 lan/TTL thay vi 50 lan -> xoa contention (xem do dac: 25 request dong
+# thoi /api/dashboard tung mat 3-11s). Chi dung cho GET read thuan, khong
+# phu thuoc user; staleness <= TTL da co san do UI polling 15s.
+# ------------------------------------------------------------------
+_resp_cache = {}
+_resp_cache_lock = threading.Lock()     # bao ve dict cache + dict key-lock
+_resp_key_locks = {}                    # 1 lock/key -> single-flight (gop cac miss dong thoi)
+
+
+def cached_data(key, ttl, producer):
+    """Tra ve du lieu cache theo key neu con han (< ttl giay), nguoc lai goi producer().
+
+    SINGLE-FLIGHT: khi nhieu request cung miss 1 luc (vd 25 client cung poll), CHI 1
+    request chay producer(), so con lai cho tren key-lock roi dung ket qua vua tinh ->
+    tranh 'thundering herd' (25 compute song song = 6s). Cac request cho chi block tren
+    lock (da nha GIL), khong ton CPU -> compute don chay full toc ~200ms."""
+    now = time.time()
+    with _resp_cache_lock:
+        hit = _resp_cache.get(key)
+        if hit and now - hit[0] < ttl:
+            return hit[1]
+        klock = _resp_key_locks.get(key)
+        if klock is None:
+            klock = _resp_key_locks[key] = threading.Lock()
+    with klock:
+        # Double-check: request giu lock truoc do co the vua compute xong trong luc ta cho.
+        with _resp_cache_lock:
+            hit = _resp_cache.get(key)
+            if hit and time.time() - hit[0] < ttl:
+                return hit[1]
+        val = producer()
+        with _resp_cache_lock:
+            _resp_cache[key] = (time.time(), val)
+        return val
+
+
+_READ_CACHE_TTL = 10  # giay - trung voi nhip polling, du de gop burst 50 client
 
 
 def get_users_db():
@@ -290,6 +376,7 @@ def init_db():
         "company_api_url": "",
         "company_cookie": "",
         "company_items": "",
+        "company_item_aliases": "",  # JSON {item: ten_app_o_endpoint} - override COMPANY_ITEM_ENDPOINT_ALIAS
         "github_api_base": "https://api.github.com",
         "github_repo": "",       # dang owner/repo
         "github_branch": "main",
@@ -2349,20 +2436,22 @@ def api_fix_tracking():
 def api_failing_scripts():
     """Danh sách script HIỆN còn lỗi (tier != Done) để form Ghi nhận Fix chọn trực tiếp,
     kèm các model đang fail và cycle gần nhất (điền sẵn Fixed_after_cycle)."""
-    db = get_db()
-    priority = get_script_priority(db)
-    failing = [
-        {
-            "test_suite": p["test_suite"], "test_case": p["test_case"],
-            "failing_models": p["failing_models"],
-            "fail_count": p["fail_count"], "priority_tier": p["priority_tier"],
-            "last_updated_cycle": p["last_updated_cycle"],
-            "current_owner": p["current_owner"],
-        }
-        for p in priority if p["priority_tier"] != "Done"
-    ]
-    failing.sort(key=lambda x: (x["test_suite"], x["test_case"]))
-    return jsonify(failing)
+    def _compute():
+        db = get_db()
+        priority = get_script_priority(db)
+        failing = [
+            {
+                "test_suite": p["test_suite"], "test_case": p["test_case"],
+                "failing_models": p["failing_models"],
+                "fail_count": p["fail_count"], "priority_tier": p["priority_tier"],
+                "last_updated_cycle": p["last_updated_cycle"],
+                "current_owner": p["current_owner"],
+            }
+            for p in priority if p["priority_tier"] != "Done"
+        ]
+        failing.sort(key=lambda x: (x["test_suite"], x["test_case"]))
+        return failing
+    return jsonify(cached_data("failing", _READ_CACHE_TTL, _compute))
 
 
 # ------------------------------------------------------------------
@@ -2553,6 +2642,14 @@ def get_owner_stats(db, priority=None):
             "WHERE status='DONE' AND member IS NOT NULL AND TRIM(member)!='' GROUP BY member"
         ).fetchall()
     }
+    # So TC danh SKIP (khong can viet script) theo tung member - all-time (cot Scripts SKIP).
+    skipped_map = {
+        r["member"]: r["c"]
+        for r in db.execute(
+            "SELECT member, COUNT(*) c FROM new_scripts "
+            "WHERE status='SKIP' AND member IS NOT NULL AND TRIM(member)!='' GROUP BY member"
+        ).fetchall()
+    }
     open_workload = {}
     for r in assignment_rows:
         if not r["owner"]:
@@ -2585,7 +2682,7 @@ def get_owner_stats(db, priority=None):
     for orow in owner_rows:
         owner = orow["name"]
         fx = fixes_by_owner.get(owner, [])
-        if not fx and owner not in open_workload and not written_map.get(owner):
+        if not fx and owner not in open_workload and not written_map.get(owner) and not skipped_map.get(owner):
             continue
         seen = set()
         distinct_scripts = []
@@ -2622,6 +2719,7 @@ def get_owner_stats(db, priority=None):
             "owner": owner,
             "fixes_logged": len(fx),
             "scripts_written": written_map.get(owner, 0),  # so script viet moi DONE (all-time)
+            "scripts_skipped": skipped_map.get(owner, 0),  # so TC danh SKIP (all-time)
             "distinct_scripts_fixed": distinct_fixed_n,
             "distinct_scripts_fully_resolved": fully_resolved_n,
             "verified": verified, "reopened": reopened, "pending": pending,
@@ -2675,10 +2773,7 @@ def api_leaderboard():
     - cumulative: KPI all-time day du (resolution/verification rate, workload) + scripts_written.
     - day/week: dem fix (fix_date) & script viet moi DONE (completed_date) TRONG khoang;
       rate all-time van kem de tham chieu. Kem totals + nang suat TB/nguoi/ngay."""
-    db = get_db()
     scope = (request.args.get("scope") or "cumulative").strip().lower()
-    base = get_owner_stats(db)
-    base_map = {o["owner"]: o for o in base}
 
     date_from = date_to = None
     if scope == "day":
@@ -2688,6 +2783,17 @@ def api_leaderboard():
             date_from, date_to = _week_range(request.args.get("week") or date.today().strftime("%G-W%V"))
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
+
+    return jsonify(cached_data(
+        f"lb:{scope}:{date_from}:{date_to}", _READ_CACHE_TTL,
+        lambda: _leaderboard_payload(scope, date_from, date_to),
+    ))
+
+
+def _leaderboard_payload(scope, date_from, date_to):
+    db = get_db()
+    base = get_owner_stats(db)
+    base_map = {o["owner"]: o for o in base}
 
     if scope == "cumulative":
         rows = base
@@ -2704,13 +2810,20 @@ def api_leaderboard():
                 "AND member IS NOT NULL AND TRIM(member)!='' GROUP BY member", (date_from, date_to)
             ).fetchall()
         }
+        sk_map = {
+            r["member"]: r["c"] for r in db.execute(
+                "SELECT member, COUNT(*) c FROM new_scripts WHERE status='SKIP' AND completed_date>=? AND completed_date<=? "
+                "AND member IS NOT NULL AND TRIM(member)!='' GROUP BY member", (date_from, date_to)
+            ).fetchall()
+        }
         rows = []
-        for name in sorted(set(fx_map) | set(wr_map)):
+        for name in sorted(set(fx_map) | set(wr_map) | set(sk_map)):
             b = base_map.get(name, {})
             rows.append({
                 "owner": name,
                 "fixes_logged": fx_map.get(name, 0),
                 "scripts_written": wr_map.get(name, 0),
+                "scripts_skipped": sk_map.get(name, 0),
                 "distinct_scripts_fixed": b.get("distinct_scripts_fixed", 0),
                 "distinct_scripts_fully_resolved": b.get("distinct_scripts_fully_resolved", 0),
                 "verified": b.get("verified", 0), "reopened": b.get("reopened", 0), "pending": b.get("pending", 0),
@@ -2726,7 +2839,7 @@ def api_leaderboard():
     total_fixes = sum(o.get("fixes_logged", 0) for o in rows)
     people = sum(1 for o in rows if (o.get("scripts_written", 0) or o.get("fixes_logged", 0)))
     days = _activity_days(db, date_from, date_to)
-    return jsonify({
+    return {
         "scope": scope,
         "date_from": date_from, "date_to": date_to,
         "rows": rows,
@@ -2738,24 +2851,26 @@ def api_leaderboard():
             "avg_write_per_person_day": (total_written / people / days) if (people and days) else None,
             "avg_fix_per_person_day": (total_fixes / people / days) if (people and days) else None,
         },
-    })
+    }
 
 
 @app.route("/api/priority")
 def api_priority():
-    db = get_db()
-    data = get_script_priority(db)
-    # Sắp xếp CHÍNH theo điểm ưu tiên (fail_count × breadth) giảm dần — case lỗi nhiều
-    # nhất & rộng nhất lên đầu. Done (hết lỗi) luôn xuống cuối, Verify (đang xác minh)
-    # ngay trên Done. Rồi tie-break theo tổng fail.
-    data.sort(key=lambda x: (
-        {"Done": 2, "Verify": 1}.get(x["priority_tier"], 0),
-        -x["priority_score"], -x["fail_count"],
-        x["test_suite"], x["test_case"],
-    ))
-    for i, p in enumerate(data, start=1):
-        p["rank"] = i  # thứ hạng ưu tiên (#1 = cần fix trước nhất)
-    return jsonify(data)
+    def _compute():
+        db = get_db()
+        data = get_script_priority(db)
+        # Sắp xếp CHÍNH theo điểm ưu tiên (fail_count × breadth) giảm dần — case lỗi nhiều
+        # nhất & rộng nhất lên đầu. Done (hết lỗi) luôn xuống cuối, Verify (đang xác minh)
+        # ngay trên Done. Rồi tie-break theo tổng fail.
+        data.sort(key=lambda x: (
+            {"Done": 2, "Verify": 1}.get(x["priority_tier"], 0),
+            -x["priority_score"], -x["fail_count"],
+            x["test_suite"], x["test_case"],
+        ))
+        for i, p in enumerate(data, start=1):
+            p["rank"] = i  # thứ hạng ưu tiên (#1 = cần fix trước nhất)
+        return data
+    return jsonify(cached_data("priority", _READ_CACHE_TTL, _compute))
 
 
 @app.route("/api/script-cycle-matrix")
@@ -2763,24 +2878,26 @@ def api_script_cycle_matrix():
     """Pass rate/fail count của từng script tách theo từng cycle, để so sánh script đó
     thay đổi ra sao qua các lần chạy (cải thiện / giảm sút / không đổi).
     Query param ?by_model=1 -> tách riêng theo từng model (test_suite/test_case/model)."""
-    db = get_db()
     group_by_model = request.args.get("by_model") in ("1", "true", "True")
-    data = compute_script_cycle_matrix(db, group_by_model=group_by_model)
-    tier_order = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "Verify": 4, "Done": 5, "": 6}
-    trend_order = {"regressed": 0, "improved": 1, "unchanged": 2, "insufficient_data": 3}
-    data["scripts"].sort(key=lambda s: (
-        trend_order.get(s["overall_trend"], 9),
-        tier_order.get(s["priority_tier"], 9),
-        s["test_suite"], s["test_case"], s.get("model") or "",
-    ))
-    return jsonify(data)
+
+    def _compute():
+        db = get_db()
+        data = compute_script_cycle_matrix(db, group_by_model=group_by_model)
+        tier_order = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "Verify": 4, "Done": 5, "": 6}
+        trend_order = {"regressed": 0, "improved": 1, "unchanged": 2, "insufficient_data": 3}
+        data["scripts"].sort(key=lambda s: (
+            trend_order.get(s["overall_trend"], 9),
+            tier_order.get(s["priority_tier"], 9),
+            s["test_suite"], s["test_case"], s.get("model") or "",
+        ))
+        return data
+    return jsonify(cached_data(f"scm:{group_by_model}", _READ_CACHE_TTL, _compute))
 
 
 @app.route("/api/suite-model-matrix")
 def api_suite_model_matrix():
     """Pass rate của từng test suite (item) trên từng model theo từng cycle — cho Dashboard."""
-    db = get_db()
-    return jsonify(compute_suite_model_matrix(db))
+    return jsonify(cached_data("smm", _READ_CACHE_TTL, lambda: compute_suite_model_matrix(get_db())))
 
 
 # ------------------------------------------------------------------
@@ -2991,6 +3108,11 @@ def api_handover():
 
 @app.route("/api/dashboard")
 def api_dashboard():
+    # Cache 10s: 50 client goi cung payload -> compute 1 lan/TTL (xoa contention).
+    return jsonify(cached_data("dashboard", _READ_CACHE_TTL, _dashboard_payload))
+
+
+def _dashboard_payload():
     db = get_db()
 
     # ---- Trend by cycle (Pass Rate theo cong thuc rieng: NA khong tinh vao tu so & mau so) ----
@@ -3136,7 +3258,7 @@ def api_dashboard():
             else:
                 insights.append(f"Estimated fix velocity ({actual_rate:.1f} scripts/day) is at or above the required velocity ({required_rate:.1f} scripts/day) — keep it up.")
 
-    return jsonify({
+    return {
         "trend": trend,
         "model_pass_rate": model_pass_rate,
         "tier_counts": tier_counts,
@@ -3160,7 +3282,7 @@ def api_dashboard():
             "verify_count": verify_count,
         },
         "insights": insights,
-    })
+    }
 
 
 # ------------------------------------------------------------------
@@ -4130,6 +4252,7 @@ def company_fetch_testcases(db):
             "API TC Hub chưa được cấu hình — điền 'URL API TC Hub' trong tab Cài đặt trước."
         )
     cookie = get_setting(db, "company_cookie").strip()
+    aliases = get_company_item_aliases(db)
     items_raw = get_setting(db, "company_items").strip()
     if items_raw:
         items = [s.strip() for s in items_raw.split(",") if s.strip()]
@@ -4142,11 +4265,13 @@ def company_fetch_testcases(db):
 
     rows, errors = [], []
     for item in items:
+        # Ten dung o endpoint TC Hub co the khac ten suite noi bo (vd SamsungMember -> SamsungMembers).
+        endpoint_item = aliases.get(item, item)
         try:
             if "{item}" in url_tpl:
-                url = url_tpl.replace("{item}", urllib.parse.quote(str(item)))
+                url = url_tpl.replace("{item}", urllib.parse.quote(str(endpoint_item)))
             else:
-                url = url_tpl.rstrip("/") + "/" + urllib.parse.quote(str(item))
+                url = url_tpl.rstrip("/") + "/" + urllib.parse.quote(str(endpoint_item))
             data = _http_json(url, cookie=cookie)
             if not isinstance(data, list):
                 raise ValueError("response không phải danh sách TC")
@@ -4156,11 +4281,12 @@ def company_fetch_testcases(db):
                 tc_id = str(rec.get("id") or "").strip()
                 if not tc_id:
                     continue
+                # Giu ID goc TC Hub o 'raw'; 'item' = ten suite noi bo (dung lam hint chuan hoa tc_id).
                 rows.append({
                     "tc_id": tc_id,
-                    "item": str(rec.get("app") or item).strip() or item,
+                    "item": str(item).strip(),
                     "status": str(rec.get("automationTarget") or "").strip(),
-                    "raw": "",
+                    "raw": tc_id,
                 })
         except (RuntimeError, ValueError) as e:
             errors.append({"item": item, "error": str(e)})
@@ -4168,16 +4294,20 @@ def company_fetch_testcases(db):
 
 
 def _replace_company_testcases(db, rows, source):
-    """Full refresh cache company_testcases (snapshot moi thay toan bo snapshot cu)."""
+    """Full refresh cache company_testcases (snapshot moi thay toan bo snapshot cu).
+    Chuan hoa tc_id ve dung dinh dang he thong (canonical_tc_id) de khop new_scripts;
+    giu ID goc TC Hub o cot 'raw'."""
     db.execute("DELETE FROM company_testcases")
     n = 0
     for r in rows:
-        tc_id = str(r.get("tc_id") or "").strip()
-        if not tc_id:
+        raw_id = str(r.get("tc_id") or "").strip()
+        if not raw_id:
             continue
+        hint = str(r.get("item") or "").strip()
+        tc_id = canonical_tc_id(raw_id, hint) or raw_id
         status = str(r.get("status") or "").strip() or "Not Performed"
-        item = str(r.get("item") or "").strip() or item_from_tc_id(tc_id) or "Unknown"
-        raw = str(r.get("raw") or "")
+        item = item_from_tc_id(tc_id) or hint or "Unknown"
+        raw = str(r.get("raw") or "") or raw_id
         db.execute(
             "INSERT OR REPLACE INTO company_testcases (tc_id, item, status, raw, source, synced_at) "
             "VALUES (?,?,?,?,?, datetime('now'))",
@@ -4217,15 +4347,17 @@ def api_company_manual():
     if mode == "merge":
         n = 0
         for r in rows:
-            tc_id = str(r.get("tc_id") or "").strip()
-            if not tc_id:
+            raw_id = str(r.get("tc_id") or "").strip()
+            if not raw_id:
                 continue
+            hint = str(r.get("item") or "").strip()
+            tc_id = canonical_tc_id(raw_id, hint) or raw_id
             status = str(r.get("status") or "").strip() or "Not Performed"
-            item = str(r.get("item") or "").strip() or item_from_tc_id(tc_id) or "Unknown"
+            item = item_from_tc_id(tc_id) or hint or "Unknown"
             db.execute(
                 "INSERT OR REPLACE INTO company_testcases (tc_id, item, status, raw, source, synced_at) "
                 "VALUES (?,?,?,?, 'manual', datetime('now'))",
-                (tc_id, item, status, ""),
+                (tc_id, item, status, raw_id),
             )
             n += 1
     else:
@@ -5416,14 +5548,14 @@ def _excel_team_quality_sheet(wb, owner_stats, reopen_rate, n_verified, n_regres
             if reopen_rate is not None else f"Reopen rate: …  (Verified: {n_verified}  Regressed: {n_regressed})"
             ).font = Font(bold=True)
     r += 2
-    header = ["#", "Owner", "Scripts Written", "Fixes", "Distinct Fixed", "Fully Resolved",
+    header = ["#", "Owner", "Scripts Written", "Scripts SKIP", "Fixes", "Distinct Fixed", "Fully Resolved",
               "Resolution Rate", "Verified", "Reopen", "Verification Rate", "Open Workload"]
     _excel_style_header(ws, r, header)
     r += 1
     first_data_row = r
     for o in owner_stats:
         _excel_style_data_row(ws, r, [
-            o["rank"], o["owner"], o.get("scripts_written", 0), o["fixes_logged"],
+            o["rank"], o["owner"], o.get("scripts_written", 0), o.get("scripts_skipped", 0), o["fixes_logged"],
             o["distinct_scripts_fixed"], o["distinct_scripts_fully_resolved"],
             o["resolution_rate"] if o["resolution_rate"] is not None else "…",
             o["verified"], o["reopened"],
@@ -5433,11 +5565,12 @@ def _excel_team_quality_sheet(wb, owner_stats, reopen_rate, n_verified, n_regres
         r += 1
     def sm(k):
         return sum(o.get(k, 0) for o in owner_stats)
-    _excel_style_data_row(ws, r, ["", "Total", sm("scripts_written"), sm("fixes_logged"), sm("distinct_scripts_fixed"),
+    _excel_style_data_row(ws, r, ["", "Total", sm("scripts_written"), sm("scripts_skipped"), sm("fixes_logged"),
+                                   sm("distinct_scripts_fixed"),
                                    sm("distinct_scripts_fully_resolved"), "—", sm("verified"), sm("reopened"), "—",
                                    sm("open_workload")])
     if owner_stats:
-        for col_letter in ("G", "J"):  # Resolution Rate, Verification Rate
+        for col_letter in ("H", "K"):  # Resolution Rate, Verification Rate (dich 1 cot do them Scripts SKIP)
             ws.conditional_formatting.add(f"{col_letter}{first_data_row}:{col_letter}{r - 1}", ColorScaleRule(
                 start_type="min", start_color="F8696B",
                 mid_type="percentile", mid_value=50, mid_color="FFEB84",
@@ -6479,8 +6612,14 @@ if __name__ == "__main__":
     # Neu chua cai waitress -> fallback ve Flask dev server (van chay duoc ngay).
     try:
         from waitress import serve
-        print(" Server: waitress (production) | threads=8")
-        serve(app, host="0.0.0.0", port=5000, threads=8)
+        # listen dual-stack (IPv4 + IPv6): cho ket noi qua "localhost"/[::1] khong bi
+        # penalty Happy-Eyeballs ~200ms/ket noi (Windows tra ::1 truoc, neu chi bind
+        # IPv4 thi client cho timeout roi moi fallback). User LAN qua IPv4 khong doi.
+        # threads/connection_limit/channel_timeout: giu dung cau hinh dang chay thuc te
+        # (ghi vao source de restart bang run_server.bat khong bi mat).
+        print(" Server: waitress (production) | threads=12 | listen IPv4+IPv6")
+        serve(app, listen="0.0.0.0:5000 [::]:5000",
+              threads=12, connection_limit=500, channel_timeout=30)
     except ImportError:
         print(" Server: Flask dev (chua cai waitress -> 'pip install -r requirements.txt')")
         app.run(host="0.0.0.0", port=5000, threaded=True, debug=False)
