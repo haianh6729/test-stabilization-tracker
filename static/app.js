@@ -85,14 +85,21 @@ function applyPermissions() {
   const perms = (state.me && state.me.permissions) || [];
   let activeStillVisible = false;
   let firstVisibleBtn = null;
+  // Helper: user co it nhat 1 quyen trong danh sach CSV.
+  const hasAny = (csv) => (csv || "").split(",").map((s) => s.trim()).filter(Boolean).some((p) => perms.includes(p));
   $$(".tab-btn").forEach((btn) => {
     const tab = btn.dataset.tab;
-    const allowed = perms.includes(tab);
+    // Tab hien neu user co quyen chinh (data-tab) HOAC bat ky quyen phu (data-alt-perm).
+    const allowed = perms.includes(tab) || hasAny(btn.dataset.altPerm);
     btn.style.display = allowed ? "" : "none";
     const panel = $("#tab-" + tab);
     if (!allowed && panel) panel.classList.remove("active");
     if (allowed && !firstVisibleBtn) firstVisibleBtn = btn;
     if (allowed && btn.classList.contains("active")) activeStillVisible = true;
+  });
+  // Gating theo tung phan tu (card) trong tab: an [data-perm] neu user khong co quyen nao liet ke.
+  $$("[data-perm]").forEach((el) => {
+    el.style.display = hasAny(el.dataset.perm) ? "" : "none";
   });
   if (!activeStillVisible && firstVisibleBtn) {
     $$(".tab-btn").forEach((b) => b.classList.remove("active"));
@@ -267,7 +274,7 @@ function renderFixPareto(rows) {
     return;
   }
   const body = rows.map((g) => `
-    <tr><td>${g.group}</td><td>${g.count}</td><td>${fmtPct(g.pct)}</td><td>${fmtPct(g.cum_pct)}</td></tr>
+    <tr><td class="rc-group-link" data-group="${escAttr(g.group)}" style="cursor:pointer; color:#2196F3; text-decoration:underline;" title="Bấm để xem các TC hiện đang fail thuộc nhóm nguyên nhân này">${g.group}</td><td>${g.count}</td><td>${fmtPct(g.pct)}</td><td>${fmtPct(g.cum_pct)}</td></tr>
   `).join("");
   const total = rows.reduce((a, g) => a + (g.count || 0), 0);
   tbody.innerHTML = body + `<tr class="total-row"><td>Total</td><td>${total}</td><td>—</td><td>—</td></tr>`;
@@ -916,7 +923,9 @@ function ttWireSort(table) {
     if (th.dataset.ttSort) return;
     th.dataset.ttSort = "1";
     th.style.cursor = "pointer";
-    th.title = "Bấm để sắp xếp";
+    // Giu lai title giai thich goc (neu co) - chi noi them goi y sort, KHONG ghi de.
+    const baseTitle = th.getAttribute("title");
+    th.title = baseTitle ? `${baseTitle}\n(bấm để sắp xếp)` : "Bấm để sắp xếp";
     th.addEventListener("click", () => {
       const st = TT[table.id];
       if (st.sortCol === i) st.sortDir *= -1; else { st.sortCol = i; st.sortDir = 1; }
@@ -1947,6 +1956,7 @@ async function showFailDetails(suite, testCase) {
         <th style="border:1px solid #ddd; padding:10px; text-align:left;">Test ID</th>
         <th style="border:1px solid #ddd; padding:10px; text-align:left;">Model</th>
         <th style="border:1px solid #ddd; padding:10px; text-align:left;" title="Serial Number — thiết bị thật đã chạy ra kết quả này (truy vết trên farm)">SN</th>
+        <th style="border:1px solid #ddd; padding:10px; text-align:left;" title="Chỉ số script trong Test ID (mỗi Test ID chạy nhiều script) — chỉ có khi lấy từ farm API">Index</th>
         <th style="border:1px solid #ddd; padding:10px; text-align:left;">State</th>
         <th style="border:1px solid #ddd; padding:10px; text-align:left;">Description</th>
       </tr></thead>
@@ -1957,6 +1967,7 @@ async function showFailDetails(suite, testCase) {
         <td style="border:1px solid #ddd; padding:10px; font-family:monospace; color:#2196F3; font-weight:bold; cursor:pointer; user-select:all;" title="Click to copy" onclick="navigator.clipboard.writeText('${f.test_id}'); this.style.background='#d4edda'; setTimeout(() => this.style.background='', 500);">${f.test_id}</td>
         <td style="border:1px solid #ddd; padding:10px;">${f.model}</td>
         <td style="border:1px solid #ddd; padding:10px; font-family:monospace; font-size:12px;">${escAttr(f.serial || "—")}</td>
+        <td style="border:1px solid #ddd; padding:10px; text-align:center;">${f.script_index ?? "—"}</td>
         <td style="border:1px solid #ddd; padding:10px;"><span style="color:#fff; background:#e74c3c; padding:4px 8px; border-radius:3px; font-weight:bold;">${f.state}</span></td>
         <td style="border:1px solid #ddd; padding:10px; max-width:350px; word-break:break-word; font-size:12px; color:#555; cursor:help;" title="${escAttr(f.description || "")}">${escAttr((f.description || "—").length > 200 ? (f.description || "").slice(0, 200) + "…" : (f.description || "—"))}</td>
       </tr>`;
@@ -1967,6 +1978,48 @@ async function showFailDetails(suite, testCase) {
       </p>`;
 
     $("#failDetailsTitle").textContent = suite + " / " + testCase + " — " + fails.length + " lần Fail";
+    $("#failDetailsContent").innerHTML = html;
+    $("#failDetailsModal").style.display = "flex";
+  } catch (e) {
+    alert("Lỗi tải chi tiết: " + e.message);
+  }
+}
+
+// Dashboard: click 1 nhom nguyen nhan trong "Confirmed Root Causes" -> cac TC dang fail thuoc nhom.
+// Tai su dung modal #failDetailsModal, them cot Script (Item/TC) vi nhom co nhieu script.
+async function showFixRootCauseFails(group) {
+  try {
+    const res = await api("/api/fix-root-cause/fail-details?group=" + encodeURIComponent(group));
+    const items = res.items || [];
+    let html = `<table style="width:100%; border-collapse:collapse; font-size:13px;">
+      <thead><tr style="background:#f5f5f5;">
+        <th style="border:1px solid #ddd; padding:10px; text-align:left;" title="Item / Test Case đang fail thuộc nhóm nguyên nhân này">Script</th>
+        <th style="border:1px solid #ddd; padding:10px; text-align:left;">Cycle</th>
+        <th style="border:1px solid #ddd; padding:10px; text-align:left;">Test ID</th>
+        <th style="border:1px solid #ddd; padding:10px; text-align:left;">Model</th>
+        <th style="border:1px solid #ddd; padding:10px; text-align:left;" title="Serial Number — thiết bị thật đã chạy ra kết quả này (truy vết trên farm)">SN</th>
+        <th style="border:1px solid #ddd; padding:10px; text-align:left;" title="Chỉ số script trong Test ID (mỗi Test ID chạy nhiều script) — chỉ có khi lấy từ farm API">Index</th>
+        <th style="border:1px solid #ddd; padding:10px; text-align:left;">State</th>
+        <th style="border:1px solid #ddd; padding:10px; text-align:left;">Description</th>
+      </tr></thead>
+      <tbody>`;
+    for (const f of items) {
+      html += `<tr style="border-bottom:1px solid #eee;">
+        <td style="border:1px solid #ddd; padding:10px;">${escAttr(f.test_suite)} / ${escAttr(f.test_case)}</td>
+        <td style="border:1px solid #ddd; padding:10px;">${f.cycle}</td>
+        <td style="border:1px solid #ddd; padding:10px; font-family:monospace; color:#2196F3; font-weight:bold; cursor:pointer; user-select:all;" title="Click to copy" onclick="copyTextToClipboard('${escAttr(f.test_id)}')">${escAttr(f.test_id)}</td>
+        <td style="border:1px solid #ddd; padding:10px;">${escAttr(f.model)}</td>
+        <td style="border:1px solid #ddd; padding:10px; font-family:monospace; font-size:12px;">${escAttr(f.serial || "—")}</td>
+        <td style="border:1px solid #ddd; padding:10px; text-align:center;">${f.script_index ?? "—"}</td>
+        <td style="border:1px solid #ddd; padding:10px;"><span style="color:#fff; background:#e74c3c; padding:4px 8px; border-radius:3px; font-weight:bold;">${escAttr(f.state)}</span></td>
+        <td style="border:1px solid #ddd; padding:10px; max-width:350px; word-break:break-word; font-size:12px; color:#555; cursor:help;" title="${escAttr(f.description || "")}">${escAttr((f.description || "—").length > 200 ? (f.description || "").slice(0, 200) + "…" : (f.description || "—"))}</td>
+      </tr>`;
+    }
+    html += `</tbody></table>`;
+    if (!items.length) {
+      html += `<p style="color:#888; padding:10px;">Không còn TC nào đang fail trong nhóm nguyên nhân này.</p>`;
+    }
+    $("#failDetailsTitle").textContent = group + " — " + items.length + " TC đang fail";
     $("#failDetailsContent").innerHTML = html;
     $("#failDetailsModal").style.display = "flex";
   } catch (e) {
@@ -2035,6 +2088,8 @@ async function openRcBreakdown(labelKey) {
         <th style="border:1px solid #ddd; padding:8px; text-align:left;">TC ID</th>
         <th style="border:1px solid #ddd; padding:8px; text-align:left;">Test ID</th>
         <th style="border:1px solid #ddd; padding:8px; text-align:left;">Model</th>
+        <th style="border:1px solid #ddd; padding:8px; text-align:left;" title="Serial Number — thiết bị thật đã chạy ra kết quả này (truy vết trên farm)">SN</th>
+        <th style="border:1px solid #ddd; padding:8px; text-align:left;" title="Chỉ số script trong Test ID (mỗi Test ID chạy nhiều script) — chỉ có khi lấy từ farm API">Index</th>
         <th style="border:1px solid #ddd; padding:8px; text-align:left;">Cycle</th>
         <th style="border:1px solid #ddd; padding:8px; text-align:left;">Owner</th>
         <th style="border:1px solid #ddd; padding:8px; text-align:left;">Team</th>
@@ -2047,6 +2102,8 @@ async function openRcBreakdown(labelKey) {
         <td style="border:1px solid #ddd; padding:8px;">${escAttr(it.test_case)}</td>
         <td style="border:1px solid #ddd; padding:8px; font-family:monospace; color:#2196F3; font-weight:bold; cursor:pointer; user-select:all;" title="Click to copy" onclick="copyTextToClipboard('${escAttr(it.test_id)}')">${escAttr(it.test_id)}</td>
         <td style="border:1px solid #ddd; padding:8px;">${escAttr(it.model)}</td>
+        <td style="border:1px solid #ddd; padding:8px; font-family:monospace; font-size:12px;">${escAttr(it.serial || "—")}</td>
+        <td style="border:1px solid #ddd; padding:8px; text-align:center;">${it.script_index ?? "—"}</td>
         <td style="border:1px solid #ddd; padding:8px;">${it.cycle}</td>
         <td style="border:1px solid #ddd; padding:8px;">${it.owner ? escAttr(it.owner) : '<span style="color:#bbb">—</span>'}</td>
         <td style="border:1px solid #ddd; padding:8px;">${it.team ? escAttr(it.team) : '<span style="color:#bbb">—</span>'}</td>
@@ -2066,8 +2123,8 @@ async function openRcBreakdown(labelKey) {
       $("#rcbMsg").textContent = ok ? "📋 Đã copy " + d.items.length + " Test ID." : "Không copy tự động được.";
     });
     $("#btnRcbExport").addEventListener("click", () => {
-      const header = ["Item", "TC ID", "Test ID", "Model", "Cycle", "Cycle Date", "Owner", "Team", "Mô tả"];
-      const rows = d.items.map((it) => [it.test_suite, it.test_case, it.test_id, it.model, it.cycle, it.cycle_date, it.owner, it.team, it.description]);
+      const header = ["Item", "TC ID", "Test ID", "Model", "SN", "Index", "Cycle", "Cycle Date", "Owner", "Team", "Mô tả"];
+      const rows = d.items.map((it) => [it.test_suite, it.test_case, it.test_id, it.model, it.serial, it.script_index, it.cycle, it.cycle_date, it.owner, it.team, it.description]);
       const csv = [header, ...rows]
         .map((row) => row.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","))
         .join("\r\n");
@@ -2896,6 +2953,11 @@ async function init() {
   $("#btnExportSmMatrix")?.addEventListener("click", exportSmMatrixExcel);
   await loadReferenceData();
   initPriorityTable();
+  // Dashboard: click 1 nhom trong bang "Confirmed Root Causes" -> xem cac TC dang fail thuoc nhom.
+  $("#fixParetoTable")?.addEventListener("click", (e) => {
+    const cell = e.target.closest("td.rc-group-link");
+    if (cell) showFixRootCauseFails(cell.dataset.group);
+  });
   await initSettings();
   initReports();
   initIntegrations();

@@ -19,7 +19,7 @@
     <button class="tab-btn" data-tab="cycle-compare">🔄 So sánh Cycle</button>
     <button class="tab-btn" data-tab="fix-tracking">🔬 Theo dõi Fix</button>
     <button class="tab-btn" data-tab="reports">📤 Báo cáo</button>
-    <button class="tab-btn" data-tab="integrations">🔗 Đồng bộ</button>
+    <button class="tab-btn" data-tab="integrations" data-alt-perm="input-results">🔗 Đồng bộ</button>
     <button class="tab-btn" data-tab="settings">⚙️ Cài đặt</button>
   </nav>
   <div class="topbar-right">
@@ -587,7 +587,7 @@ Browser_000202&#9;tuyen.bv1"></textarea>
 <!-- ============ INTEGRATIONS (Đồng bộ) ============ -->
 <section id="tab-integrations" class="tab-panel">
 
-  <div class="card">
+  <div class="card" data-perm="input-results">
     <h3>🚜 Lấy kết quả từ Test Farm theo Test ID</h3>
     <p class="hint">Nhập danh sách <b>Test ID</b> (mỗi dòng 1 ID, hoặc cách nhau bằng dấu phẩy) → hệ thống gọi API farm lấy kết quả và nhập thẳng vào dữ liệu (đi qua đúng bộ chuẩn hoá/chống trùng như dán tay). <b>Cấu hình URL/token API farm ở tab ⚙️ Cài đặt (mục Tích hợp &amp; API)</b> — khi chưa cấu hình sẽ báo rõ. Ngoài ra script phía farm có thể tự push kết quả qua <code>POST /api/results/import</code> với header <code>X-Import-Token</code>.</p>
     <div id="intFarmStatus" class="hint"></div>
@@ -599,7 +599,7 @@ Browser_000202&#9;tuyen.bv1"></textarea>
     <div id="farmFetchErrors"></div>
   </div>
 
-  <div class="card">
+  <div class="card" data-perm="integrations">
     <h3>🏢 TC Hub — tổng TC cần script</h3>
     <p class="hint">Nguồn <b>tổng số test case cần viết script</b> (con số động; TC status <b>SKIP/Excluded</b> không tính vào tổng; <b>Performed</b> = đã hoàn thành bên TC Hub). Khi có API sẽ bấm Sync tự động; tạm thời dùng ô paste tay bên dưới (mỗi dòng: <code>TC_ID⇥Status</code> hoặc <code>TC_ID⇥Status⇥Item</code>, copy từ Excel; thiếu Status → mặc định "Not Performed").</p>
     <div id="intCompanyStatus" class="hint"></div>
@@ -615,7 +615,7 @@ Browser_000202&#9;tuyen.bv1"></textarea>
     <p class="hint" id="companyCacheSummary"></p>
   </div>
 
-  <div class="card">
+  <div class="card" data-perm="integrations">
     <h3>🐙 GitHub repo script (nhánh main)</h3>
     <p class="hint">Danh sách <b>file script thực tế</b> trên nhánh main — dùng để đối chiếu script DONE đã có file thật chưa. Cấu hình <code>owner/repo</code> + token ở tab ⚙️ Cài đặt; hoặc paste tay output của <code>git ls-tree -r main --name-only</code> (mỗi dòng 1 đường dẫn file). Đường dẫn thư mục script của từng Item cấu hình ở <b>Cài đặt → Danh sách Test Suite</b>.</p>
     <div id="intGithubStatus" class="hint"></div>
@@ -630,7 +630,7 @@ Browser_000202&#9;tuyen.bv1"></textarea>
     </div>
   </div>
 
-  <div class="card wide">
+  <div class="card wide" data-perm="integrations">
     <h3>🔍 Đối chiếu 3 chiều: DONE/SKIP ↔ TC Hub (Performed/Excluded) ↔ File trên GitHub</h3>
     <p class="hint">Mỗi script <b>DONE</b> phải: (1) có status <b>Performed</b> bên TC Hub, và (2) có <b>file script thật</b> trên nhánh main (đúng thư mục của Item nếu đã cấu hình đường dẫn). Mỗi script <b>SKIP</b> thì NGƯỢC LẠI: phải có status <b>Excluded</b> bên TC Hub và KHÔNG còn file trên GitHub (đã xoá). Dòng lệch = cần xử lý.</p>
     <div class="form-row">

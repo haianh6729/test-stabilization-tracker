@@ -335,6 +335,7 @@ def init_db():
         "ALTER TABLE fixes ADD COLUMN root_cause_group TEXT",
         "ALTER TABLE fixes ADD COLUMN sdf_id TEXT",
         "ALTER TABLE results ADD COLUMN serial TEXT",
+        "ALTER TABLE results ADD COLUMN script_index INTEGER",
         "ALTER TABLE test_suites ADD COLUMN script_path TEXT DEFAULT ''",
     ):
         try:
@@ -2043,15 +2044,21 @@ def insert_result_rows(db, rows, created_by):
             cycle = 0
             author = str(row.get("author") or "").strip()
             team = str(row.get("team") or "").strip()
+            # script_index chi co khi lay tu farm API (moi Test ID chay nhieu script); paste tay -> None.
+            script_index = row.get("script_index")
+            try:
+                script_index = int(script_index) if script_index is not None and str(script_index).strip() != "" else None
+            except (ValueError, TypeError):
+                script_index = None
             result = classify_result(state)
             # Whitelist loi nhieu: mo ta khop -> luu nhung KHONG tinh vao thong ke (result='Excluded').
             if matches_whitelist(description, whitelist):
                 result = "Excluded"
                 excluded += 1
             db.execute(
-                "INSERT INTO results (cycle, cycle_date, test_id, model, test_suite, test_case, state, description, result, created_by, author, team, serial) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (cycle, cycle_date, test_id, model, test_suite, test_case, state, description, result, created_by, author, team, serial),
+                "INSERT INTO results (cycle, cycle_date, test_id, model, test_suite, test_case, state, description, result, created_by, author, team, serial, script_index) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (cycle, cycle_date, test_id, model, test_suite, test_case, state, description, result, created_by, author, team, serial, script_index),
             )
             db.execute("INSERT OR IGNORE INTO test_suites (name) VALUES (?)", (test_suite,))
             if db.execute("SELECT 1 FROM models WHERE name=?", (model,)).fetchone() is None:
@@ -2755,7 +2762,7 @@ def api_script_fail_details(suite, case):
     db = get_db()
     rows = db.execute(
         """
-        SELECT id, cycle, cycle_date, test_id, model, serial, state, description, result
+        SELECT id, cycle, cycle_date, test_id, model, serial, script_index, state, description, result
         FROM results
         WHERE test_suite=? AND test_case=? AND result='Fail'
         ORDER BY cycle DESC, id DESC
@@ -2763,6 +2770,44 @@ def api_script_fail_details(suite, case):
         (suite, case),
     ).fetchall()
     return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/fix-root-cause/fail-details")
+def api_fix_root_cause_fail_details():
+    """Drill-down cho bang 'Confirmed Root Causes (from Fix Log)': voi 1 nhom nguyen nhan
+    (query param `group` = fixes.root_cause_group), tra ve danh sach cac TC (item x model)
+    thuoc nhom do ma HIEN dang fail (latest status = Fail), de xem chi tiet giong modal
+    Bang uu tien. Nhom scripts lay tu fixes.root_cause_group; trang thai fail lay tu results."""
+    db = get_db()
+    group = (request.args.get("group") or "").strip()
+    if not group:
+        return jsonify({"error": "Thieu tham so group"}), 400
+
+    scripts = db.execute(
+        "SELECT DISTINCT test_suite, test_case FROM fixes WHERE root_cause_group=?",
+        (group,),
+    ).fetchall()
+    script_keys = {(r["test_suite"], r["test_case"]) for r in scripts}
+    if not script_keys:
+        return jsonify({"group": group, "items": []})
+
+    latest = db.execute(
+        """
+        SELECT test_suite, test_case, model, serial, script_index, test_id, cycle, cycle_date, state, description
+        FROM (
+            SELECT *, ROW_NUMBER() OVER (
+                PARTITION BY test_suite, test_case, model
+                ORDER BY cycle DESC, id DESC
+            ) as rn
+            FROM results WHERE result <> 'Excluded'
+        )
+        WHERE rn = 1 AND result='Fail'
+        """
+    ).fetchall()
+
+    items = [dict(r) for r in latest if (r["test_suite"], r["test_case"]) in script_keys]
+    items.sort(key=lambda x: (x["test_suite"], x["test_case"], x["model"] or ""))
+    return jsonify({"group": group, "items": items})
 
 
 @app.route("/api/root-cause/breakdown")
@@ -2776,7 +2821,7 @@ def api_root_cause_breakdown():
 
     latest_fails = db.execute(
         """
-        SELECT test_suite, test_case, model, description, test_id, cycle, cycle_date
+        SELECT test_suite, test_case, model, serial, script_index, description, test_id, cycle, cycle_date
         FROM (
             SELECT *, ROW_NUMBER() OVER (
                 PARTITION BY test_suite, test_case, model
@@ -2815,7 +2860,8 @@ def api_root_cause_breakdown():
         owner = owner_map.get((r["test_suite"], r["test_case"]), "")
         items.append({
             "test_suite": r["test_suite"], "test_case": r["test_case"], "test_id": r["test_id"],
-            "model": r["model"], "cycle": r["cycle"], "cycle_date": r["cycle_date"],
+            "model": r["model"], "serial": r["serial"], "script_index": r["script_index"],
+            "cycle": r["cycle"], "cycle_date": r["cycle_date"],
             "owner": owner or "", "team": team_map.get(owner, "") if owner else "",
             "description": r["description"],
         })
@@ -3927,6 +3973,7 @@ def normalize_farm_rows(test_id, payload):
         device0 = device_list[0] if device_list and isinstance(device_list[0], dict) else {}
         model = device0.get("model")
         serial = device0.get("deviceSN") or ""
+        script_index = rec.get("scriptIndex")  # thu tu script trong Test ID (moi Test ID chay nhieu script)
         script_path = rec.get("scriptPath") or ""
         if not model or not script_path:
             continue
@@ -3934,6 +3981,7 @@ def normalize_farm_rows(test_id, payload):
             "test_id": rec.get("requestId") or test_id,
             "model": model,
             "serial": serial,
+            "script_index": script_index,
             "test_suite": rec.get("testFilePath") or "",
             "test_case": script_path,
             "state": rec.get("state") or "",
@@ -4000,7 +4048,7 @@ def api_import_results():
 
 
 @app.route("/api/integrations/farm/fetch", methods=["POST"])
-@require_perm("integrations")
+@require_perm("input-results")
 def api_farm_fetch():
     """Fetch ket qua tu farm API theo danh sach Test ID roi chen vao results.
     Body: {test_ids: [...]} hoac {test_ids: "chuoi cach nhau boi xuong dong/dau phay"}."""
