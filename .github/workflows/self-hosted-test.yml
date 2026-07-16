@@ -1,0 +1,16 @@
+name: Self-hosted runner test
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  hello-from-runner:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run hello_runner.py
+        shell: bash
+        run: python scripts/hello_runner.py
