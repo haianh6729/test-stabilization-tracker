@@ -496,16 +496,19 @@ Keyboard	SKBD_000123	tuyen.bv1"></textarea>
 
   <div class="search-bar">
     <button onclick="usrLoadAll()" style="background: #666;">⟳ Tải lại</button>
+    <span id="onlineCount" style="margin-left: 12px; font-weight: 600; color: #1e8449;"></span>
   </div>
 
   <div style="overflow-x: auto;">
     <table class="results-table" id="usersTable">
       <thead>
         <tr>
+          <th title="Chấm xanh = đang mở app trong khoảng 60 giây gần nhất (dựa trên polling tự động của app)">Online</th>
           <th>Tài khoản</th>
           <th>Loại</th>
           <th>Quyền chức năng</th>
           <th>Trạng thái</th>
+          <th title="Lần cuối tài khoản này gửi tín hiệu hoạt động lên server">Truy cập gần nhất</th>
           <th>Hành động</th>
         </tr>
       </thead>
@@ -777,12 +780,19 @@ const ADMIN_KEY = "haianh6729";
 // ============================================================
 // Admin tabs
 // ============================================================
+let _accountsAutoRefresh = null;
 document.querySelectorAll('.admin-tab-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.admin-tab-btn').forEach((b) => b.classList.remove('active'));
     document.querySelectorAll('.admin-tab-panel').forEach((p) => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('atab-' + btn.dataset.atab).classList.add('active');
+    // Tu dong lam moi trang thai Online moi 15s trong khi dang xem tab Tai khoan
+    // (khop nhip polling /api/me cua app chinh); dung lai khi roi tab de khong goi thua.
+    clearInterval(_accountsAutoRefresh);
+    if (btn.dataset.atab === 'accounts') {
+      _accountsAutoRefresh = setInterval(usrLoadAll, 15000);
+    }
   });
 });
 
@@ -1550,7 +1560,21 @@ async function usrLoadAll() {
   const data = await response.json();
   _allTabs = data.all_tabs || [];
   _extraPerms = data.extra_perms || [];
+  document.getElementById('onlineCount').textContent = `🟢 ${data.online_count || 0} tài khoản đang online`;
   usrDisplay(data.users || []);
+}
+
+function usrTimeAgo(lastSeen) {
+  if (!lastSeen) return '<span style="color:#999;">chưa từng</span>';
+  // last_seen luu dang UTC 'YYYY-MM-DD HH:MM:SS' (sqlite datetime('now'))
+  const seenMs = Date.parse(lastSeen.replace(' ', 'T') + 'Z');
+  const diffSec = Math.max(0, Math.floor((Date.now() - seenMs) / 1000));
+  let label;
+  if (diffSec < 60) label = `${diffSec}s trước`;
+  else if (diffSec < 3600) label = `${Math.floor(diffSec / 60)} phút trước`;
+  else if (diffSec < 86400) label = `${Math.floor(diffSec / 3600)} giờ trước`;
+  else label = `${Math.floor(diffSec / 86400)} ngày trước`;
+  return `<span title="${lastSeen} UTC">${label}</span>`;
 }
 
 function usrDisplay(users) {
@@ -1578,13 +1602,18 @@ function admRenderUsers() {
     const activeTag = u.active
       ? '<span style="color:#1e8449;font-weight:600;">● Hoạt động</span>'
       : '<span style="color:#c0392b;font-weight:600;">● Ngừng</span>';
+    const onlineTag = u.online
+      ? '<span title="Đang online" style="color:#1e8449;font-size:16px;">🟢</span>'
+      : '<span title="Offline" style="color:#ccc;font-size:16px;">⚪</span>';
     const delDisabled = u.active ? 'disabled title="Vô hiệu hoá trước khi xoá"' : '';
     const row = tbody.insertRow();
     row.innerHTML = `
+      <td style="text-align:center;">${onlineTag}</td>
       <td><b>${u.username}</b></td>
       <td><select onchange='usrSetRole(${uj}, this.value)'>${roleSel}</select></td>
       <td><div class="perm-grid">${permChecks}</div></td>
       <td>${activeTag}</td>
+      <td style="font-size:12px;color:#666;">${usrTimeAgo(u.last_seen)}</td>
       <td>
         <div class="action-btns">
           <button class="btn-sm" style="background:#e67e22" onclick='usrResetPw(${uj})'>🔑 Reset MK</button>

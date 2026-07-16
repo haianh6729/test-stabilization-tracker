@@ -249,6 +249,10 @@ def get_users_db():
 
 ADMIN_SECRET_KEY = "haianh6729"
 
+# Nguong coi la "dang online": lon hon nhieu lan chu ky polling /api/me cua frontend (15s)
+# de chiu duoc jitter/tab bi background-throttle, nhung van du nho de phan anh dung thuc te.
+ONLINE_THRESHOLD_SECONDS = 60
+
 def _maybe_backup_before_normalize():
     """Neu tracker.db con du lieu suite SAI cu (can normalize_bad_suites don) -> snapshot DB
     TRUOC. Dung connection rieng ngan han + dong han truoc khi backup de tranh 'database is
@@ -637,6 +641,7 @@ def init_users_db():
     for stmt in (
         "ALTER TABLE users ADD COLUMN permissions TEXT",
         "ALTER TABLE users ADD COLUMN active INTEGER DEFAULT 1",
+        "ALTER TABLE users ADD COLUMN last_seen TEXT",
     ):
         try:
             conn.execute(stmt)
@@ -1575,6 +1580,9 @@ def api_me():
     u = current_user()
     if u is None:
         return jsonify({"error": "Chưa đăng nhập"}), 401
+    udb = get_users_db()
+    udb.execute("UPDATE users SET last_seen=datetime('now') WHERE username=?", (u["username"],))
+    udb.commit()
     return jsonify(u)
 
 
@@ -6623,18 +6631,34 @@ def admin_get_users():
         return jsonify({"error": "Unauthorized"}), 403
     udb = get_users_db()
     rows = udb.execute(
-        "SELECT username, role, permissions, active, created_at FROM users ORDER BY username"
+        "SELECT username, role, permissions, active, created_at, last_seen FROM users ORDER BY username"
     ).fetchall()
+    now = datetime.utcnow()
     out = []
+    online_count = 0
     for r in rows:
+        online = False
+        if r["last_seen"]:
+            try:
+                last_seen_dt = datetime.strptime(r["last_seen"], "%Y-%m-%d %H:%M:%S")
+                online = (now - last_seen_dt).total_seconds() <= ONLINE_THRESHOLD_SECONDS
+            except ValueError:
+                online = False
+        if online:
+            online_count += 1
         out.append({
             "username": r["username"],
             "role": r["role"],
             "permissions": perms_to_list(r["permissions"]),
             "active": r["active"],
             "created_at": r["created_at"],
+            "last_seen": r["last_seen"],
+            "online": online,
         })
-    return jsonify({"users": out, "all_tabs": ALL_TABS, "extra_perms": NS_EXTRA_PERMS})
+    return jsonify({
+        "users": out, "all_tabs": ALL_TABS, "extra_perms": NS_EXTRA_PERMS,
+        "online_count": online_count,
+    })
 
 
 @app.route("/api/admin/users/<path:username>", methods=["PUT"])
