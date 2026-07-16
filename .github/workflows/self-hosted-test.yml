@@ -1,0 +1,21 @@
+name: Self-hosted runner test
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  hello-from-runner:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Print runner info
+        shell: bash
+        run: |
+          echo "Chay tren self-hosted runner"
+          echo "Hostname: $(hostname)"
+          echo "Thoi gian: $(date)"
+          echo "Thu muc lam viec: $(pwd)"
+          echo "Commit: $GITHUB_SHA"
