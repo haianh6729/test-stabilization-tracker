@@ -249,7 +249,34 @@ def get_users_db():
 
 ADMIN_SECRET_KEY = "haianh6729"
 
+def _maybe_backup_before_normalize():
+    """Neu tracker.db con du lieu suite SAI cu (can normalize_bad_suites don) -> snapshot DB
+    TRUOC. Dung connection rieng ngan han + dong han truoc khi backup de tranh 'database is
+    locked'. Loi backup KHONG chan startup (da co assert+rollback + backup daemon hang ngay)."""
+    try:
+        c = sqlite3.connect(DB_PATH)
+        try:
+            ph = ",".join("?" * len(BAD_SUITE_NAMES))
+            need = (
+                c.execute(f"SELECT COUNT(*) c FROM test_suites WHERE name IN ({ph})", BAD_SUITE_NAMES).fetchone()[0]
+                or c.execute(f"SELECT COUNT(*) c FROM results WHERE test_suite IN ({ph})", BAD_SUITE_NAMES).fetchone()[0]
+                or c.execute(f"SELECT COUNT(*) c FROM assignments WHERE test_suite IN ({ph})", BAD_SUITE_NAMES).fetchone()[0]
+            )
+        finally:
+            c.close()
+    except Exception:
+        need = 0  # DB moi/chua co bang -> khong co gi de backup
+    if need:
+        try:
+            perform_backup("pre-suite-normalize")
+            print("[normalize] Da backup tracker.db truoc khi chuan hoa suite sai.")
+        except Exception as e:
+            print(f"[normalize] Backup truoc chuan hoa that bai (van tiep tuc - co assert+rollback bao ve): {e}")
+
+
 def init_db():
+    # An toan: backup DB truoc neu con du lieu suite sai (chay TRUOC khi mo conn migration).
+    _maybe_backup_before_normalize()
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row  # cho phep truy cap cot bang ten trong migration
     conn.executescript(
@@ -404,8 +431,10 @@ def init_db():
         for i, m in enumerate(DEFAULT_MODELS):
             conn.execute("INSERT OR IGNORE INTO models (name, sort_order) VALUES (?, ?)", (m, i))
 
-    # Backfill test_suites / models / owners from existing data (upgrade-safe for older tracker.db files)
-    for row in conn.execute("SELECT DISTINCT test_suite FROM results"):
+    # Backfill test_suites / models / owners from existing data (upgrade-safe for older tracker.db files).
+    # Chi lay ten suite tu cac dong CON TINH THONG KE (result<>'Excluded') -> khong tai sinh ten
+    # suite rac tu cac dong da bi loai (VD junk __init__/test o bucket 'Unknown').
+    for row in conn.execute("SELECT DISTINCT test_suite FROM results WHERE result <> 'Excluded'"):
         conn.execute("INSERT OR IGNORE INTO test_suites (name) VALUES (?)", (row[0],))
     for row in conn.execute("SELECT DISTINCT model FROM results"):
         conn.execute("INSERT OR IGNORE INTO models (name) VALUES (?)", (row[0],))
@@ -464,31 +493,41 @@ def init_db():
             conn.execute("DELETE FROM models WHERE name=?", (m["name"],))
         conn.execute("INSERT OR IGNORE INTO models (name, sort_order) VALUES (?, ?)", (canon, min_order))
 
-    # Migration: sua du lieu cu bi loi do derive_test_suite() truoc day hardcode dau "_"
-    # lam ky tu phan tach (khong nhan dien duoc tien to "sm-" dung dau "-") -> cac dong
-    # SamsungMember bi luu nham thanh 'SamsungMember_ui90' (ten file .ts trong cot Test
-    # Suite tho, do fallback parse khi khong khop tien to nao). Da fix root cause trong
-    # derive_test_suite(); backfill nay chi sua lai du lieu cu.
-    conn.execute("UPDATE results SET test_suite='SamsungMember' WHERE test_suite='SamsungMember_ui90'")
+    # Migration SELF-HEAL: don TAT CA ten Test Suite sai cu (Weather_ui90, SamsungMember_ui90,
+    # NowBrief_ui9.0, ...) - remap ve Item dung, loai dong rac khoi thong ke, prune danh sach.
+    # Idempotent + pham vi khoa cung 6 ten + assert-rollback (xem normalize_bad_suites()).
+    normalize_bad_suites(conn)
 
     # Ket noi du lieu co san: tu dong dien Team cho owner tu cot Team trong ket qua da nhap
     # (lay ban ghi Author=owner moi nhat co Team). Chi dien khi owner CHUA co team -> khong
     # ghi de team da chinh tay trong Cai dat. Import moi van cap nhat team truc tiep (POST /results).
+    # Index truoc khi query (GROUP BY + JOIN thay correlated subquery O(n^2) -> nhanh tren DB lon).
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_results_author ON results(author)")
     for row in conn.execute(
         """
         SELECT r.author AS author, r.team AS team
         FROM results r
-        WHERE r.author IS NOT NULL AND r.author != '' AND r.team IS NOT NULL AND r.team != ''
-          AND r.id = (
-              SELECT MAX(r2.id) FROM results r2
-              WHERE r2.author = r.author AND r2.team IS NOT NULL AND r2.team != ''
-          )
+        JOIN (
+            SELECT author, MAX(id) AS max_id
+            FROM results
+            WHERE author IS NOT NULL AND author != '' AND team IS NOT NULL AND team != ''
+            GROUP BY author
+        ) m ON m.author = r.author AND m.max_id = r.id
         """
     ).fetchall():
         conn.execute(
             "UPDATE owners SET team=? WHERE name=? AND (team IS NULL OR team='')",
             (row["team"], row["author"]),
         )
+
+    # Migration: backfill Team cho new_scripts CHI-LAP-O-TRONG tu bang owners (nguon su that).
+    # An toan tuyet doi: KHONG BAO GIO ghi de team da co - chi dien vao dong dang trong ma owner
+    # tuong ung da co team. Sau restart, cac dong new_scripts thieu team se tu day du.
+    conn.execute(
+        "UPDATE new_scripts SET team = (SELECT o.team FROM owners o WHERE o.name = new_scripts.member) "
+        "WHERE (team IS NULL OR team = '') "
+        "AND member IN (SELECT name FROM owners WHERE team IS NOT NULL AND team != '')"
+    )
 
     # Migration: backfill cycle_date tu Test ID (cho cac dong co Test ID ma hoa ngay
     # dang SDF 'YYMMDD-...'), roi danh so lai cycle theo ngay. Dong nao Test ID khong
@@ -1285,6 +1324,18 @@ TC_SUITE_RULES = [
 # derive_test_suite() va item_from_tc_id() (mot nguon su that, tranh lech logic).
 _TC_ID_PREFIX_SEPARATORS = {"sm": ("-",)}
 
+# Ten file .py he thong (KHONG phai test case that) - bi farm/paste scrape nham vao ket qua.
+# Cac dong nay se duoc luu result='Excluded' (khong tinh thong ke) va KHONG tao ten Test Suite.
+NON_TEST_CASE_NAMES = {"__init__", "__main__", "test", "conftest", "setup", "config"}
+
+# Cac ten Test Suite SAI da lo phat sinh truoc day (do fallback derive_test_suite lay ten
+# thu muc tho khi tien to test_case khong khop). normalize_bad_suites() tu don 1 lan luc khoi
+# dong: pham vi KHOA CUNG dung 6 ten nay -> khong the cham du lieu dung.
+BAD_SUITE_NAMES = (
+    "Weather_ui90", "Weather_ui90_part1", "SamsungMember_ui90",
+    "Reminder_0000347", "NowBrief_ui9.0", "Internet_ui90_part5",
+)
+
 
 def extract_test_case_name(raw):
     """'Internet/.../Browser_000118.py' hoac 'Browser_000118.py' -> 'Browser_000118'"""
@@ -1298,12 +1349,18 @@ def extract_test_case_name(raw):
 def derive_test_suite(test_case_name, raw_test_suite):
     """Uu tien suy ra ten chuc nang chuan tu tien to cua Test Case (dang tin cay hon
     vi cot Test Suite tho co the la duong dan day du, ten file .ts, hoac bi dien nham
-    bang chinh ten Test Case). Neu khong khop tien to nao, fallback ve parse cot tho."""
-    lower = test_case_name.lower()
+    bang chinh ten Test Case). Neu khong khop tien to nao, fallback ve parse cot tho.
+    Tra ve None neu test_case la file .py he thong (NON_TEST_CASE_NAMES) - caller loai
+    khoi thong ke. So khop tien to sau khi BO khoang trang (VD "Now Brief_..." -> khop
+    "nowbrief") de tranh sinh ten suite rac vi khac biet dinh dang."""
+    # Chuan hoa: bo moi khoang trang + lowercase truoc khi so tien to.
+    stem = re.sub(r"\s+", "", str(test_case_name or "").strip().lower())
+    if stem in NON_TEST_CASE_NAMES:
+        return None
     for prefixes, suite in TC_SUITE_RULES:
         for p in prefixes:
             seps = _TC_ID_PREFIX_SEPARATORS.get(p, ("_",))
-            if any(lower.startswith(p + sep) for sep in seps):
+            if any(stem.startswith(p + sep) for sep in seps):
                 return suite
 
     raw = str(raw_test_suite or "").strip().replace("\\", "/")
@@ -1313,7 +1370,7 @@ def derive_test_suite(test_case_name, raw_test_suite):
     if base.lower().endswith(".ts"):
         base = base[:-3]
     # Neu cot Test Suite bi dien nham bang chinh ten Test Case (.py) thi khong dung duoc
-    if base.lower() == test_case_name.lower() or base.lower().endswith(".py"):
+    if base.lower() == str(test_case_name or "").lower() or base.lower().endswith(".py"):
         return "Unknown"
     return base
 
@@ -1332,14 +1389,94 @@ ITEM_TC_EXAMPLES = {
 
 def item_from_tc_id(tc_id):
     """Suy Item (ten test_suite chuan) tu TC ID theo dung tien to trong TC_SUITE_RULES.
-    Tra ve None neu khong khop tien to nao (dung de validate 'sai dinh dang')."""
-    lower = str(tc_id or "").strip().lower()
+    Tra ve None neu khong khop tien to nao (dung de validate 'sai dinh dang').
+    So khop sau khi BO khoang trang (nhat quan voi derive_test_suite)."""
+    stem = re.sub(r"\s+", "", str(tc_id or "").strip().lower())
+    if stem in NON_TEST_CASE_NAMES:
+        return None
     for prefixes, suite in TC_SUITE_RULES:
         for p in prefixes:
             seps = _TC_ID_PREFIX_SEPARATORS.get(p, ("_",))
-            if any(lower.startswith(p + sep) for sep in seps):
+            if any(stem.startswith(p + sep) for sep in seps):
                 return suite
     return None
+
+
+def normalize_bad_suites(conn):
+    """SELF-HEAL (idempotent, an toan): don du lieu suite SAI cu ('Weather_ui90', ...).
+    Pham vi KHOA CUNG `WHERE test_suite IN (BAD_SUITE_NAMES)` -> ve mat toan hoc khong the
+    cham du lieu dung. Co GUARD (khong con gi -> bo qua), va BAO HIEM assert so dong
+    canonical khong giam (lech -> ROLLBACK + raise, fail-closed). Goi trong init_db()."""
+    ph = ",".join("?" * len(BAD_SUITE_NAMES))
+    n_res = conn.execute(f"SELECT COUNT(*) c FROM results WHERE test_suite IN ({ph})", BAD_SUITE_NAMES).fetchone()["c"]
+    n_asg = conn.execute(f"SELECT COUNT(*) c FROM assignments WHERE test_suite IN ({ph})", BAD_SUITE_NAMES).fetchone()["c"]
+    n_ts = conn.execute(f"SELECT COUNT(*) c FROM test_suites WHERE name IN ({ph})", BAD_SUITE_NAMES).fetchone()["c"]
+    if not (n_res or n_asg or n_ts):
+        return None  # da sach -> restart cac lan sau la no-op
+
+    # BAO HIEM: so dong results KHONG thuoc 6 ten sai (du lieu dung) truoc khi sua.
+    canon_before = conn.execute(
+        f"SELECT COUNT(*) c FROM results WHERE test_suite NOT IN ({ph})", BAD_SUITE_NAMES
+    ).fetchone()["c"]
+    changed = {"remap": 0, "excluded": 0, "asg_update": 0, "asg_delete": 0, "suites_pruned": 0}
+
+    # 1) results: re-derive tung dong thuoc 6 ten sai bang logic da cai tien.
+    for r in conn.execute(
+        f"SELECT id, test_case, test_suite, result FROM results WHERE test_suite IN ({ph})", BAD_SUITE_NAMES
+    ).fetchall():
+        suite = derive_test_suite(r["test_case"], r["test_suite"])
+        if suite is None:
+            # Test case rac (__init__/test/config...) -> loai khoi thong ke + dua ve bucket 'Unknown'
+            # (giu ban ghi, KHONG con ten suite sai o bat ky dong nao).
+            conn.execute("UPDATE results SET test_suite='Unknown', result='Excluded' WHERE id=?", (r["id"],))
+            changed["excluded"] += 1
+        elif suite not in BAD_SUITE_NAMES:
+            # Nhan dien duoc Item that (VD "Now Brief_000201" -> Now-brief): remap suite +
+            # chuan hoa ten test_case (bo khoang trang) de gop dung thong ke.
+            new_tc = re.sub(r"\s+", "", r["test_case"])
+            conn.execute("UPDATE results SET test_suite=?, test_case=? WHERE id=?", (suite, new_tc, r["id"]))
+            changed["remap"] += 1
+
+    # 2) assignments: re-derive tu test_case. Resolve duoc -> UPDATE OR IGNORE (tranh dung PK
+    #    voi assignment dung da co); dong nao con lai (trung PK hoac khong resolve) -> DELETE.
+    for a in conn.execute(
+        f"SELECT rowid AS rid, test_case FROM assignments WHERE test_suite IN ({ph})", BAD_SUITE_NAMES
+    ).fetchall():
+        suite = item_from_tc_id(a["test_case"])
+        if suite and suite not in BAD_SUITE_NAMES:
+            cur = conn.execute("UPDATE OR IGNORE assignments SET test_suite=? WHERE rowid=?", (suite, a["rid"]))
+            if cur.rowcount and cur.rowcount > 0:
+                changed["asg_update"] += 1
+    del_cur = conn.execute(f"DELETE FROM assignments WHERE test_suite IN ({ph})", BAD_SUITE_NAMES)
+    changed["asg_delete"] = del_cur.rowcount if del_cur.rowcount and del_cur.rowcount > 0 else 0
+
+    # 3) prune danh sach test_suites: xoa 6 ten sai (khong con results non-excluded tham chieu).
+    pr_cur = conn.execute(f"DELETE FROM test_suites WHERE name IN ({ph})", BAD_SUITE_NAMES)
+    changed["suites_pruned"] = pr_cur.rowcount if pr_cur.rowcount and pr_cur.rowcount > 0 else 0
+
+    # BAO HIEM cuoi: du lieu dung phai bat bien (canonical khong bao gio giam - moi thao tac chi
+    # DI CHUYEN dong tu nhom ten-sai sang canonical). Lech -> ROLLBACK + raise (chan startup).
+    canon_after = conn.execute(
+        f"SELECT COUNT(*) c FROM results WHERE test_suite NOT IN ({ph})", BAD_SUITE_NAMES
+    ).fetchone()["c"]
+    if canon_after < canon_before:
+        conn.rollback()
+        raise RuntimeError(
+            f"normalize_bad_suites: so dong canonical GIAM {canon_before} -> {canon_after} "
+            "(bat thuong) - da ROLLBACK, khong sua gi. Kiem tra lai."
+        )
+    try:
+        conn.execute(
+            "INSERT INTO audit_log (username, action, target, detail) VALUES (?,?,?,?)",
+            ("(system)", "normalize_bad_suites", "results/assignments/test_suites",
+             f"remap={changed['remap']}, excluded={changed['excluded']}, "
+             f"asg_update={changed['asg_update']}, asg_delete={changed['asg_delete']}, "
+             f"suites_pruned={changed['suites_pruned']}, canon {canon_before}->{canon_after}"),
+        )
+    except Exception:
+        pass
+    print(f"[normalize] Da chuan hoa suite sai: {changed} (canonical {canon_before}->{canon_after})")
+    return changed
 
 
 def get_models_list(db):
@@ -1709,6 +1846,9 @@ def owner_op_add(db, name, team):
 def owner_op_set_team(db, name, team):
     db.execute("INSERT OR IGNORE INTO owners (name, active) VALUES (?, 1)", (name,))
     db.execute("UPDATE owners SET team=? WHERE name=?", (team, name))
+    # Cascade: giu cot new_scripts.team tuoi cho cac consumer doc truc tiep (report/reconcile/export).
+    # Tab hien thi da lay team dong tu owners, nhung cascade dam bao nhat quan o moi noi.
+    db.execute("UPDATE new_scripts SET team=? WHERE member=?", (team, name))
     log_audit(db, "owner.set_team", target=name, detail=f"team={team}")
     db.commit()
     return {"status": "ok", "team": team}, 200
@@ -1725,6 +1865,8 @@ def owner_op_rename(db, old_name, new_name):
     db.execute("INSERT OR IGNORE INTO owners (name, active, team) VALUES (?, ?, ?)", (new_name, old_active, old_team))
     db.execute("UPDATE fixes SET owner=? WHERE owner=?", (new_name, old_name))
     db.execute("UPDATE assignments SET owner=? WHERE owner=?", (new_name, old_name))
+    # Cascade ca new_scripts: member = ten owner -> doi ten thi member/team van khop bang owners.
+    db.execute("UPDATE new_scripts SET member=? WHERE member=?", (new_name, old_name))
     log_audit(db, "owner.rename", target=old_name, detail=f"-> {new_name}")
     db.commit()
     # Dong bo: doi ten tai khoan tuong ung (neu co) de username khong lech voi owner.
@@ -1984,14 +2126,29 @@ def apply_reassign_row(db, row):
         db.execute("UPDATE owners SET team=? WHERE name=?", (row["team"], row["member"]))
 
 
+def _ns_row_with_owner_team(row):
+    """Chuyen 1 dong new_scripts (kem cot phu '_owner_team' tu JOIN owners) thanh dict, uu tien
+    team HIEN HANH cua owner (neu owner co team) - dam bao member/team luon khop bang owners va
+    tu cap nhat khi doi team. Rong -> giu team da luu (fallback)."""
+    d = dict(row)
+    owner_team = d.pop("_owner_team", None)
+    if owner_team:
+        d["team"] = owner_team
+    return d
+
+
 @app.route("/api/new-scripts", methods=["GET", "POST"])
 def api_new_scripts():
     db = get_db()
     if request.method == "GET":
+        # Team lay DONG tu bang owners (nguon su that) - owner co team thi uu tien team hien hanh
+        # cua owner -> doi team owner la tab tu cap nhat, khong phu thuoc anh chup luc insert.
         rows = db.execute(
-            "SELECT * FROM new_scripts ORDER BY completed_date DESC, id DESC"
+            "SELECT ns.*, o.team AS _owner_team FROM new_scripts ns "
+            "LEFT JOIN owners o ON o.name = ns.member "
+            "ORDER BY ns.completed_date DESC, ns.id DESC"
         ).fetchall()
-        return jsonify([dict(r) for r in rows])
+        return jsonify([_ns_row_with_owner_team(r) for r in rows])
 
     err = perm_error("new-scripts")
     if err:
@@ -2135,7 +2292,11 @@ def insert_result_rows(db, rows, created_by):
                 continue
 
             test_case = extract_test_case_name(raw_test_case)
-            test_suite = derive_test_suite(test_case, raw_test_suite)
+            # derive_test_suite tra None neu test_case la file .py he thong (khong phai test case
+            # that) -> loai khoi thong ke (Excluded) + bucket 'Unknown', KHONG tao ten suite rac.
+            derived_suite = derive_test_suite(test_case, raw_test_suite)
+            is_non_test = derived_suite is None
+            test_suite = "Unknown" if is_non_test else derived_suite
             test_id = str(row.get("test_id") or "")
             description = str(row.get("description") or "")
             serial = str(row.get("serial") or "").strip()
@@ -2172,8 +2333,8 @@ def insert_result_rows(db, rows, created_by):
             except (ValueError, TypeError):
                 script_index = None
             result = classify_result(state)
-            # Whitelist loi nhieu: mo ta khop -> luu nhung KHONG tinh vao thong ke (result='Excluded').
-            if matches_whitelist(description, whitelist):
+            # File .py he thong hoac Whitelist loi nhieu -> luu nhung KHONG tinh vao thong ke.
+            if is_non_test or matches_whitelist(description, whitelist):
                 result = "Excluded"
                 excluded += 1
             db.execute(
@@ -2181,13 +2342,15 @@ def insert_result_rows(db, rows, created_by):
                 "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (cycle, cycle_date, test_id, model, test_suite, test_case, state, description, result, created_by, author, team, serial, script_index),
             )
-            db.execute("INSERT OR IGNORE INTO test_suites (name) VALUES (?)", (test_suite,))
+            # Chi ghi ten Test Suite vao danh muc khi la suite THAT (khong phai dong bi loai/rac).
+            if result != "Excluded":
+                db.execute("INSERT OR IGNORE INTO test_suites (name) VALUES (?)", (test_suite,))
             if db.execute("SELECT 1 FROM models WHERE name=?", (model,)).fetchone() is None:
                 max_order = db.execute("SELECT MAX(sort_order) m FROM models").fetchone()["m"] or 0
                 db.execute("INSERT OR IGNORE INTO models (name, sort_order) VALUES (?, ?)", (model, max_order + 1))
-            if author:
+            if author and not is_non_test:
                 # Author chinh la Owner cua script - tu dong dang ky vao danh sach owners,
-                # kem ten Team hien tai cua nguoi do.
+                # kem ten Team hien tai cua nguoi do. (Dong rac .py he thong -> khong gan phu trach.)
                 db.execute("INSERT OR IGNORE INTO owners (name, active) VALUES (?, 1)", (author,))
                 if team:
                     db.execute("UPDATE owners SET team=? WHERE name=?", (team, author))
@@ -2832,8 +2995,13 @@ def _leaderboard_payload(scope, date_from, date_to):
                 "open_workload": b.get("open_workload", 0),
             })
         rows.sort(key=lambda x: (-(x["scripts_written"] + x["fixes_logged"]), x["owner"]))
-        for i, o in enumerate(rows, start=1):
-            o["rank"] = i
+
+    # Owner KPI leaderboard chi hien member DANG hoat dong (owners.active=1) - an nguoi da nghi.
+    # Loc SAU khi dung rows (ca cumulative lan day/week), roi danh lai rank + tinh totals.
+    active_owners = {r["name"] for r in db.execute("SELECT name FROM owners WHERE active=1").fetchall()}
+    rows = [o for o in rows if o["owner"] in active_owners]
+    for i, o in enumerate(rows, start=1):
+        o["rank"] = i
 
     total_written = sum(o.get("scripts_written", 0) for o in rows)
     total_fixes = sum(o.get("fixes_logged", 0) for o in rows)
@@ -4217,6 +4385,14 @@ def api_farm_fetch():
         return jsonify({"error": "Chưa nhập Test ID nào."}), 400
 
     db = get_db()
+    # Ghi nho danh sach Test ID cua lan fetch nay (de tu dien lai moi lan mo tab Dong bo,
+    # co the fetch lai lan gan nhat ma khong phai nhap tay). Luu ca khi fetch loi.
+    for _k, _v in (("farm_last_test_ids", "\n".join(test_ids)),
+                   ("farm_last_fetch_at", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))):
+        db.execute("INSERT INTO settings (key, value) VALUES (?, ?) "
+                   "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (_k, _v))
+    _invalidate_settings_cache()
+
     try:
         rows, fetch_errors = farm_fetch_results(db, test_ids)
     except RuntimeError as e:
@@ -4463,6 +4639,9 @@ def api_integrations_status():
         "import_token_set": bool(get_setting(db, "import_token").strip()),
         "company_cache": {"rows": comp["c"], "synced_at": comp["s"] or "", "source": comp["src"] or ""},
         "github_cache": {"files": gh["c"], "synced_at": gh["s"] or "", "source": gh["src"] or ""},
+        # Danh sach Test ID cua lan fetch farm gan nhat -> frontend tu dien lai vao o nhap.
+        "farm_last_test_ids": get_setting(db, "farm_last_test_ids", ""),
+        "farm_last_fetch_at": get_setting(db, "farm_last_fetch_at", ""),
     })
 
 
@@ -5988,16 +6167,21 @@ def admin_get_new_scripts():
     limit = int(request.args.get("limit", 2000))
     search = request.args.get("search", "").strip()
 
+    # Team hien thi lay DONG tu bang owners (nguon su that) qua JOIN - nhat quan voi tab chinh.
     if search:
         rows = db.execute(
-            """SELECT * FROM new_scripts
-               WHERE tc_id LIKE ? OR item LIKE ? OR member LIKE ? OR team LIKE ?
-               ORDER BY id DESC LIMIT ?""",
+            """SELECT ns.*, o.team AS _owner_team FROM new_scripts ns
+               LEFT JOIN owners o ON o.name = ns.member
+               WHERE ns.tc_id LIKE ? OR ns.item LIKE ? OR ns.member LIKE ? OR ns.team LIKE ?
+               ORDER BY ns.id DESC LIMIT ?""",
             (f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%", limit)
         ).fetchall()
     else:
-        rows = db.execute("SELECT * FROM new_scripts ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
-    return jsonify([dict(r) for r in rows])
+        rows = db.execute(
+            "SELECT ns.*, o.team AS _owner_team FROM new_scripts ns "
+            "LEFT JOIN owners o ON o.name = ns.member ORDER BY ns.id DESC LIMIT ?", (limit,)
+        ).fetchall()
+    return jsonify([_ns_row_with_owner_team(r) for r in rows])
 
 
 @app.route("/api/admin/new-scripts/<int:sid>", methods=["PUT"])

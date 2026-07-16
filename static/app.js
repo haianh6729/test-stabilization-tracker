@@ -317,19 +317,35 @@ function renderCharts(d) {
     options: { scales: { y: { min: 0, max: 100, ticks: { callback: (v) => v + "%" } } }, plugins: { legend: { display: false } } },
   });
 
-  // Fail count trend
+  // Fail vs total scripts run by cycle (stacked): mỗi cột = tổng script chạy được của cycle
+  // (đã loại whitelist + NA), phần đỏ = fail → thấy ngay tỷ lệ fail / tổng chạy được.
   destroyChart("fail");
+  const ranByCycle = d.trend.map((t) => t.fail_count + t.pass_count); // scripts that ran (pass+fail)
   state.charts.fail = new Chart($("#chartFail"), {
     type: "bar",
     data: {
       labels: d.trend.map((t) => "C" + t.cycle),
-      datasets: [{
-        label: "Fail Count",
-        data: d.trend.map((t) => t.fail_count),
-        backgroundColor: "#e74c3c",
-      }],
+      datasets: [
+        { label: "Fail", data: d.trend.map((t) => t.fail_count), backgroundColor: "#e74c3c", stack: "run" },
+        { label: "Pass", data: d.trend.map((t) => t.pass_count), backgroundColor: "#2ecc71", stack: "run" },
+      ],
     },
-    options: { plugins: { legend: { display: false } } },
+    options: {
+      scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } },
+      plugins: {
+        legend: { display: true, position: "top" },
+        tooltip: {
+          callbacks: {
+            label: (item) => {
+              const ran = ranByCycle[item.dataIndex] || 0;
+              const val = item.parsed.y || 0;
+              const pct = ran ? ((val / ran) * 100).toFixed(1) : "0.0";
+              return `${item.dataset.label}: ${val} / ${ran} ran (${pct}%)`;
+            },
+          },
+        },
+      },
+    },
   });
 
   // Model pass rate
@@ -2743,6 +2759,15 @@ async function loadIntegrationsStatus() {
     if (farm) farm.innerHTML = st.farm_configured
       ? "🟢 Farm API: đã cấu hình URL."
       : "🟡 Farm API: <b>chưa cấu hình</b> — điền URL/token ở tab ⚙️ Cài đặt (mục Tích hợp & API).";
+    // Tự điền lại danh sách Test ID của lần fetch gần nhất (chỉ khi ô đang trống - không đè input dở dang)
+    const farmIds = $("#farmTestIds");
+    if (farmIds && !farmIds.value.trim() && st.farm_last_test_ids) {
+      farmIds.value = st.farm_last_test_ids;
+      const hint = $("#farmLastFetchHint");
+      if (hint) hint.textContent = st.farm_last_fetch_at
+        ? `Đã điền sẵn Test ID của lần fetch gần nhất (${st.farm_last_fetch_at}). Bấm Fetch để chạy lại.`
+        : "Đã điền sẵn Test ID của lần fetch gần nhất. Bấm Fetch để chạy lại.";
+    }
     const comp = $("#intCompanyStatus");
     if (comp) comp.innerHTML =
       (st.company_configured ? "🟢 API TC Hub: đã cấu hình. " : "🟡 API TC Hub: <b>chưa cấu hình</b> — dùng paste tay bên dưới. ") +

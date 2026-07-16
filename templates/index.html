@@ -180,7 +180,7 @@
       <canvas id="chartTrend"></canvas>
     </div>
     <div class="card">
-      <h3>Fail Count by Cycle</h3>
+      <h3 title="Mỗi cột = tổng số script chạy được trong cycle (đã loại whitelist & NA); phần đỏ = số script fail → xem nhanh tỷ lệ fail/tổng.">Fail vs Total Scripts Run by Cycle</h3>
       <canvas id="chartFail"></canvas>
     </div>
     <div class="card">
@@ -593,6 +593,7 @@ Browser_000202&#9;tuyen.bv1"></textarea>
     <p class="hint">Nhập danh sách <b>Test ID</b> (mỗi dòng 1 ID, hoặc cách nhau bằng dấu phẩy) → hệ thống gọi API farm lấy kết quả và nhập thẳng vào dữ liệu (đi qua đúng bộ chuẩn hoá/chống trùng như dán tay). <b>Cấu hình URL/token API farm ở tab ⚙️ Cài đặt (mục Tích hợp &amp; API)</b> — khi chưa cấu hình sẽ báo rõ. Ngoài ra script phía farm có thể tự push kết quả qua <code>POST /api/results/import</code> với header <code>X-Import-Token</code>.</p>
     <div id="intFarmStatus" class="hint"></div>
     <textarea id="farmTestIds" rows="5" placeholder="260706-01949&#10;260706-01950&#10;260707-02011"></textarea>
+    <div id="farmLastFetchHint" class="hint" style="color:#2e7d32"></div>
     <div class="form-row">
       <button class="btn-primary" id="btnFarmFetch">⬇️ Fetch kết quả từ farm</button>
       <span id="farmFetchMsg"></span>
