@@ -306,6 +306,10 @@ main { padding: 20px; max-width: 1400px; margin: 0 auto; }
 /* ---- Cross-table Item × Model × Cycle: cuộn + sticky + gom nhóm ---- */
 .sm-table-wrap { max-height: 60vh; overflow: auto; border: 1px solid var(--border); border-radius: 6px; }
 .sm-matrix { font-size: 12px; }
+/* Cot cycle giu chieu rong toi thieu + khong xuong dong -> nhieu cycle thi bang
+   tran ra ngoai .sm-table-wrap va overflow:auto hien thanh truot ngang (khong ep
+   cot co lai cho vua khung). Cot Item/Model sticky van giu min-width rieng ben duoi. */
+.sm-matrix thead th, .sm-matrix td.cyc-cell { min-width: 62px; white-space: nowrap; }
 .sm-matrix thead th { top: 0; z-index: 3; }
 .sm-matrix .sm-col-item, .sm-matrix .sm-col-model {
   position: sticky; background: #fff; z-index: 1;
