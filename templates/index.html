@@ -192,7 +192,14 @@
       <canvas id="chartTier"></canvas>
     </div>
     <div class="card wide">
-      <h3>Root Cause Pareto (Top 15)</h3>
+      <h3>Root Cause Pareto (Top 15)
+        <label style="font-size:13px; font-weight:normal; margin-left:12px">Item
+          <select id="paretoItemSel"><option value="">All items</option></select>
+        </label>
+        <span style="font-size:13px; font-weight:normal; margin-left:12px">Cycles
+          <span id="rcCycleChooser" style="display:inline-block; vertical-align:middle;"></span>
+        </span>
+      </h3>
       <canvas id="chartPareto"></canvas>
       <p style="margin-top:8px; font-size:12px; color:#888;">💡 Bấm vào một cột để xem script đang fail vì lỗi đó (gom batch để fix)</p>
     </div>

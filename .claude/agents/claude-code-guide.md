@@ -1,7 +1,7 @@
 ---
 name: claude-code-guide
 description: Agent for answering questions about Claude Code, Claude Agent SDK, Claude API, and Claude Tag
-model: haiku
+model: haiku 
 tools:
   - Glob
   - Grep

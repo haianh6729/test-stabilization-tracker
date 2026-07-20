@@ -953,12 +953,22 @@ def _translate_root_cause_label(label):
     return label
 
 
-def compute_root_cause_pareto(db, limit=15, english=False):
+def compute_root_cause_pareto(db, limit=15, english=False, test_suite=None, cycles=None):
     """Pareto nguyen nhan loi da GOM NHOM (thay vi group text tho). Tra ve list dict
     {description(=ten nhom), count, pct, cum_pct} da sap giam dan + tinh % cong don.
-    english=True: dich nhan sang tieng Anh (chi dung cho Dashboard/bao cao)."""
+    english=True: dich nhan sang tieng Anh (chi dung cho Dashboard/bao cao).
+    test_suite: loc theo 1 item cu the (None = toan bo).
+    cycles: loc theo danh sach cycle cu the (None/rong = toan bo cycle, hanh vi cu)."""
     groups = {}
-    for r in db.execute("SELECT description, state FROM results WHERE result='Fail'"):
+    q = "SELECT description, state FROM results WHERE result='Fail'"
+    args = []
+    if test_suite:
+        q += " AND test_suite=?"
+        args.append(test_suite)
+    if cycles:
+        q += " AND cycle IN ({})".format(",".join("?" * len(cycles)))
+        args.extend(cycles)
+    for r in db.execute(q, args):
         label = summarize_root_cause(r["description"], r["state"])
         groups[label] = groups.get(label, 0) + 1
     total_fail = sum(groups.values())
@@ -3145,9 +3155,9 @@ def api_root_cause_breakdown():
     de gom batch giao nguoi fix. Khong truyen `label` -> tra ve tong hop theo nhan (groups)."""
     db = get_db()
     label = (request.args.get("label") or "").strip()
+    item = (request.args.get("item") or "").strip()
 
-    latest_fails = db.execute(
-        """
+    q = """
         SELECT test_suite, test_case, model, serial, script_index, description, test_id, cycle, cycle_date
         FROM (
             SELECT *, ROW_NUMBER() OVER (
@@ -3158,7 +3168,11 @@ def api_root_cause_breakdown():
         )
         WHERE rn = 1 AND result='Fail'
         """
-    ).fetchall()
+    args = []
+    if item:
+        q += " AND test_suite=?"
+        args.append(item)
+    latest_fails = db.execute(q, args).fetchall()
 
     owner_map = {(r["test_suite"], r["test_case"]): r["owner"]
                  for r in db.execute("SELECT test_suite, test_case, owner FROM assignments")}
@@ -3210,6 +3224,22 @@ def api_root_cause_breakdown():
         "by_model": sorted([{"model": k, "count": v} for k, v in by_model.items()], key=lambda x: -x["count"]),
         "by_suite": sorted([{"test_suite": k, "count": v} for k, v in by_suite.items()], key=lambda x: -x["count"]),
     })
+
+
+@app.route("/api/root-cause/pareto")
+def api_root_cause_pareto():
+    """Pareto nguyen nhan loi (tieng Anh, khop Dashboard), loc theo item (test_suite) qua
+    query param `item` va/hoac theo danh sach cycle qua query param `cycles` (CSV so nguyen,
+    VD "1,2,3"). Khong truyen -> pareto tong hop toan bo item/toan bo cycle."""
+    db = get_db()
+    item = (request.args.get("item") or "").strip()
+    cycles_raw = (request.args.get("cycles") or "").strip()
+    cycles = None
+    if cycles_raw:
+        cycles = [int(c) for c in cycles_raw.split(",") if c.strip().isdigit()]
+    return jsonify({"root_causes": compute_root_cause_pareto(db, limit=15, english=True,
+                                                               test_suite=item or None,
+                                                               cycles=cycles or None)})
 
 
 @app.route("/api/assignments", methods=["GET"])
@@ -3327,6 +3357,11 @@ def _dashboard_payload():
     # ---- Root cause pareto (đã GOM NHOM theo nguyên nhân, không group text thô) ----
     # english=True: Dashboard hiển thị tiếng Anh (khác với export Excel toàn bộ dữ liệu ở tab Ưu tiên, vẫn tiếng Việt)
     root_causes = compute_root_cause_pareto(db, limit=15, english=True)
+    # ---- Danh sách item (test_suite) đang có ít nhất 1 dòng Fail, cho dropdown lọc Pareto ----
+    rc_item_rows = db.execute(
+        "SELECT DISTINCT test_suite FROM results WHERE result='Fail' ORDER BY test_suite"
+    ).fetchall()
+    root_cause_items = [r["test_suite"] for r in rc_item_rows]
     # ---- Pareto theo nhóm nguyên nhân ĐÃ XÁC NHẬN từ fix log (A3) ----
     fix_root_causes = compute_fix_root_cause_pareto(db)
 
@@ -3439,6 +3474,7 @@ def _dashboard_payload():
         "model_pass_rate": model_pass_rate,
         "tier_counts": tier_counts,
         "root_causes": root_causes,
+        "root_cause_items": root_cause_items,
         "fix_root_causes": fix_root_causes,
         "owner_stats": owner_stats,
         "suite_stats": suite_stats,
