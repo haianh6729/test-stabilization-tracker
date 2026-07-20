@@ -953,12 +953,22 @@ def _translate_root_cause_label(label):
     return label
 
 
-def compute_root_cause_pareto(db, limit=15, english=False):
+def compute_root_cause_pareto(db, limit=15, english=False, test_suite=None, cycles=None):
     """Pareto nguyen nhan loi da GOM NHOM (thay vi group text tho). Tra ve list dict
     {description(=ten nhom), count, pct, cum_pct} da sap giam dan + tinh % cong don.
-    english=True: dich nhan sang tieng Anh (chi dung cho Dashboard/bao cao)."""
+    english=True: dich nhan sang tieng Anh (chi dung cho Dashboard/bao cao).
+    test_suite: loc theo 1 item cu the (None = toan bo).
+    cycles: loc theo danh sach cycle cu the (None/rong = toan bo cycle, hanh vi cu)."""
     groups = {}
-    for r in db.execute("SELECT description, state FROM results WHERE result='Fail'"):
+    q = "SELECT description, state FROM results WHERE result='Fail'"
+    args = []
+    if test_suite:
+        q += " AND test_suite=?"
+        args.append(test_suite)
+    if cycles:
+        q += " AND cycle IN ({})".format(",".join("?" * len(cycles)))
+        args.extend(cycles)
+    for r in db.execute(q, args):
         label = summarize_root_cause(r["description"], r["state"])
         groups[label] = groups.get(label, 0) + 1
     total_fail = sum(groups.values())
@@ -3145,9 +3155,9 @@ def api_root_cause_breakdown():
     de gom batch giao nguoi fix. Khong truyen `label` -> tra ve tong hop theo nhan (groups)."""
     db = get_db()
     label = (request.args.get("label") or "").strip()
+    item = (request.args.get("item") or "").strip()
 
-    latest_fails = db.execute(
-        """
+    q = """
         SELECT test_suite, test_case, model, serial, script_index, description, test_id, cycle, cycle_date
         FROM (
             SELECT *, ROW_NUMBER() OVER (
@@ -3158,7 +3168,11 @@ def api_root_cause_breakdown():
         )
         WHERE rn = 1 AND result='Fail'
         """
-    ).fetchall()
+    args = []
+    if item:
+        q += " AND test_suite=?"
+        args.append(item)
+    latest_fails = db.execute(q, args).fetchall()
 
     owner_map = {(r["test_suite"], r["test_case"]): r["owner"]
                  for r in db.execute("SELECT test_suite, test_case, owner FROM assignments")}
@@ -3210,6 +3224,22 @@ def api_root_cause_breakdown():
         "by_model": sorted([{"model": k, "count": v} for k, v in by_model.items()], key=lambda x: -x["count"]),
         "by_suite": sorted([{"test_suite": k, "count": v} for k, v in by_suite.items()], key=lambda x: -x["count"]),
     })
+
+
+@app.route("/api/root-cause/pareto")
+def api_root_cause_pareto():
+    """Pareto nguyen nhan loi (tieng Anh, khop Dashboard), loc theo item (test_suite) qua
+    query param `item` va/hoac theo danh sach cycle qua query param `cycles` (CSV so nguyen,
+    VD "1,2,3"). Khong truyen -> pareto tong hop toan bo item/toan bo cycle."""
+    db = get_db()
+    item = (request.args.get("item") or "").strip()
+    cycles_raw = (request.args.get("cycles") or "").strip()
+    cycles = None
+    if cycles_raw:
+        cycles = [int(c) for c in cycles_raw.split(",") if c.strip().isdigit()]
+    return jsonify({"root_causes": compute_root_cause_pareto(db, limit=15, english=True,
+                                                               test_suite=item or None,
+                                                               cycles=cycles or None)})
 
 
 @app.route("/api/assignments", methods=["GET"])
@@ -3327,6 +3357,11 @@ def _dashboard_payload():
     # ---- Root cause pareto (đã GOM NHOM theo nguyên nhân, không group text thô) ----
     # english=True: Dashboard hiển thị tiếng Anh (khác với export Excel toàn bộ dữ liệu ở tab Ưu tiên, vẫn tiếng Việt)
     root_causes = compute_root_cause_pareto(db, limit=15, english=True)
+    # ---- Danh sách item (test_suite) đang có ít nhất 1 dòng Fail, cho dropdown lọc Pareto ----
+    rc_item_rows = db.execute(
+        "SELECT DISTINCT test_suite FROM results WHERE result='Fail' ORDER BY test_suite"
+    ).fetchall()
+    root_cause_items = [r["test_suite"] for r in rc_item_rows]
     # ---- Pareto theo nhóm nguyên nhân ĐÃ XÁC NHẬN từ fix log (A3) ----
     fix_root_causes = compute_fix_root_cause_pareto(db)
 
@@ -3439,6 +3474,7 @@ def _dashboard_payload():
         "model_pass_rate": model_pass_rate,
         "tier_counts": tier_counts,
         "root_causes": root_causes,
+        "root_cause_items": root_cause_items,
         "fix_root_causes": fix_root_causes,
         "owner_stats": owner_stats,
         "suite_stats": suite_stats,
@@ -5394,9 +5430,9 @@ def _excel_overview_sheet(wb, title_text, db, trend, kpi, coverage):
     """Sheet 'Overview' — trang tong quan DUY NHAT dat dau file: health status mau,
     vai KPI lon, 1-2 nhan dinh ngan, + 2 chart (pass rate trend toan bo lich su,
     phan bo tier). Muc dich: doc trong ~10 giay nam duoc tinh hinh du an, cac sheet
-    chi tiet phia sau danh cho ai can dao sau. Dung chung cho ca daily & weekly."""
-    ws = wb.active
-    ws.title = "Overview"
+    chi tiet phia sau danh cho ai can dao sau. Dung chung cho ca daily & weekly.
+    Sheet 'Report' (1 trang tong hop) chiem slot wb.active -> Overview tao sheet moi."""
+    ws = wb.create_sheet("Overview")
     ws.sheet_view.showGridLines = False
 
     ws.cell(row=1, column=1, value=title_text).font = Font(bold=True, size=16)
@@ -5526,14 +5562,14 @@ def _excel_overview_sheet(wb, title_text, db, trend, kpi, coverage):
     return ws
 
 
-def _excel_pass_rate_matrix_sheet(wb, db, cycles):
-    """Sheet 'Pass Rate Matrix': Item x Model x cycle, kem dong Total tung Item + GRAND TOTAL.
-    Aggregation logic khop 1:1 voi _suite_model_report_table() (markdown)."""
-    ws = wb.create_sheet("Pass Rate Matrix")
+def _write_pass_rate_matrix(ws, db, cycles, start_row):
+    """Writer dung chung: ghi bang Item x Model x cycle (Total tung Item + GRAND TOTAL +
+    ColorScaleRule) vao ws tu start_row. Return row ke tiep sau bang. Aggregation logic
+    khop 1:1 voi _suite_model_report_table() (markdown)."""
     data = compute_suite_model_matrix(db)
     header = ["Item", "Model"] + [f"C{c}" for c in cycles] + ["Δ"]
-    _excel_style_header(ws, 1, header, "70AD47")
-    r = 2
+    _excel_style_header(ws, start_row, header, "70AD47")
+    r = start_row + 1
     first_data_row = r
     if not cycles:
         _excel_style_data_row(ws, r, ["No result data yet."] + [""] * (len(header) - 1))
@@ -5585,18 +5621,25 @@ def _excel_pass_rate_matrix_sheet(wb, db, cycles):
         first = next((x for x in rates if x is not None), None)
         last = next((x for x in reversed(rates) if x is not None), None)
         _excel_style_data_row(ws, r, ["GRAND TOTAL", "All"] + [fmt(c) for c in overall_cells] + [delta(first, last)])
+        r += 1
 
         # Conditional formatting: to do-vang-xanh theo pass rate tren toan bo cot cycle (khong tinh Item/Model/Delta).
-        last_row = r
-        rate_range = f"C{first_data_row}:{get_column_letter(2 + len(cycles))}{last_row}"
+        # Cot cycle bat dau tu cot C (3) tinh tu cot A cua bang — bang luon ghi tu cot 1.
+        rate_range = f"C{first_data_row}:{get_column_letter(2 + len(cycles))}{r - 1}"
         ws.conditional_formatting.add(rate_range, ColorScaleRule(
             start_type="min", start_color="F8696B",
             mid_type="percentile", mid_value=50, mid_color="FFEB84",
             end_type="max", end_color="63BE7B",
         ))
+    return r
 
+
+def _excel_pass_rate_matrix_sheet(wb, db, cycles):
+    """Sheet 'Pass Rate Matrix' (chi tiet): wrapper mong quanh _write_pass_rate_matrix()."""
+    ws = wb.create_sheet("Pass Rate Matrix")
+    _write_pass_rate_matrix(ws, db, cycles, 1)
     ws.column_dimensions["A"].width = 22
-    for col in range(2, len(header) + 1):
+    for col in range(2, 4 + len(cycles)):
         ws.column_dimensions[get_column_letter(col)].width = 14
     return ws
 
@@ -5768,6 +5811,215 @@ def _excel_team_quality_sheet(wb, owner_stats, reopen_rate, n_verified, n_regres
     return ws
 
 
+def _excel_fix_verification_sheet(wb, db, prev):
+    """Sheet 'Fix Verification' (daily): ket qua verify fix cua cycle truoc (maubaocao §1.2).
+    Dung chung compute_fix_tracking() — loc fix co fixed_after_cycle == cycle truoc do."""
+    ws = wb.create_sheet("Fix Verification")
+    r = 1
+    if prev is None:
+        ws.cell(row=r, column=1, value="No previous cycle to verify fixes against.").font = Font(italic=True)
+        ws.column_dimensions["A"].width = 60
+        return ws
+    subset = [f for f in compute_fix_tracking(db) if f["fixed_after_cycle"] == prev["cycle"]]
+    counts = {"verified": 0, "regressed": 0, "still_failing": 0, "pending": 0}
+    for f in subset:
+        counts[f["status"]] = counts.get(f["status"], 0) + 1
+
+    ws.cell(row=r, column=1, value=f"Verify fixes from previous cycle (C{prev['cycle']})").font = Font(bold=True, size=12)
+    r += 2
+    _excel_style_header(ws, r, ["Status", "Count"])
+    r += 1
+    for key, lbl in [("verified", "✅ Resolved"), ("regressed", "⚠️ Regressed"),
+                     ("still_failing", "❌ Still failing"), ("pending", "⏳ Awaiting data")]:
+        _excel_style_data_row(ws, r, [lbl, counts[key]])
+        r += 1
+    _excel_style_data_row(ws, r, ["Total", sum(counts.values())])
+    r += 2
+
+    ws.cell(row=r, column=1, value="Needs attention (regressed / still failing)").font = Font(bold=True, size=12)
+    r += 1
+    _excel_style_header(ws, r, ["Test Suite", "Test Case", "Owner", "Status"])
+    r += 1
+    status_en = {"regressed": "Regressed", "still_failing": "Still failing"}
+    attention = [f for f in subset if f["status"] in status_en]
+    if not attention:
+        _excel_style_data_row(ws, r, ["None 🎉", "", "", ""])
+    else:
+        for f in attention:
+            _excel_style_data_row(ws, r, [f["test_suite"], f["test_case"],
+                                          f["owner"] or "(unassigned)", status_en[f["status"]]])
+            r += 1
+    ws.column_dimensions["A"].width = 22
+    ws.column_dimensions["B"].width = 34
+    ws.column_dimensions["C"].width = 20
+    ws.column_dimensions["D"].width = 16
+    return ws
+
+
+def _excel_by_app_sheet(wb, priority):
+    """Sheet 'By App' (weekly, maubaocao §2.4): completion tung test suite theo TIER
+    (Done vs con loi P0-P3) — khac 'Completion by Suite' (nguon TC coverage cong ty)."""
+    ws = wb.create_sheet("By App")
+    agg = {}
+    for p in priority:
+        s = agg.setdefault(p["test_suite"], {"total": 0, "done": 0, "still": 0})
+        s["total"] += 1
+        if p["priority_tier"] == "Done":
+            s["done"] += 1
+        elif p["priority_tier"] in ("P0", "P1", "P2", "P3"):
+            s["still"] += 1
+    rows = sorted(
+        ({"suite": k, "total": v["total"], "done": v["done"], "still": v["still"],
+          "pct": (v["done"] / v["total"]) if v["total"] else 0.0} for k, v in agg.items()),
+        key=lambda x: x["pct"],
+    )
+    _excel_style_header(ws, 1, ["App / Test Suite", "Total scripts", "Done", "Still failing", "Done %"], "70AD47")
+    r = 2
+    first_data_row = r
+    for x in rows:
+        _excel_style_data_row(ws, r, [x["suite"], x["total"], x["done"], x["still"], x["pct"]])
+        r += 1
+    tot = sum(x["total"] for x in rows)
+    done = sum(x["done"] for x in rows)
+    still = sum(x["still"] for x in rows)
+    _excel_style_data_row(ws, r, ["Total", tot, done, still, (done / tot) if tot else 0.0])
+    if rows:
+        ws.conditional_formatting.add(f"E{first_data_row}:E{r}", ColorScaleRule(
+            start_type="min", start_color="F8696B",
+            mid_type="percentile", mid_value=50, mid_color="FFEB84",
+            end_type="max", end_color="63BE7B",
+        ))
+    ws.column_dimensions["A"].width = 26
+    for col in "BCDE":
+        ws.column_dimensions[col].width = 16
+    return ws
+
+
+def _weakest_model(db, cycle):
+    """(model, pass_rate) cua model yeu nhat trong 1 cycle — aggregate compute_suite_model_matrix
+    theo model. None neu khong co du lieu. Dung cho insight bao cao ngay (maubaocao §1.3)."""
+    if cycle is None:
+        return None
+    agg = {}
+    for row in compute_suite_model_matrix(db)["rows"]:
+        cell = row["by_cycle"].get(cycle)
+        if not cell:
+            continue
+        m = agg.setdefault(row["model"], {"total": 0, "pass": 0, "na": 0})
+        m["total"] += cell["total"]; m["pass"] += cell["pass_count"]; m["na"] += cell["na_count"]
+    best = None
+    for model, v in agg.items():
+        denom = v["total"] - v["na"]
+        if denom <= 0:
+            continue
+        rate = v["pass"] / denom
+        if best is None or rate < best[1]:
+            best = (model, rate)
+    return best
+
+
+def _excel_report_sheet(wb, db, title_text, trend, kpi, coverage, cycles, scope, date_from, date_to):
+    """Sheet 'Report' — 1 TRANG TONG HOP dat DAU file (ca daily & weekly), doc nhu 1 mail
+    bao cao du an ngan gon cho cap tren. 4 khoi (ten khop card Dashboard):
+    1. Script Writing Progress (company system)  2. Pass Rate by Item x Model x Cycle
+    3. Root Cause Pareto (Top 15)                4. Personal KPI (theo ky bao cao, rate all-time).
+    Cac sheet chi tiet van giu nguyen phia sau cho ai can dao sau."""
+    ws = wb.active
+    ws.title = "Report"
+    ws.sheet_view.showGridLines = False
+    _scale = ColorScaleRule(start_type="min", start_color="F8696B",
+                            mid_type="percentile", mid_value=50, mid_color="FFEB84",
+                            end_type="max", end_color="63BE7B")
+
+    r = 1
+    ws.cell(row=r, column=1, value=title_text).font = Font(bold=True, size=14)
+    r += 1
+    current_rate = trend[-1]["pass_rate"] if trend else None
+    summary = (f"Pass rate {current_rate*100:.1f}%" if current_rate is not None else "Pass rate —") \
+        + f" (target ≥ {kpi['target_rate']*100:.0f}%) · Still failing {kpi['still_failing']}/{kpi['total_scripts']}" \
+        + f" · P0: {kpi['tier_counts']['P0']} · Flaky: {kpi['flaky_count']}"
+    ws.cell(row=r, column=1, value=summary).font = Font(size=11, color="666666")
+    r += 2
+
+    # ---- 1. Script Writing Progress (company system) ----
+    ws.cell(row=r, column=1, value="1. Script Writing Progress (company system)").font = Font(bold=True, size=12)
+    r += 1
+    if not coverage.get("configured"):
+        ws.cell(row=r, column=1, value="Company system not synced — total required TCs unknown.").font = Font(italic=True)
+        r += 1
+    else:
+        _excel_style_header(ws, r, ["Item", "Total TC", "Done", "%"], "FFC000")
+        r += 1
+        first = r
+        for it in coverage["by_item"]:
+            _excel_style_data_row(ws, r, [it["item"], it["needed"], it["done"], it["pct"]])
+            r += 1
+        _excel_style_data_row(ws, r, ["Total", coverage["total_needed"], coverage["done"], coverage["pct"]])
+        r += 1
+        ws.conditional_formatting.add(f"D{first}:D{r - 1}", _scale)
+    r += 1
+
+    # ---- 2. Pass Rate by Item x Model x Cycle ----
+    ws.cell(row=r, column=1, value="2. Pass Rate by Item × Model × Cycle").font = Font(bold=True, size=12)
+    r = _write_pass_rate_matrix(ws, db, cycles, r + 1)
+    r += 1
+
+    # ---- 3. Root Cause Pareto (Top 15, current failures) ----
+    ws.cell(row=r, column=1, value="3. Root Cause Pareto (Top 15, current failures)").font = Font(bold=True, size=12)
+    r += 1
+    pareto = compute_root_cause_pareto(db, limit=15, english=True)
+    if not pareto:
+        ws.cell(row=r, column=1, value="No failure data.").font = Font(italic=True)
+        r += 1
+    else:
+        _excel_style_header(ws, r, ["Root Cause", "Fails", "%", "Cumulative %"], "C0504D")
+        r += 1
+        for g in pareto:
+            _excel_style_data_row(ws, r, [g["description"], g["count"], g["pct"], g["cum_pct"]])
+            r += 1
+    r += 1
+
+    # ---- 4. Personal KPI (theo ky bao cao; rate luon all-time nhu Dashboard) ----
+    period = date_from if scope == "day" else f"{date_from} → {date_to}"
+    ws.cell(row=r, column=1, value=f"4. Personal KPI ({'day' if scope == 'day' else 'week'}: {period})").font = Font(bold=True, size=12)
+    r += 1
+    lb = _leaderboard_payload(scope, date_from, date_to)
+    rows = lb["rows"]
+    if not rows:
+        ws.cell(row=r, column=1, value="No activity in this period.").font = Font(italic=True)
+        r += 1
+    else:
+        _excel_style_header(ws, r, ["#", "Owner", "Scripts Written", "Fixes",
+                                    "Resolution Rate", "Verification Rate", "Open Workload"])
+        r += 1
+        first = r
+        for o in rows:
+            _excel_style_data_row(ws, r, [
+                o["rank"], o["owner"], o.get("scripts_written", 0), o.get("fixes_logged", 0),
+                float(o["resolution_rate"]) if o["resolution_rate"] is not None else "…",
+                float(o["verification_rate"]) if o["verification_rate"] is not None else "…",
+                o.get("open_workload", 0),
+            ])
+            r += 1
+        t = lb["totals"]
+        _excel_style_data_row(ws, r, ["", "Total", t["scripts_written"], t["fixes_logged"], "—", "—", ""])
+        r += 1
+        for col_letter in ("E", "F"):
+            ws.conditional_formatting.add(f"{col_letter}{first}:{col_letter}{r - 2}", _scale)
+        avg_w, avg_f = t["avg_write_per_person_day"], t["avg_fix_per_person_day"]
+        parts = ([f"{avg_w:.1f} scripts written"] if avg_w is not None else []) \
+            + ([f"{avg_f:.1f} fixes"] if avg_f is not None else [])
+        if parts:
+            ws.cell(row=r, column=1, value="Avg per person/day: " + " · ".join(parts)).font = Font(size=10, color="666666")
+            r += 1
+
+    # Chieu rong cot: khoi rong nhat la Pareto (cot A ten nhom dai) + matrix (2+cycles+delta cot).
+    ws.column_dimensions["A"].width = 46
+    for col in range(2, max(8, 4 + len(cycles))):
+        ws.column_dimensions[get_column_letter(col)].width = 15
+    return ws
+
+
 def _build_daily_report_excel(db, date_str):
     """Excel DAILY report: nhieu sheet, English, dong Total, dat parity voi build_daily_report()
     (markdown). Cycle KHONG bat buoc (giong markdown) - dung chung logic loi/relax."""
@@ -5785,9 +6037,18 @@ def _build_daily_report_excel(db, date_str):
     kpi = _report_kpis(db, priority)
     coverage = compute_coverage(db)
 
+    if trend:
+        end = (idx + 1) if idx is not None else len(trend)
+        recent_cycles = [t["cycle"] for t in trend[:end]][-3:]
+    else:
+        recent_cycles = []
+
     wb = Workbook()
     title_cycle = f"Cycle {entry['cycle']}" if entry is not None else "No cycle"
-    _excel_overview_sheet(wb, f"Stabilization Daily Report — {title_cycle} ({date_str})", db, trend, kpi, coverage)
+    daily_title = f"Stabilization Daily Report — {title_cycle} ({date_str})"
+    _excel_report_sheet(wb, db, daily_title, trend, kpi, coverage, recent_cycles,
+                        scope="day", date_from=date_str, date_to=date_str)
+    _excel_overview_sheet(wb, daily_title, db, trend, kpi, coverage)
 
     ws = wb.create_sheet("Summary")
     r = 1
@@ -5814,18 +6075,33 @@ def _build_daily_report_excel(db, date_str):
     ]:
         _excel_style_data_row(ws, r, [lbl, val, ""])
         r += 1
+
+    # ---- Insights (maubaocao §1.3): weakest model, top root cause, fix velocity ----
+    r += 1
+    ws.cell(row=r, column=1, value="Insights").font = Font(bold=True, size=12)
+    r += 1
+    insight_cycle = entry["cycle"] if entry is not None else (trend[-1]["cycle"] if trend else None)
+    wm = _weakest_model(db, insight_cycle)
+    _excel_style_data_row(ws, r, ["Weakest model", f"{wm[0]} ({wm[1]*100:.1f}%)" if wm else "—", ""])
+    r += 1
+    rc = compute_root_cause_pareto(db, limit=1, english=True)
+    _excel_style_data_row(ws, r, ["Top root cause (current)",
+                                  f"{rc[0]['description']} ({rc[0]['count']})" if rc else "—", ""])
+    r += 1
+    fix_speed = _velocity_last7(db, "fixes", "fix_date")
+    req = kpi["required_rate_per_day"]
+    vel = f"{fix_speed:.1f}/day" + (f" (need {req:.1f}/day)" if req is not None else "")
+    _excel_style_data_row(ws, r, ["Fix velocity (7-day avg)", vel, ""])
+    r += 1
+
     ws.column_dimensions["A"].width = 28
-    ws.column_dimensions["B"].width = 20
+    ws.column_dimensions["B"].width = 30
     ws.column_dimensions["C"].width = 20
 
-    if trend:
-        end = (idx + 1) if idx is not None else len(trend)
-        recent_cycles = [t["cycle"] for t in trend[:end]][-3:]
-    else:
-        recent_cycles = []
     _excel_pass_rate_matrix_sheet(wb, db, recent_cycles)
     _excel_env_failures_sheet(wb, db, recent_cycles)
     _excel_productivity_sheet(wb, db, date_str, date_str)
+    _excel_fix_verification_sheet(wb, db, prev)
     _excel_completion_sheet(wb, coverage)
     _excel_eta_plan_sheet(wb, db, kpi, coverage, priority)
     return wb
@@ -5853,38 +6129,6 @@ def _build_weekly_report_excel(db, week_str):
     kpi = _report_kpis(db, priority)
     coverage = compute_coverage(db)
 
-    wb = Workbook()
-    cyc_txt = f"Cycle {in_week[0]['cycle']}–{in_week[-1]['cycle']}" if in_week else "No cycle"
-    title_text = f"Stabilization Weekly Report — Week {wk} ({monday.strftime('%Y-%m-%d')}–{sunday.strftime('%Y-%m-%d')}) — {cyc_txt}"
-    _excel_overview_sheet(wb, title_text, db, trend, kpi, coverage)
-
-    ws = wb.create_sheet("Summary")
-    r = 1
-    ws.cell(row=r, column=1, value=title_text).font = Font(bold=True, size=14)
-    r += 2
-    n_fix = db.execute("SELECT COUNT(*) c FROM fixes WHERE fix_date>=? AND fix_date<=?", (mon_s, sun_s)).fetchone()["c"]
-    n_new = db.execute("SELECT COUNT(*) c FROM new_scripts WHERE status='DONE' AND completed_date>=? AND completed_date<=?",
-                      (mon_s, sun_s)).fetchone()["c"]
-    _excel_style_header(ws, r, ["Metric", "Value"])
-    r += 1
-    data = [
-        ("Pass rate start→end of week",
-         f"{in_week[0]['pass_rate']*100:.1f}% → {in_week[-1]['pass_rate']*100:.1f}%" if in_week else "No cycle this week"),
-        ("Fixes this week", n_fix),
-        ("New scripts (DONE)", n_new),
-        ("Still failing", f"{kpi['still_failing']}/{kpi['total_scripts']}"),
-        ("Completion (company system)",
-         f"{coverage['done']}/{coverage['total_needed']} ({coverage['pct']*100:.1f}%)" if coverage.get("configured") else "Not synced"),
-        ("P0", kpi["tier_counts"]["P0"]),
-        ("Verifying (Verify)", kpi["tier_counts"]["Verify"]),
-        ("Flaky scripts", kpi["flaky_count"]),
-    ]
-    for lbl, val in data:
-        _excel_style_data_row(ws, r, [lbl, val])
-        r += 1
-    ws.column_dimensions["A"].width = 32
-    ws.column_dimensions["B"].width = 28
-
     if trend:
         week_cycles = [t["cycle"] for t in in_week]
         if len(week_cycles) < 3:
@@ -5892,8 +6136,80 @@ def _build_weekly_report_excel(db, week_str):
             week_cycles = [t["cycle"] for t in trend if t["cycle"] <= ref][-3:]
     else:
         week_cycles = []
+
+    wb = Workbook()
+    cyc_txt = f"Cycle {in_week[0]['cycle']}–{in_week[-1]['cycle']}" if in_week else "No cycle"
+    title_text = f"Stabilization Weekly Report — Week {wk} ({monday.strftime('%Y-%m-%d')}–{sunday.strftime('%Y-%m-%d')}) — {cyc_txt}"
+    _excel_report_sheet(wb, db, title_text, trend, kpi, coverage, week_cycles,
+                        scope="week", date_from=mon_s, date_to=sun_s)
+    _excel_overview_sheet(wb, title_text, db, trend, kpi, coverage)
+
+    # ---- KPIs vs Target (maubaocao §2.2): Last week / This week / Target ----
+    def _week_count(table, date_col, where, lo, hi):
+        return db.execute(f"SELECT COUNT(*) c FROM {table} WHERE {date_col}>=? AND {date_col}<=? {where}",
+                          (lo, hi)).fetchone()["c"]
+
+    def _fix_act_days(lo, hi):
+        return db.execute("SELECT COUNT(DISTINCT fix_date) c FROM fixes WHERE fix_date>=? AND fix_date<=?",
+                          (lo, hi)).fetchone()["c"] or 0
+
+    n_fix = _week_count("fixes", "fix_date", "", mon_s, sun_s)
+    n_new = _week_count("new_scripts", "completed_date", "AND status='DONE'", mon_s, sun_s)
+    act_days = _fix_act_days(mon_s, sun_s)
+    actual_rate = (n_fix / act_days) if act_days else None
+
+    prev_monday = monday - timedelta(days=7)
+    prev_sunday = prev_monday + timedelta(days=6)
+    pmon_s, psun_s = prev_monday.isoformat(), prev_sunday.isoformat()
+    prev_in_week = [t for t in trend if t["cycle_date"] and pmon_s <= t["cycle_date"] <= psun_s]
+    prev_n_fix = _week_count("fixes", "fix_date", "", pmon_s, psun_s)
+    prev_act_days = _fix_act_days(pmon_s, psun_s)
+    prev_actual_rate = (prev_n_fix / prev_act_days) if prev_act_days else None
+
+    target_rate = kpi["target_rate"]
+    total = kpi["total_scripts"]
+    allowed_fail = int(total * (1 - target_rate))
+    this_rate = in_week[-1]["pass_rate"] if in_week else None
+    prev_rate = prev_in_week[-1]["pass_rate"] if prev_in_week else None
+
+    def _pct(v):
+        return f"{v*100:.1f}%" if v is not None else "—"
+
+    def _rate(v):
+        return f"{v:.1f}" if v is not None else "—"
+
+    ws = wb.create_sheet("Summary")
+    r = 1
+    ws.cell(row=r, column=1, value=title_text).font = Font(bold=True, size=14)
+    r += 2
+    _excel_style_header(ws, r, ["Metric", "Last week", "This week", "Target"])
+    r += 1
+    data = [
+        ("Pass rate (end of week)", _pct(prev_rate), _pct(this_rate), f"≥ {target_rate*100:.0f}%"),
+        ("Still failing (P0–P3)", "—", f"{kpi['still_failing']} / {total}", f"≤ {allowed_fail}"),
+        ("Scripts to fix (to hit target)", "—", kpi["fails_to_fix"], "↓ 0"),
+        ("Required fix rate (/day)", "—", _rate(kpi["required_rate_per_day"]), ""),
+        ("Actual fix rate (/day)", _rate(prev_actual_rate), _rate(actual_rate), "≥ required"),
+        ("P0 (wide-impact)", "—", kpi["tier_counts"]["P0"], "0"),
+        ("P1", "—", kpi["tier_counts"]["P1"], ""),
+        ("Fixes logged", prev_n_fix, n_fix, ""),
+        ("New scripts (DONE)", "—", n_new, ""),
+        ("New-script completion (cumulative)", "—",
+         f"{coverage['done']}/{coverage['total_needed']} ({coverage['pct']*100:.1f}%)" if coverage.get("configured") else "Not synced",
+         "per plan"),
+        ("Flaky scripts", "—", kpi["flaky_count"], ""),
+    ]
+    for lbl, lastw, thisw, tgt in data:
+        _excel_style_data_row(ws, r, [lbl, lastw, thisw, tgt])
+        r += 1
+    ws.column_dimensions["A"].width = 34
+    ws.column_dimensions["B"].width = 16
+    ws.column_dimensions["C"].width = 18
+    ws.column_dimensions["D"].width = 16
+
     _excel_pass_rate_matrix_sheet(wb, db, week_cycles)
     _excel_env_failures_sheet(wb, db, week_cycles)
+    _excel_by_app_sheet(wb, priority)
     _excel_productivity_sheet(wb, db, mon_s, sun_s)
     _excel_completion_sheet(wb, coverage)
 

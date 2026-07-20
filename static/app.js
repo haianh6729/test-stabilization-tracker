@@ -21,6 +21,9 @@ const state = {
   lastReportParams: {},
   rootCauseGroups: [],
   leaderboard: { scope: "cumulative", date: "", week: "" },
+  paretoItem: "",
+  rcCycles: [],       // danh sách cycle cho bộ lọc Root Cause Pareto
+  rcSelected: null,   // Set các cycle đang chọn (null = chưa init, mặc định chọn tất cả)
 };
 
 const TREND_BADGE = {
@@ -298,6 +301,136 @@ function destroyChart(key) {
   }
 }
 
+// Pareto (label is now the GROUPED root cause — truncate X axis, full text on hover)
+function renderPareto(rootCauses, item) {
+  destroyChart("pareto");
+  state.charts.pareto = new Chart($("#chartPareto"), {
+    data: {
+      labels: rootCauses.map((r) => r.description.length > 22 ? r.description.slice(0, 22) + "…" : r.description),
+      datasets: [
+        { type: "bar", label: "Fail Count", data: rootCauses.map((r) => r.count), backgroundColor: "#e67e22", yAxisID: "y" },
+        { type: "line", label: "Cumulative %", data: rootCauses.map((r) => (r.cum_pct * 100).toFixed(1)), borderColor: "#1F4E78", yAxisID: "y1" },
+      ],
+    },
+    options: {
+      plugins: { tooltip: { callbacks: { title: (items) => rootCauses[items[0].dataIndex].description } } },
+      scales: {
+        y: { position: "left", title: { display: true, text: "Fail Count" } },
+        y1: { position: "right", min: 0, max: 100, grid: { drawOnChartArea: false }, ticks: { callback: (v) => v + "%" } },
+      },
+      onHover: (evt, els) => { evt.native.target.style.cursor = els.length ? "pointer" : "default"; },
+      onClick: (evt, els) => {
+        if (!els.length) return;
+        const rc = rootCauses[els[0].index];
+        if (rc) openRcBreakdown(rc.key, item);
+      },
+    },
+  });
+}
+
+function initParetoFilter() {
+  const sel = $("#paretoItemSel");
+  if (!sel) return;
+  sel.addEventListener("change", async () => {
+    state.paretoItem = sel.value;
+    await fetchAndRenderPareto();
+  });
+}
+
+// ---- Cycle filter cho Root Cause Pareto (cùng pattern multi-select với "Pass Rate by Item × Model × Cycle") ----
+function rcSelectedCyclesList() {
+  return (state.rcCycles || []).filter((c) => state.rcSelected && state.rcSelected.has(c.cycle));
+}
+
+async function fetchAndRenderPareto() {
+  const item = state.paretoItem || "";
+  const cycles = rcSelectedCyclesList().map((c) => c.cycle).join(",");
+  const res = await api("/api/root-cause/pareto?item=" + encodeURIComponent(item) + "&cycles=" + encodeURIComponent(cycles));
+  renderPareto(res.root_causes, item);
+}
+
+function updateRcToggleLabel() {
+  const toggle = $("#rcMsToggle");
+  if (!toggle) return;
+  const sel = rcSelectedCyclesList();
+  const all = state.rcCycles && sel.length === state.rcCycles.length;
+  const label = all ? "All cycles" : (sel.length ? sel.map((c) => "C" + c.cycle).join(", ") : "No cycle selected");
+  toggle.innerHTML = `<span class="ms-count">${sel.length} cycle</span> ${label} <span class="ms-caret">▾</span>`;
+}
+
+function renderRcChooser() {
+  const box = $("#rcCycleChooser");
+  if (!box) return;
+  const cycles = state.rcCycles || [];
+  box.innerHTML = `
+    <div class="ms-dropdown" id="rcMs">
+      <button type="button" class="ms-toggle" id="rcMsToggle" aria-expanded="false"></button>
+      <div class="ms-panel" id="rcMsPanel" hidden>
+        <div class="ms-actions">
+          <button type="button" data-act="all">All</button>
+          <button type="button" data-act="recent5">Last 5</button>
+          <button type="button" data-act="none">Clear</button>
+        </div>
+        <div class="ms-options">
+          ${cycles.map((c) => `
+            <label>
+              <input type="checkbox" class="rc-cyc-cb" value="${c.cycle}" ${state.rcSelected.has(c.cycle) ? "checked" : ""}>
+              Cycle ${c.cycle} <span class="ms-date">${c.cycle_date || ""}</span>
+            </label>`).join("")}
+        </div>
+      </div>
+    </div>`;
+
+  updateRcToggleLabel();
+
+  const toggle = $("#rcMsToggle");
+  const panel = $("#rcMsPanel");
+  const setOpen = (open) => {
+    state._rcPanelOpen = open;
+    if (open) { panel.removeAttribute("hidden"); toggle.setAttribute("aria-expanded", "true"); }
+    else { panel.setAttribute("hidden", ""); toggle.setAttribute("aria-expanded", "false"); }
+  };
+  // Giữ trạng thái mở qua các lần refresh dashboard (~15s) để không đóng ngang khi đang chọn.
+  if (state._rcPanelOpen) setOpen(true);
+  toggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    setOpen(panel.hasAttribute("hidden"));
+  });
+  if (!state._rcDocClickBound) {
+    document.addEventListener("click", (e) => {
+      const ms = $("#rcMs");
+      if (!ms || ms.contains(e.target)) return;
+      state._rcPanelOpen = false;
+      const p = $("#rcMsPanel"), t = $("#rcMsToggle");
+      if (p) p.setAttribute("hidden", "");
+      if (t) t.setAttribute("aria-expanded", "false");
+    });
+    state._rcDocClickBound = true;
+  }
+
+  const applySelection = () => {
+    if (!state.rcSelected.size && cycles.length) state.rcSelected.add(cycles[cycles.length - 1].cycle); // luôn còn ít nhất 1
+    $$(".rc-cyc-cb").forEach((cb) => { cb.checked = state.rcSelected.has(parseInt(cb.value, 10)); });
+    updateRcToggleLabel();
+    fetchAndRenderPareto().catch((e) => console.error("Pareto chart failed:", e));
+  };
+
+  $$(".rc-cyc-cb").forEach((cb) => cb.addEventListener("change", () => {
+    const cyc = parseInt(cb.value, 10);
+    if (cb.checked) state.rcSelected.add(cyc); else state.rcSelected.delete(cyc);
+    applySelection();
+  }));
+
+  $$("#rcMsPanel .ms-actions button").forEach((btn) => btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const act = btn.dataset.act;
+    if (act === "all") state.rcSelected = new Set(cycles.map((c) => c.cycle));
+    else if (act === "none") state.rcSelected = new Set();
+    else if (act === "recent5") state.rcSelected = new Set(cycles.slice(-5).map((c) => c.cycle));
+    applySelection();
+  }));
+}
+
 function renderCharts(d) {
   // Trend: pass rate
   destroyChart("trend");
@@ -377,30 +510,32 @@ function renderCharts(d) {
     options: { plugins: { legend: { position: "right" } } },
   });
 
-  // Pareto (label is now the GROUPED root cause — truncate X axis, full text on hover)
-  destroyChart("pareto");
-  state.charts.pareto = new Chart($("#chartPareto"), {
-    data: {
-      labels: d.root_causes.map((r) => r.description.length > 22 ? r.description.slice(0, 22) + "…" : r.description),
-      datasets: [
-        { type: "bar", label: "Fail Count", data: d.root_causes.map((r) => r.count), backgroundColor: "#e67e22", yAxisID: "y" },
-        { type: "line", label: "Cumulative %", data: d.root_causes.map((r) => (r.cum_pct * 100).toFixed(1)), borderColor: "#1F4E78", yAxisID: "y1" },
-      ],
-    },
-    options: {
-      plugins: { tooltip: { callbacks: { title: (items) => d.root_causes[items[0].dataIndex].description } } },
-      scales: {
-        y: { position: "left", title: { display: true, text: "Fail Count" } },
-        y1: { position: "right", min: 0, max: 100, grid: { drawOnChartArea: false }, ticks: { callback: (v) => v + "%" } },
-      },
-      onHover: (evt, els) => { evt.native.target.style.cursor = els.length ? "pointer" : "default"; },
-      onClick: (evt, els) => {
-        if (!els.length) return;
-        const rc = d.root_causes[els[0].index];
-        if (rc) openRcBreakdown(rc.key);
-      },
-    },
-  });
+  // Pareto item dropdown: populate from d.root_cause_items, keep current selection
+  const paretoSel = $("#paretoItemSel");
+  if (paretoSel) {
+    const items = d.root_cause_items || [];
+    paretoSel.innerHTML = '<option value="">All items</option>' +
+      items.map((it) => `<option value="${it}">${it}</option>`).join("");
+    paretoSel.value = state.paretoItem || "";
+  }
+
+  // Pareto cycle chooser: danh sách cycle lấy từ d.trend (mọi cycle Dashboard biết đến).
+  state.rcCycles = d.trend.map((t) => ({ cycle: t.cycle, cycle_date: t.cycle_date }));
+  if (!state.rcSelected) {
+    state.rcSelected = new Set(state.rcCycles.map((c) => c.cycle));
+  } else {
+    const valid = new Set(state.rcCycles.map((c) => c.cycle));
+    state.rcSelected = new Set([...state.rcSelected].filter((c) => valid.has(c)));
+    if (!state.rcSelected.size) state.rcSelected = new Set([...valid]);
+  }
+  renderRcChooser();
+
+  // Đang chọn tất cả cycle + không lọc item -> dùng luôn d.root_causes (đỡ 1 request thừa).
+  if (!state.paretoItem && state.rcSelected.size === state.rcCycles.length) {
+    renderPareto(d.root_causes, "");
+  } else {
+    fetchAndRenderPareto().catch((e) => console.error("Pareto chart failed:", e));
+  }
 
   // Owner resolution rate comparison
   destroyChart("owner");
@@ -2066,12 +2201,14 @@ async function copyTextToClipboard(text) {
   return ok;
 }
 
-async function openRcBreakdown(labelKey) {
+async function openRcBreakdown(labelKey, item) {
   $("#rcbTitle").textContent = "Chi tiết nguyên nhân";
   $("#rcbContent").innerHTML = "Loading...";
   $("#rcBreakdownModal").style.display = "flex";
   try {
-    const d = await api("/api/root-cause/breakdown?label=" + encodeURIComponent(labelKey));
+    let url = "/api/root-cause/breakdown?label=" + encodeURIComponent(labelKey);
+    if (item) url += "&item=" + encodeURIComponent(item);
+    const d = await api(url);
     state.lastRcBreakdown = d;
 
     $("#rcbTitle").textContent = d.label + " — " + d.affected_scripts + " script / " + d.current_fail_count + " lần đang fail hiện tại";
@@ -2998,6 +3135,7 @@ async function init() {
   initReports();
   initIntegrations();
   initLeaderboard();
+  initParetoFilter();
 
   // new-scripts init cần danh sách items; reference data nuôi dropdown form.
   state.newScriptItems = await pItems;
