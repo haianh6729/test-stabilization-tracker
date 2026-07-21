@@ -983,6 +983,41 @@ def compute_root_cause_pareto(db, limit=15, english=False, test_suite=None, cycl
     return out
 
 
+def compute_root_cause_by_item_cycle(db, cycles, limit_per_item=5, english=True):
+    """Root-cause Pareto TACH theo tung item (test_suite), doi chieu qua `cycles` (thuong 3
+    cycle gan nhat). Moi item lay top `limit_per_item` nguyen nhan (theo TONG fail trong cac
+    cycle nay) + so fail tung cycle + subtotal. Item xep theo tong fail giam dan. Dung cho
+    Excel Report sheet section 3. english=True: dich nhan nhu compute_root_cause_pareto."""
+    if not cycles:
+        return []
+    # {item: {label: {cycle: count}}}
+    data = {}
+    q = "SELECT test_suite, cycle, description, state FROM results WHERE result='Fail' AND cycle IN ({})".format(
+        ",".join("?" * len(cycles)))
+    for r in db.execute(q, list(cycles)):
+        per = data.setdefault(r["test_suite"], {}).setdefault(
+            summarize_root_cause(r["description"], r["state"]), {})
+        per[r["cycle"]] = per.get(r["cycle"], 0) + 1
+
+    out = []
+    for item, labels in data.items():
+        ranked = sorted(
+            ((label, by_cycle, sum(by_cycle.values())) for label, by_cycle in labels.items()),
+            key=lambda x: (-x[2], x[0]))
+        item_total = sum(t for _, _, t in ranked)          # tong fail toan bo item (de xep item)
+        shown = ranked[:limit_per_item]
+        shown_total = sum(t for _, _, t in shown)           # mau so cho % (khop dong subtotal)
+        rows = [{"label": _translate_root_cause_label(label) if english else label,
+                 "by_cycle": by_cycle, "total": total,
+                 "pct": (total / shown_total) if shown_total else 0}
+                for label, by_cycle, total in shown]
+        subtotal = {c: sum(row["by_cycle"].get(c, 0) for row in rows) for c in cycles}
+        out.append({"item": item, "rows": rows, "subtotal": subtotal,
+                    "subtotal_total": shown_total, "_item_total": item_total})
+    out.sort(key=lambda o: (-o["_item_total"], o["item"]))
+    return out
+
+
 def compute_cycle_trend(db):
     """Pass Rate theo cycle, theo cong thuc rieng (khac voi cot 'result' dung cho fail_count/
     priority engine): NA duoc coi la trung lap - KHONG tinh vao ca tu so lan mau so.
@@ -4692,16 +4727,27 @@ def api_integrations_status():
 @app.route("/api/integrations/reconcile")
 @require_login
 def api_reconcile():
-    """Doi chieu 3 chieu, ca DONE lan SKIP:
+    """Doi chieu 3 chieu, ca DONE / SKIP / ASSIGNED:
     - DONE: ky vong status Performed ben TC Hub + CO file script that tren nhanh main.
     - SKIP: ky vong status Excluded ben TC Hub + KHONG CON file script (da xoa).
+    - ASSIGNED: ky vong status Target ben TC Hub (can lam nhung chua xong) + CHUA co file.
+    Chieu nguoc: moi TC ben TC Hub (Performed/Excluded/Target) ma he thong CHUA ghi nhan
+    (khong co trong new_scripts) -> them 1 dong lech (kind=None, member/team trong, TC ID = cua Hub).
     Member/Team tu dong dien (khi new_scripts chua co san) bang cach tra assignment hien tai
     cua TC do + team cua owner do (chi tinh luc doi chieu, khong ghi de DB)."""
     db = get_db()
     comp_status = {}
+    comp_meta = {}  # tc_norm -> {display, item, status} (dung cho dong lech chieu nguoc)
     comp_synced = ""
-    for r in db.execute("SELECT tc_id, status, synced_at FROM company_testcases").fetchall():
-        comp_status[str(r["tc_id"]).strip().lower()] = (r["status"] or "").strip()
+    for r in db.execute("SELECT tc_id, item, status, raw, synced_at FROM company_testcases").fetchall():
+        tc_norm = str(r["tc_id"]).strip().lower()
+        status = (r["status"] or "").strip()
+        comp_status[tc_norm] = status
+        comp_meta[tc_norm] = {
+            "display": (r["raw"] or "").strip() or r["tc_id"],
+            "item": (r["item"] or "").strip(),
+            "status": status,
+        }
         comp_synced = max(comp_synced, r["synced_at"] or "")
     has_company = bool(comp_status)
 
@@ -4732,19 +4778,22 @@ def api_reconcile():
     rows_out = []
     n_ok = n_missing_company = n_wrong_company = n_missing_github = 0
     n_skip_wrong_company = n_skip_has_github = 0
-    total_done = total_skip = 0
-    done_ids = set()
+    n_assigned_wrong_company = n_assigned_has_github = 0
+    total_done = total_skip = total_assigned = 0
+    local_ids = set()  # moi tc_norm co trong new_scripts (DONE/SKIP/ASSIGNED)
     for r in db.execute(
         "SELECT tc_id, item, member, team, status, completed_date FROM new_scripts "
-        "WHERE status IN ('DONE','SKIP') ORDER BY item, tc_id"
+        "WHERE status IN ('DONE','SKIP','ASSIGNED') ORDER BY item, tc_id"
     ).fetchall():
         kind = r["status"]
         tc_norm = str(r["tc_id"]).strip().lower()
+        local_ids.add(tc_norm)
         if kind == "DONE":
-            done_ids.add(tc_norm)
             total_done += 1
-        else:
+        elif kind == "SKIP":
             total_skip += 1
+        else:  # ASSIGNED
+            total_assigned += 1
         company_status = comp_status.get(tc_norm)
 
         sp = suite_paths.get(r["item"], "")
@@ -4765,13 +4814,20 @@ def api_reconcile():
                     n_wrong_company += 1
             if has_github and not github_ok:
                 n_missing_github += 1
-        else:  # SKIP: nguoc lai - khong lam nen khong can Performed, khong can con file
+        elif kind == "SKIP":  # nguoc lai - khong lam nen khong can Performed, khong can con file
             company_ok = bool(company_status) and company_status.lower() in COMPANY_SKIP_STATES
             github_ok = not has_file
             if has_company and not company_ok:
                 n_skip_wrong_company += 1
             if has_github and has_file:
                 n_skip_has_github += 1
+        else:  # ASSIGNED: can lam nhung chua xong - ky vong Target ben Hub + CHUA co file
+            company_ok = bool(company_status) and company_status.lower() in COMPANY_TARGET_STATES
+            github_ok = not has_file
+            if has_company and not company_ok:
+                n_assigned_wrong_company += 1
+            if has_github and has_file:
+                n_assigned_has_github += 1
 
         ok = (company_ok or not has_company) and (github_ok or not has_github)
         if ok and (has_company or has_github):
@@ -4791,25 +4847,38 @@ def api_reconcile():
             "ok": ok,
         })
 
-    # Chieu nguoc: TC Hub bao Performed nhung he thong chua ghi DONE (top 50)
-    performed_not_done = []
+    # Chieu nguoc: moi TC ben TC Hub (Performed/Excluded/Target) ma he thong CHUA ghi nhan
+    # (khong co trong new_scripts) -> them 1 dong lech vao bang doi chieu.
+    _RELEVANT_HUB_STATES = COMPANY_PERFORMED_STATES | COMPANY_SKIP_STATES | COMPANY_TARGET_STATES
+    n_hub_missing_local = 0
     if has_company:
         for tc_norm, status in comp_status.items():
-            if status.lower() in COMPANY_PERFORMED_STATES and tc_norm not in done_ids:
-                performed_not_done.append(tc_norm)
-                if len(performed_not_done) >= 50:
-                    break
+            if status.lower() not in _RELEVANT_HUB_STATES or tc_norm in local_ids:
+                continue
+            n_hub_missing_local += 1
+            meta = comp_meta.get(tc_norm, {})
+            rows_out.append({
+                "kind": None, "tc_id": meta.get("display") or tc_norm,
+                "item": meta.get("item") or "", "member": "", "team": "",
+                "completed_date": "", "company_status": status,
+                "company_ok": None, "github_ok": None, "matched_path": None,
+                "path_configured": False, "ok": False, "hub_only": True,
+            })
 
     return jsonify({
         "summary": {
             "total_done": total_done,
             "total_skip": total_skip,
+            "total_assigned": total_assigned,
             "ok_all": n_ok,
             "missing_company": n_missing_company,
             "wrong_company_status": n_wrong_company,
             "missing_github": n_missing_github,
             "skip_wrong_company": n_skip_wrong_company,
             "skip_has_github": n_skip_has_github,
+            "assigned_wrong_company": n_assigned_wrong_company,
+            "assigned_has_github": n_assigned_has_github,
+            "hub_missing_local": n_hub_missing_local,
             "has_company_data": has_company,
             "has_github_data": has_github,
             "company_synced_at": comp_synced,
@@ -4817,7 +4886,6 @@ def api_reconcile():
             "github_files": n_files,
         },
         "rows": rows_out,
-        "company_performed_not_done": performed_not_done,
     })
 
 
@@ -5422,6 +5490,16 @@ def _excel_style_data_row(sheet, row, values):
             cell.fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
 
 
+def _excel_merge_col1(ws, start_row, end_row):
+    """Gop (merge) cot 1 (thuong la Item) tu start_row..end_row thanh 1 o de khong lap
+    lai ten item tren tung dong con (model/root cause) - de nhin hon khi group nhieu dong.
+    Chi merge khi >1 dong; can giua theo chieu doc o merge."""
+    if end_row > start_row:
+        ws.merge_cells(start_row=start_row, start_column=1, end_row=end_row, end_column=1)
+        ws.cell(row=start_row, column=1).alignment = Alignment(
+            horizontal="left", vertical="center", wrap_text=True)
+
+
 _TIER_COLORS = [("P0", "E74C3C"), ("P1", "E67E22"), ("P2", "F1C40F"),
                  ("P3", "3498DB"), ("Verify", "9B59B6"), ("Done", "2ECC71")]
 
@@ -5592,12 +5670,14 @@ def _write_pass_rate_matrix(ws, db, cycles, start_row):
 
         for item in sorted(by_item):
             rows = by_item[item]
-            for row in sorted(rows, key=lambda x: x["model"]):
+            item_start = r
+            for i, row in enumerate(sorted(rows, key=lambda x: x["model"])):
                 cells = [row["by_cycle"].get(c) for c in cycles]
                 rates = [c["pass_rate"] if c else None for c in cells]
                 first = next((x for x in rates if x is not None), None)
                 last = next((x for x in reversed(rates) if x is not None), None)
-                _excel_style_data_row(ws, r, [item, row["model"]] + [fmt(c) for c in cells] + [delta(first, last)])
+                label = item if i == 0 else ""
+                _excel_style_data_row(ws, r, [label, row["model"]] + [fmt(c) for c in cells] + [delta(first, last)])
                 r += 1
             agg_cells = []
             for c in cycles:
@@ -5613,8 +5693,9 @@ def _write_pass_rate_matrix(ws, db, cycles, start_row):
             rates = [c["pass_rate"] if c else None for c in agg_cells]
             first = next((x for x in rates if x is not None), None)
             last = next((x for x in reversed(rates) if x is not None), None)
-            _excel_style_data_row(ws, r, [item, "Total"] + [fmt(c) for c in agg_cells] + [delta(first, last)])
+            _excel_style_data_row(ws, r, ["", "Total"] + [fmt(c) for c in agg_cells] + [delta(first, last)])
             r += 1
+            _excel_merge_col1(ws, item_start, r - 1)
 
         overall_cells = [data["overall_by_cycle"].get(c) for c in cycles]
         rates = [c["pass_rate"] if c else None for c in overall_cells]
@@ -5964,19 +6045,37 @@ def _excel_report_sheet(wb, db, title_text, trend, kpi, coverage, cycles, scope,
     r = _write_pass_rate_matrix(ws, db, cycles, r + 1)
     r += 1
 
-    # ---- 3. Root Cause Pareto (Top 15, current failures) ----
-    ws.cell(row=r, column=1, value="3. Root Cause Pareto (Top 15, current failures)").font = Font(bold=True, size=12)
+    # ---- 3. Root Cause Pareto by Item (Top 5 per item, last 3 cycles) ----
+    rc_cycles = cycles[-3:]
+    ws.cell(row=r, column=1,
+            value=f"3. Root Cause Pareto by Item (Top 5 per item, last {len(rc_cycles)} cycles)").font = \
+        Font(bold=True, size=12)
     r += 1
-    pareto = compute_root_cause_pareto(db, limit=15, english=True)
-    if not pareto:
-        ws.cell(row=r, column=1, value="No failure data.").font = Font(italic=True)
+    by_item = compute_root_cause_by_item_cycle(db, rc_cycles, limit_per_item=5, english=True)
+    if not by_item:
+        ws.cell(row=r, column=1, value="No failure data in the last cycles.").font = Font(italic=True)
         r += 1
     else:
-        _excel_style_header(ws, r, ["Root Cause", "Fails", "%", "Cumulative %"], "C0504D")
+        header = ["Item", "Root Cause"] + [f"C{c}" for c in rc_cycles] + ["Total", "%", "Trend"]
+        _excel_style_header(ws, r, header, "C0504D")
         r += 1
-        for g in pareto:
-            _excel_style_data_row(ws, r, [g["description"], g["count"], g["pct"], g["cum_pct"]])
+        for blk in by_item:
+            item_start = r
+            for i, row_d in enumerate(blk["rows"]):
+                counts = [row_d["by_cycle"].get(c, 0) for c in rc_cycles]
+                # Trend theo so fail: cycle cuoi > cycle dau = dang xau di (▲), it hon = tot len (▼).
+                trend = "▲" if counts[-1] > counts[0] else ("▼" if counts[-1] < counts[0] else "=")
+                label = blk["item"] if i == 0 else ""
+                _excel_style_data_row(ws, r, [label, row_d["label"]] + counts +
+                                      [row_d["total"], row_d["pct"], trend])
+                r += 1
+            sub = [blk["subtotal"].get(c, 0) for c in rc_cycles]
+            _excel_style_data_row(ws, r, ["", "─ subtotal"] + sub +
+                                  [blk["subtotal_total"], "", ""])
+            for col in range(1, len(header) + 1):
+                ws.cell(row=r, column=col).font = Font(bold=True)
             r += 1
+            _excel_merge_col1(ws, item_start, r - 1)
     r += 1
 
     # ---- 4. Personal KPI (theo ky bao cao; rate luon all-time nhu Dashboard) ----
@@ -6013,10 +6112,11 @@ def _excel_report_sheet(wb, db, title_text, trend, kpi, coverage, cycles, scope,
             ws.cell(row=r, column=1, value="Avg per person/day: " + " · ".join(parts)).font = Font(size=10, color="666666")
             r += 1
 
-    # Chieu rong cot: khoi rong nhat la Pareto (cot A ten nhom dai) + matrix (2+cycles+delta cot).
-    ws.column_dimensions["A"].width = 46
-    for col in range(2, max(8, 4 + len(cycles))):
-        ws.column_dimensions[get_column_letter(col)].width = 15
+    # Chieu rong cot: cot A = Item/rank; cot B = ten root cause (dai) / Model / Owner.
+    ws.column_dimensions["A"].width = 26
+    ws.column_dimensions["B"].width = 42
+    for col in range(3, max(9, 4 + len(cycles))):
+        ws.column_dimensions[get_column_letter(col)].width = 14
     return ws
 
 

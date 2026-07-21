@@ -640,8 +640,8 @@ Browser_000202&#9;tuyen.bv1"></textarea>
   </div>
 
   <div class="card wide" data-perm="integrations">
-    <h3>🔍 Đối chiếu 3 chiều: DONE/SKIP ↔ TC Hub (Performed/Excluded) ↔ File trên GitHub</h3>
-    <p class="hint">Mỗi script <b>DONE</b> phải: (1) có status <b>Performed</b> bên TC Hub, và (2) có <b>file script thật</b> trên nhánh main (đúng thư mục của Item nếu đã cấu hình đường dẫn). Mỗi script <b>SKIP</b> thì NGƯỢC LẠI: phải có status <b>Excluded</b> bên TC Hub và KHÔNG còn file trên GitHub (đã xoá). Dòng lệch = cần xử lý.</p>
+    <h3>🔍 Đối chiếu 3 chiều: DONE/SKIP/ASSIGNED ↔ TC Hub (Performed/Excluded/Target) ↔ File trên GitHub</h3>
+    <p class="hint">Mỗi script <b>DONE</b> phải: (1) có status <b>Performed</b> bên TC Hub, và (2) có <b>file script thật</b> trên nhánh main (đúng thư mục của Item nếu đã cấu hình đường dẫn). Script <b>SKIP</b> thì NGƯỢC LẠI: phải có status <b>Excluded</b> bên TC Hub và KHÔNG còn file trên GitHub (đã xoá). Script <b>ASSIGNED</b> (đang làm, chưa xong): phải có status <b>Target</b> bên TC Hub và CHƯA có file trên GitHub. <b>Chiều ngược</b>: mọi TC bên TC Hub (Performed/Excluded/Target) mà hệ thống chưa ghi nhận sẽ hiện thành dòng lệch với <b>Loại = "— (chưa có)"</b>. Dòng lệch = cần xử lý.</p>
     <div class="form-row">
       <button class="btn-primary" id="btnReconcile">🔍 Chạy đối chiếu</button>
       <label class="ns-inline" style="margin-left:10px"><input type="checkbox" id="reconcileOnlyDiff"> Chỉ hiện dòng lệch</label>
