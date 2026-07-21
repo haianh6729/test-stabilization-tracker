@@ -1,0 +1,32 @@
+{
+  "farm_base": "https://dna.sec.samsung.net/sdf30/rest",
+
+  "mode": "dynamic",
+
+  "agent_type": "A_MX_SDF-DEV-ONLY",
+  "models": [
+    { "model": "SM-A556B", "salesCode": "EUX" },
+    { "model": "SM-S931U" }
+  ],
+
+  "request_type": "R_DX_GENERAL",
+  "runner_list": ["FDM", "MAP", "PYTHON"],
+  "is_notification": true,
+  "recipient_id_list": [],
+  "stop_on_failure": false,
+  "title": "Auto-run on merge to main",
+
+  "script_extensions": [".py"],
+  "watch_prefixes": [],
+  "watch_contains": ["/test case/"],
+  "repo_root": "",
+  "store_prefix": "",
+
+  "script_store": {
+    "id": "PUT_SCRIPT_STORE_ID",
+    "name": "PUT_SCRIPT_STORE_NAME",
+    "version": "1.0.0"
+  },
+
+  "store_map": []
+}

@@ -1,0 +1,51 @@
+name: Farm auto-run on merge to main
+
+# Mỗi khi có commit đẩy/merge vào main, tự phát hiện các file script test
+# vừa thêm/sửa và tạo test trên farm qua API test-manager/v1/test-group.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # Chỉ kích hoạt khi có thay đổi script test của bất kỳ Item nào: <Item>/test case/**.py
+      - "**/test case/**.py"
+
+jobs:
+  trigger-farm:
+    runs-on: self-hosted        # runner Windows nằm trong LAN, truy cập được dna.sec.samsung.net
+    steps:
+      - name: Checkout (full history để diff được)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Phát hiện file script đã thay đổi
+        id: diff
+        shell: pwsh
+        run: |
+          $before = "${{ github.event.before }}"
+          $after  = "${{ github.sha }}"
+          if (-not $before -or $before -eq "0000000000000000000000000000000000000000") {
+            $before = (git rev-parse HEAD~1 2>$null)
+          }
+          if ($before) {
+            $files = git diff --name-only --diff-filter=ACMR $before $after
+          } else {
+            $files = git show --name-only --diff-filter=ACMR --pretty=format: $after
+          }
+          $py = $files | Where-Object { $_ -match '\.py$' }
+          $py | Set-Content -Encoding utf8 changed.txt
+          Write-Host "File thay đổi (.py):"
+          if ($py) { $py | ForEach-Object { Write-Host "  $_" } } else { Write-Host "  (không có)" }
+
+      - name: Tạo test trên farm
+        shell: pwsh
+        env:
+          FARM_API_TOKEN: ${{ secrets.FARM_API_TOKEN }}   # nếu farm dùng Bearer token
+          FARM_COOKIE:    ${{ secrets.FARM_COOKIE }}       # nếu farm dùng cookie SSO (để trống nếu không dùng)
+          # DRY_RUN: "1"   # bật dòng này để in body mà KHÔNG gọi API (test workflow)
+        run: |
+          python scripts/trigger_farm_tests.py `
+            --changed-files changed.txt `
+            --config farm_config.json `
+            --title "Merge ${{ github.sha }} by ${{ github.actor }}"
