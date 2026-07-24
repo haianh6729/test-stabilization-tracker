@@ -238,7 +238,8 @@
       <table id="ownerTable" class="data-table">
         <thead>
           <tr>
-            <th title="Thứ hạng trong khoảng thời gian đang chọn (Ngày/Tuần/Cộng dồn)">#</th>
+            <th data-tt-index="1" title="Số thứ tự dòng đang hiển thị (tự tính lại sau khi sort/lọc)">#</th>
+            <th title="Thứ hạng trong khoảng thời gian đang chọn (Ngày/Tuần/Cộng dồn)">Rank</th>
             <th title="Tên thành viên team">Owner</th>
             <th title="Số script viết mới đã hoàn thành (trạng thái DONE) trong khoảng thời gian đang chọn">Scripts Written</th>
             <th title="Số TC bị đánh SKIP (không cần viết script) của thành viên này trong khoảng thời gian đang chọn">Scripts SKIP</th>
@@ -355,6 +356,7 @@ Browser_000202&#9;tuyen.bv1"></textarea>
     <table id="newScriptsTable" class="data-table ns-table">
       <thead>
         <tr>
+          <th data-tt-index="1" title="Số thứ tự dòng đang hiển thị (tự tính lại sau khi sort/lọc)">#</th>
           <th style="width:9%" title="Test suite / Item chứa test case này">Item</th>
           <th style="width:12%" title="Mã test case (duy nhất)">TC ID</th>
           <th style="width:10%" title="Người viết script">Member</th>
@@ -544,6 +546,7 @@ Browser_000202&#9;tuyen.bv1"></textarea>
     <table id="fixTrackingTable" class="data-table">
       <thead>
         <tr>
+          <th data-tt-index="1" title="Số thứ tự dòng đang hiển thị (tự tính lại sau khi sort/lọc)">#</th>
           <th title="✅ Đã hết lỗi · ⚠️ Hết rồi fail lại · ❌ Chưa hết lỗi · ⏳ Chờ dữ liệu cycle sau">Trạng thái</th>
           <th title="Người ghi nhận fix">Owner</th>
           <th title="Team của người fix">Team</th>
@@ -894,6 +897,22 @@ Browser_000202&#9;tuyen.bv1"></textarea>
       <button onclick="document.getElementById('rcBreakdownModal').style.display='none'" style="background:none; border:none; font-size:24px; cursor:pointer;">✕</button>
     </div>
     <div id="rcbContent" style="max-height:650px; overflow-y:auto;">
+      Loading...
+    </div>
+  </div>
+</div>
+
+<!-- Modal drill-down chi tiet o Pass Rate by Item x Model x Cycle -->
+<div id="smDetailModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+  <div style="background:white; border-radius:8px; padding:20px; max-width:95%; max-height:90%; overflow-y:auto; width:1200px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+      <h3 id="smdTitle" style="margin:0;">Chi tiết kết quả</h3>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <button id="smdExport" class="btn-tiny rename">⬇️ Xuất Excel (CSV)</button>
+        <button onclick="document.getElementById('smDetailModal').style.display='none'" style="background:none; border:none; font-size:24px; cursor:pointer;">✕</button>
+      </div>
+    </div>
+    <div id="smdContent" style="max-height:650px; overflow-y:auto;">
       Loading...
     </div>
   </div>

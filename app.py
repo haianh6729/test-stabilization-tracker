@@ -1282,33 +1282,43 @@ def compute_suite_model_matrix(db):
 
     Tra ve {
       "cycles": [{cycle, cycle_date}, ...],
-      "rows": [{test_suite, model, by_cycle: {cycle: {total, pass_count, na_count, fail_count, pass_rate}}}],
-      "overall_by_cycle": {cycle: {total, pass_count, na_count, fail_count, pass_rate}},  # tat ca script
+      "rows": [{test_suite, model, by_cycle: {cycle: {total, pass_count, na_count, fail_count, pass_rate,
+                                                        pass_only, check_count, manual_check_count}}}],
+      "overall_by_cycle": {cycle: {... cung shape ...}},  # tat ca script
     }
     Frontend co the cong don cac cycle duoc chon: overall = sum(pass_count) / (sum(total) - sum(na)).
+    pass_only/check_count/manual_check_count la breakdown chi tiet cua pass_count (pass_count =
+    pass_only + check_count + manual_check_count) - phuc vu hien thi P/C/F/NA/T tren tung o matrix
+    va modal drill-down cho hang OVERALL, khong thay doi cac key cu (giu tuong thich renderSmOverall()).
     """
     cycles = db.execute("SELECT DISTINCT cycle, cycle_date FROM results ORDER BY cycle").fetchall()
     cycle_list = [{"cycle": r["cycle"], "cycle_date": r["cycle_date"]} for r in cycles]
 
-    def cell(total, pass_like, na):
+    def cell(total, pass_like, na, pass_only, check_cnt, manual_cnt):
         denom = total - na
         return {
             "total": total, "pass_count": pass_like, "na_count": na,
             "fail_count": (denom - pass_like) if denom > 0 else 0,
             "pass_rate": (pass_like / denom) if denom > 0 else None,
+            "pass_only": pass_only, "check_count": check_cnt, "manual_check_count": manual_cnt,
         }
 
     rows_raw = db.execute(
         """
         SELECT test_suite, model, cycle, COUNT(*) as total,
                SUM(CASE WHEN LOWER(TRIM(state)) IN ('pass','check','manual check') THEN 1 ELSE 0 END) as pass_like,
-               SUM(CASE WHEN LOWER(TRIM(state))='na' THEN 1 ELSE 0 END) as na
+               SUM(CASE WHEN LOWER(TRIM(state))='na' THEN 1 ELSE 0 END) as na,
+               SUM(CASE WHEN LOWER(TRIM(state))='pass' THEN 1 ELSE 0 END) as pass_only,
+               SUM(CASE WHEN LOWER(TRIM(state))='check' THEN 1 ELSE 0 END) as check_cnt,
+               SUM(CASE WHEN LOWER(TRIM(state))='manual check' THEN 1 ELSE 0 END) as manual_cnt
         FROM results WHERE result <> 'Excluded' GROUP BY test_suite, model, cycle
         """
     ).fetchall()
     by_key = {}
     for r in rows_raw:
-        by_key.setdefault((r["test_suite"], r["model"]), {})[r["cycle"]] = cell(r["total"], r["pass_like"], r["na"])
+        by_key.setdefault((r["test_suite"], r["model"]), {})[r["cycle"]] = cell(
+            r["total"], r["pass_like"], r["na"], r["pass_only"], r["check_cnt"], r["manual_cnt"]
+        )
 
     rows = []
     for (suite, model), by_cycle in sorted(by_key.items()):
@@ -1318,11 +1328,17 @@ def compute_suite_model_matrix(db):
         """
         SELECT cycle, COUNT(*) as total,
                SUM(CASE WHEN LOWER(TRIM(state)) IN ('pass','check','manual check') THEN 1 ELSE 0 END) as pass_like,
-               SUM(CASE WHEN LOWER(TRIM(state))='na' THEN 1 ELSE 0 END) as na
+               SUM(CASE WHEN LOWER(TRIM(state))='na' THEN 1 ELSE 0 END) as na,
+               SUM(CASE WHEN LOWER(TRIM(state))='pass' THEN 1 ELSE 0 END) as pass_only,
+               SUM(CASE WHEN LOWER(TRIM(state))='check' THEN 1 ELSE 0 END) as check_cnt,
+               SUM(CASE WHEN LOWER(TRIM(state))='manual check' THEN 1 ELSE 0 END) as manual_cnt
         FROM results WHERE result <> 'Excluded' GROUP BY cycle
         """
     ).fetchall()
-    overall_by_cycle = {r["cycle"]: cell(r["total"], r["pass_like"], r["na"]) for r in overall_raw}
+    overall_by_cycle = {
+        r["cycle"]: cell(r["total"], r["pass_like"], r["na"], r["pass_only"], r["check_cnt"], r["manual_cnt"])
+        for r in overall_raw
+    }
 
     return {"cycles": cycle_list, "rows": rows, "overall_by_cycle": overall_by_cycle}
 
@@ -2474,6 +2490,72 @@ def api_get_results():
         "SELECT * FROM results ORDER BY id DESC LIMIT ?", (limit,)
     ).fetchall()
     return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/results/detail", methods=["GET"])
+def api_get_results_detail():
+    """Chi tiet tung luot chay cua 1 o (item x model x cycle) tren Dashboard
+    (Pass Rate by Item x Model x Cycle) - phuc vu modal drill-down khi bam vao o.
+    Tra ve 1 dong / 1 luot chay (khong gom theo test case) de tong so dong khop dung
+    voi so F/T hien tren o. Cong thuc pass_rate GIU NGUYEN nhu compute_suite_model_matrix()
+    (pass_like = Pass+Check+Manual Check, denom = total - NA); chi phan loai chi tiet hon
+    (tach rieng Pass va Check) o phan hien thi.
+    """
+    test_suite = (request.args.get("test_suite") or "").strip()
+    model = (request.args.get("model") or "").strip()
+    cycle = request.args.get("cycle")
+    if not test_suite or not model or cycle is None:
+        return jsonify({"error": "Thieu test_suite/model/cycle"}), 400
+    try:
+        cycle = int(cycle)
+    except ValueError:
+        return jsonify({"error": "cycle khong hop le"}), 400
+
+    db = get_db()
+    rows = db.execute(
+        """
+        SELECT test_case, state, result, description, test_id, serial, cycle_date, author, team
+        FROM results
+        WHERE test_suite = ? AND model = ? AND cycle = ? AND result <> 'Excluded'
+        ORDER BY test_case, id
+        """,
+        (test_suite, model, cycle),
+    ).fetchall()
+
+    cycle_date = rows[0]["cycle_date"] if rows else None
+    pass_count = check_count = manual_check_count = na_count = 0
+    out_rows = []
+    for r in rows:
+        st_norm = (r["state"] or "").strip().lower()
+        if st_norm == "pass":
+            pass_count += 1
+        elif st_norm == "check":
+            check_count += 1
+        elif st_norm == "manual check":
+            manual_check_count += 1
+        elif st_norm == "na":
+            na_count += 1
+        out_rows.append({
+            "test_case": r["test_case"], "state": r["state"], "result": r["result"],
+            "description": r["description"], "test_id": r["test_id"], "serial": r["serial"],
+            "author": r["author"], "team": r["team"],
+        })
+
+    total = len(rows)
+    pass_like = pass_count + check_count + manual_check_count
+    denom = total - na_count
+    fail_count = (denom - pass_like) if denom > 0 else 0
+    pass_rate = (pass_like / denom) if denom > 0 else None
+
+    return jsonify({
+        "test_suite": test_suite, "model": model, "cycle": cycle, "cycle_date": cycle_date,
+        "summary": {
+            "total": total, "pass_count": pass_count, "check_count": check_count,
+            "manual_check_count": manual_check_count, "na_count": na_count,
+            "fail_count": fail_count, "pass_rate": pass_rate,
+        },
+        "rows": out_rows,
+    })
 
 
 # ------------------------------------------------------------------

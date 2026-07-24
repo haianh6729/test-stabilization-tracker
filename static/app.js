@@ -717,16 +717,32 @@ function heatColor(rate) {
   return `hsl(${hue}, 62%, 86%)`;
 }
 
-function smCellHtml(cell) {
+function smCellHtml(cell, ctx) {
   if (!cell) return `<td class="cyc-cell cyc-none" data-sortval="-1" title="Did not run in this cycle">—</td>`;
-  const { pass_rate, fail_count, total, na_count } = cell;
-  let main = "—", sv = -1, style = "";
+  const { pass_rate, fail_count, total, na_count, pass_only, check_count, manual_check_count } = cell;
+  let main = "—", sv = -1, bg = "";
   if (pass_rate !== null && pass_rate !== undefined) {
     main = (pass_rate * 100).toFixed(0) + "%"; sv = pass_rate;
-    style = ` style="background:${heatColor(pass_rate)}"`;
+    bg = `background:${heatColor(pass_rate)};`;
   }
-  const detail = `${fail_count}F / ${total}T${na_count ? " / " + na_count + "NA" : ""}`;
-  return `<td class="cyc-cell"${style} data-sortval="${sv}" title="${detail}"><b>${main}</b><br><span class="cyc-detail">${detail}</span></td>`;
+  // Gop Manual Check vao Check de o gon (P/C/F/NA/T); tooltip giu breakdown day du (tach Manual Check).
+  const checkAll = (check_count || 0) + (manual_check_count || 0);
+  const naPart = na_count ? `${na_count}NA / ` : "";
+  const detail = `${pass_only || 0}P / ${checkAll}C / ${fail_count}F / ${naPart}${total}T`;
+  const tooltipDetail = `Pass ${pass_only || 0} · Check ${check_count || 0} · Manual Check ${manual_check_count || 0} · Fail ${fail_count} · NA ${na_count} · Total ${total}`;
+  // ctx.overall=true -> o cua dong OVERALL (tat ca script) - van cho bam de xem breakdown theo Item x Model.
+  // ctx {suite, model, cycle} -> o cua 1 model cu the -> bam mo modal xem chi tiet tung luot chay.
+  if (ctx && ctx.overall) {
+    return `<td class="cyc-cell cyc-click" style="${bg}cursor:pointer" data-sortval="${sv}" title="${tooltipDetail} — click for detail" ` +
+      `data-overall="1" data-cycle="${ctx.cycle}">` +
+      `<b>${main}</b><br><span class="cyc-detail">${detail}</span></td>`;
+  }
+  if (ctx) {
+    return `<td class="cyc-cell cyc-click" style="${bg}cursor:pointer" data-sortval="${sv}" title="${tooltipDetail} — click for detail" ` +
+      `data-item="${escAttr(ctx.suite)}" data-model="${escAttr(ctx.model)}" data-cycle="${ctx.cycle}">` +
+      `<b>${main}</b><br><span class="cyc-detail">${detail}</span></td>`;
+  }
+  return `<td class="cyc-cell" style="${bg}" data-sortval="${sv}" title="${tooltipDetail}"><b>${main}</b><br><span class="cyc-detail">${detail}</span></td>`;
 }
 
 function renderSuiteModelHead() {
@@ -744,10 +760,11 @@ function renderSuiteModelMatrix() {
   const rows = state.suiteModel.rows || [];
   const overall = state.suiteModel.overall_by_cycle || {};
 
-  // OVERALL row (all scripts) at the top of the table.
+  // OVERALL row (all scripts) at the top of the table - o cua hang nay van cho bam de xem
+  // breakdown theo Item x Model (xem openOverallCellDetail()).
   let overallRow = `<tr class="sm-overall-row">
     <td class="sm-col-item" colspan="2">OVERALL — all scripts</td>`;
-  for (const c of sel) overallRow += smCellHtml(overall[c.cycle]);
+  for (const c of sel) overallRow += smCellHtml(overall[c.cycle], { overall: true, cycle: c.cycle });
   overallRow += `</tr>`;
 
   // Gom nhóm theo Item: cột Item chỉ hiện 1 lần (rowspan) cho tất cả model của item đó.
@@ -760,7 +777,7 @@ function renderSuiteModelMatrix() {
   let bodyRows = "";
   for (const [suite, items] of groups) {
     items.forEach((r, idx) => {
-      const cells = sel.map((c) => smCellHtml(r.by_cycle[c.cycle])).join("");
+      const cells = sel.map((c) => smCellHtml(r.by_cycle[c.cycle], { suite, model: r.model, cycle: c.cycle })).join("");
       const itemCell = idx === 0
         ? `<td class="sm-col-item sm-group-item" rowspan="${items.length}">${suite}</td>`
         : "";
@@ -804,12 +821,13 @@ function exportSmMatrixExcel() {
 function renderOwnerTable(rows, totals) {
   const tbody = $("#ownerTable tbody");
   if (!rows || !rows.length) {
-    tbody.innerHTML = `<tr><td colspan="12" style="color:#999">No data in the selected range.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="13" style="color:#999">No data in the selected range.</td></tr>`;
     if ($("#lbProductivity")) $("#lbProductivity").textContent = "";
     return;
   }
   const body = rows.map((o) => `
     <tr>
+      <td class="tt-index"></td>
       <td>${o.rank ?? ""}</td>
       <td>${o.owner}</td>
       <td>${o.scripts_written ?? 0}</td>
@@ -827,7 +845,7 @@ function renderOwnerTable(rows, totals) {
   const sum = (k) => rows.reduce((a, o) => a + (o[k] || 0), 0);
   const totalRow = `
     <tr class="total-row">
-      <td></td><td>Total</td>
+      <td></td><td></td><td>Total</td>
       <td>${sum("scripts_written")}</td>
       <td>${sum("scripts_skipped")}</td>
       <td>${sum("fixes_logged")}</td>
@@ -1057,8 +1075,11 @@ function ttEnsureFilterRow(table) {
   if (fr) fr.remove();
   fr = document.createElement("tr");
   fr.className = "tt-filter-row";
+  const hCells = Array.from(headerRow.cells);
   for (let i = 0; i < nCols; i++) {
     const th = document.createElement("th");
+    // Cột # (số thứ tự dòng hiển thị) không lọc được — chỉ chừa ô trống để giữ thẳng cột.
+    if (hCells[i] && hCells[i].dataset.ttIndex === "1") { fr.appendChild(th); continue; }
     const inp = document.createElement("input");
     inp.type = "text";
     inp.className = "col-filter";
@@ -1077,6 +1098,8 @@ function ttWireSort(table) {
   if (!headerRow) return;
   Array.from(headerRow.cells).forEach((th, i) => {
     if (th.dataset.ttSort) return;
+    // Cột # (số thứ tự dòng hiển thị, tự tính lại sau sort/lọc) — không cho bấm sort theo nó.
+    if (th.dataset.ttIndex === "1") return;
     th.dataset.ttSort = "1";
     th.style.cursor = "pointer";
     // Giu lai title giai thich goc (neu co) - chi noi them goi y sort, KHONG ghi de.
@@ -1139,6 +1162,12 @@ function ttApply(table) {
   const info = ttPageInfo(table.id, visible.length, st.page);
   st.page = info.page;
   const slice = visible.slice(info.start, info.end);
+
+  // Cot # (so thu tu dong dang hien thi) - tinh lai lien tuc theo trang, sau sort/loc.
+  slice.forEach((r, i) => {
+    const idxCell = r.querySelector("td.tt-index");
+    if (idxCell) idxCell.textContent = info.start + i + 1;
+  });
 
   // Ngat observer khi tu dung lai DOM (tranh vong lap MutationObserver bat dong bo).
   if (st._obs) st._obs.disconnect();
@@ -1701,7 +1730,7 @@ function renderNewScriptsTable() {
   const tbody = $("#newScriptsTable tbody");
   if (!tbody) return;
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="11" style="color:#999">Chưa ghi nhận script viết mới nào.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="12" style="color:#999">Chưa ghi nhận script viết mới nào.</td></tr>`;
     return;
   }
   const statusTag = (s) => {
@@ -1715,6 +1744,7 @@ function renderNewScriptsTable() {
     const canEditRow = isAdminOrMod || state.nsCanEdit || (myUsername && r.member === myUsername);
     return `
     <tr>
+      <td class="tt-index"></td>
       <td>${r.item || ""}</td>
       <td><b>${r.tc_id || ""}</b></td>
       <td>${r.member || '<span style="color:#bbb">—</span>'}</td>
@@ -1733,7 +1763,7 @@ function renderNewScriptsTable() {
   const nSkip = rows.filter((r) => r.status === "SKIP").length;
   const totalRow = `
     <tr class="total-row">
-      <td colspan="6">Total: ${rows.length} script</td>
+      <td colspan="7">Total: ${rows.length} script</td>
       <td>${nDone} DONE / ${nAssigned} ASSIGNED / ${nSkip} SKIP</td>
       <td colspan="4"></td>
     </tr>`;
@@ -1924,6 +1954,7 @@ function renderFixTracking() {
     const st = FIX_STATUS_STYLE[r.status] || { label: r.status, color: "#999" };
     return `
     <tr>
+      <td class="tt-index"></td>
       <td><span class="tag" style="background:${st.color}">${st.label}</span></td>
       <td>${r.owner}</td>
       <td>${r.team || '<span style="color:#bbb">—</span>'}</td>
@@ -1939,7 +1970,7 @@ function renderFixTracking() {
       <td>${r.fix_date}</td>
       <td style="max-width:200px; word-break:break-word; font-size:11px; color:#666">${r.note || "—"}</td>
     </tr>`;
-  }).join("") || `<tr><td colspan="14" style="color:#999">Chưa có lần fix nào khớp.</td></tr>`;
+  }).join("") || `<tr><td colspan="15" style="color:#999">Chưa có lần fix nào khớp.</td></tr>`;
 }
 
 function initFixTracking() {
@@ -1954,7 +1985,7 @@ async function loadPriority() {
 
 function renderPriorityTableHead() {
   const baseCols = [
-    ["rank", "#", "Thứ hạng theo điểm ưu tiên"],
+    ["rank", "Rank", "Thứ hạng theo điểm ưu tiên"],
     ["test_suite", "Test suite", "Item / test suite chứa script này"],
     ["test_case", "Test Case", "Tên test case / script"],
     ["priority_tier", "Tier", "P0-P3 = còn lỗi (mức độ ưu tiên); Verify = hết lỗi nhưng chưa đủ cycle xác nhận; Done = đã xác nhận ổn định"],
@@ -1972,12 +2003,12 @@ function renderPriorityTableHead() {
   ];
   const allCols = [...baseCols, ...state.models.map((m) => [`model_${m}`, m, `Kết quả lần chạy mới nhất trên model ${m}`])];
 
-  let headRow = "<tr>";
+  let headRow = `<tr><th title="Số thứ tự dòng đang hiển thị (tự tính lại sau khi sort/lọc)">#</th>`;
   for (const [key, label, tooltip] of allCols) headRow += `<th data-key="${key}"${tooltip ? ` title="${tooltip}"` : ""}>${label}</th>`;
   headRow += `<th>Hành động</th></tr>`;
 
   // Hang filter rieng cho tung cot - go text vao o duoi ten cot de loc.
-  let filterRow = `<tr class="filter-row">`;
+  let filterRow = `<tr class="filter-row"><th></th>`;
   for (const [key] of allCols) {
     filterRow += `<th><input type="text" class="col-filter" data-key="${key}" placeholder="Lọc..."></th>`;
   }
@@ -2044,7 +2075,7 @@ function renderPriorityTable() {
     if (av > bv) return 1 * dir;
     return 0;
   });
-  const ncols = 15 + state.models.length + 1;
+  const ncols = 16 + state.models.length + 1;
   // Phan trang phia client: chi render dong cua trang hien tai (giam so node DOM -> chua lag).
   // Loc + sort van tren TOAN BO state.priority o tren; chi cat-lat de hien thi.
   const info = ttPageInfo("priorityTable", rows.length, state.priorityPage);
@@ -2054,10 +2085,11 @@ function renderPriorityTable() {
   ttBuildPagerBar(ttEnsurePager(prioTable), "priorityTable", info,
     (p) => { state.priorityPage = p; renderPriorityTable(); },
     () => { state.priorityPage = 1; renderPriorityTable(); });
-  $("#priorityTable tbody").innerHTML = pageRows.map((r) => {
+  $("#priorityTable tbody").innerHTML = pageRows.map((r, i) => {
     let modelCells = state.models.map((m) => `<td>${modelBadge(r.model_detail[m])}</td>`).join("");
     return `
     <tr>
+      <td>${info.start + i + 1}</td>
       <td><b>${r.rank}</b></td>
       <td>${r.test_suite}</td>
       <td>${r.test_case}</td>
@@ -2181,6 +2213,177 @@ async function showFixRootCauseFails(group) {
   } catch (e) {
     alert("Lỗi tải chi tiết: " + e.message);
   }
+}
+
+// Mau badge theo tung trang thai chi tiet (Pass/Check/Manual Check tach rieng, khong gop pass-like).
+const SMD_STATE_COLOR = {
+  pass: "#2ecc71", check: "#16a085", "manual check": "#8e44ad", na: "#95a5a6",
+};
+function smdStateBadge(state) {
+  const norm = String(state || "").trim().toLowerCase();
+  const bg = SMD_STATE_COLOR[norm] || "#e74c3c"; // mac dinh = Fail (moi trang thai con lai)
+  return `<span style="color:#fff; background:${bg}; padding:4px 8px; border-radius:3px; font-weight:bold;">${escAttr(state)}</span>`;
+}
+
+// Luu ket qua modal drill-down gan nhat de nut Xuat Excel doc lai (khong goi lai API).
+let smdCurrent = null;
+
+// Dashboard: click 1 o pass rate trong "Pass Rate by Item x Model x Cycle" -> chi tiet tung luot chay.
+async function openScriptCellDetail(item, model, cycle) {
+  $("#smdTitle").textContent = `${item} · ${model} · Cycle ${cycle}`;
+  $("#smdContent").innerHTML = "Loading...";
+  $("#smDetailModal").style.display = "flex";
+  try {
+    const d = await api(`/api/results/detail?test_suite=${encodeURIComponent(item)}&model=${encodeURIComponent(model)}&cycle=${encodeURIComponent(cycle)}`);
+    d.mode = "cell";
+    smdCurrent = d;
+    const s = d.summary;
+    let html = `<p style="margin:0 0 12px; padding:10px; background:#f5f5f5; border-radius:4px; font-size:13px;">
+      <b>Pass rate: ${fmtPct(s.pass_rate)}</b> &nbsp;·&nbsp;
+      Pass: <b>${s.pass_count}</b> &nbsp;·&nbsp;
+      Check: <b>${s.check_count}</b> &nbsp;·&nbsp;
+      Manual Check: <b>${s.manual_check_count}</b> &nbsp;·&nbsp;
+      NA: <b>${s.na_count}</b> &nbsp;·&nbsp;
+      Fail: <b style="color:#e74c3c">${s.fail_count}</b> &nbsp;·&nbsp;
+      Total: <b>${s.total}</b>
+    </p>`;
+    html += `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:13px;">
+      <thead><tr style="background:#f5f5f5;">
+        <th style="border:1px solid #ddd; padding:10px; text-align:left;">#</th>
+        <th style="border:1px solid #ddd; padding:10px; text-align:left;">Test ID</th>
+        <th style="border:1px solid #ddd; padding:10px; text-align:left;">SN</th>
+        <th style="border:1px solid #ddd; padding:10px; text-align:left;">Test Case</th>
+        <th style="border:1px solid #ddd; padding:10px; text-align:left;">Owner</th>
+        <th style="border:1px solid #ddd; padding:10px; text-align:left;">Team</th>
+        <th style="border:1px solid #ddd; padding:10px; text-align:left;" title="Trạng thái chi tiết (Pass/Check/Manual Check/NA tách riêng, không gộp)">Verdict</th>
+        <th style="border:1px solid #ddd; padding:10px; text-align:left;" title="Phân loại tổng quát dùng để tính pass rate (Pass = pass-like, Fail = còn lại)">State</th>
+        <th style="border:1px solid #ddd; padding:10px; text-align:left;">Description</th>
+      </tr></thead>
+      <tbody>`;
+    d.rows.forEach((r, i) => {
+      html += `<tr style="border-bottom:1px solid #eee;">
+        <td style="border:1px solid #ddd; padding:10px;">${i + 1}</td>
+        <td style="border:1px solid #ddd; padding:10px;">${escAttr(r.test_id || "—")}</td>
+        <td style="border:1px solid #ddd; padding:10px;">${escAttr(r.serial || "—")}</td>
+        <td style="border:1px solid #ddd; padding:10px;">${escAttr(r.test_case)}</td>
+        <td style="border:1px solid #ddd; padding:10px;">${escAttr(r.author || "—")}</td>
+        <td style="border:1px solid #ddd; padding:10px;">${escAttr(r.team || "—")}</td>
+        <td style="border:1px solid #ddd; padding:10px;">${smdStateBadge(r.state)}</td>
+        <td style="border:1px solid #ddd; padding:10px;">${escAttr(r.result)}</td>
+        <td style="border:1px solid #ddd; padding:10px; max-width:350px; word-break:break-word; font-size:12px; color:#555; cursor:help;" title="${escAttr(r.description || "")}">${escAttr((r.description || "—").length > 200 ? (r.description || "").slice(0, 200) + "…" : (r.description || "—"))}</td>
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+    if (!d.rows.length) html += `<p style="color:#888; padding:10px;">Không có dữ liệu.</p>`;
+    $("#smdContent").innerHTML = html;
+  } catch (e) {
+    smdCurrent = null;
+    $("#smdContent").innerHTML = `<p style="color:#e74c3c;">Lỗi tải chi tiết: ${escAttr(e.message)}</p>`;
+  }
+}
+
+// Dashboard: click 1 o cua hang OVERALL -> breakdown theo Item x Model cho cycle do (khong goi API,
+// dung lai du lieu matrix da co san trong state.suiteModel - moi Item x Model da mang san
+// pass_only/check_count/manual_check_count/fail_count/na_count/total/pass_rate tu compute_suite_model_matrix()).
+function openOverallCellDetail(cycle) {
+  $("#smdTitle").textContent = `OVERALL — all scripts · Cycle ${cycle}`;
+  $("#smDetailModal").style.display = "flex";
+  const matrixRows = (state.suiteModel && state.suiteModel.rows) || [];
+  const overall = (state.suiteModel && state.suiteModel.overall_by_cycle) || {};
+  const o = overall[cycle];
+
+  const rows = [];
+  for (const r of matrixRows) {
+    const c = r.by_cycle[cycle];
+    if (!c) continue;
+    rows.push({
+      item: r.test_suite, model: r.model,
+      pass: c.pass_only || 0, check: (c.check_count || 0) + (c.manual_check_count || 0),
+      fail: c.fail_count, na: c.na_count, total: c.total, pass_rate: c.pass_rate,
+    });
+  }
+  // Worst pass rate truoc de de thay item/model dang co van de nhat; khong co du lieu (null) xep cuoi.
+  rows.sort((a, b) => {
+    if (a.pass_rate === null) return 1;
+    if (b.pass_rate === null) return -1;
+    return a.pass_rate - b.pass_rate;
+  });
+  smdCurrent = { mode: "overall", cycle, rows };
+
+  let html = "";
+  if (o) {
+    html += `<p style="margin:0 0 12px; padding:10px; background:#f5f5f5; border-radius:4px; font-size:13px;">
+      <b>Pass rate: ${fmtPct(o.pass_rate)}</b> &nbsp;·&nbsp;
+      Pass: <b>${o.pass_only}</b> &nbsp;·&nbsp;
+      Check: <b>${o.check_count}</b> &nbsp;·&nbsp;
+      Manual Check: <b>${o.manual_check_count}</b> &nbsp;·&nbsp;
+      NA: <b>${o.na_count}</b> &nbsp;·&nbsp;
+      Fail: <b style="color:#e74c3c">${o.fail_count}</b> &nbsp;·&nbsp;
+      Total: <b>${o.total}</b>
+    </p>`;
+  }
+  html += `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:13px;">
+    <thead><tr style="background:#f5f5f5;">
+      <th style="border:1px solid #ddd; padding:10px; text-align:left;">Item</th>
+      <th style="border:1px solid #ddd; padding:10px; text-align:left;">Model</th>
+      <th style="border:1px solid #ddd; padding:10px; text-align:right;">Pass</th>
+      <th style="border:1px solid #ddd; padding:10px; text-align:right;" title="Gồm cả Manual Check">Check</th>
+      <th style="border:1px solid #ddd; padding:10px; text-align:right;">Fail</th>
+      <th style="border:1px solid #ddd; padding:10px; text-align:right;">NA</th>
+      <th style="border:1px solid #ddd; padding:10px; text-align:right;">Total</th>
+      <th style="border:1px solid #ddd; padding:10px; text-align:right;">Pass rate</th>
+    </tr></thead>
+    <tbody>`;
+  rows.forEach((r) => {
+    const bg = r.pass_rate !== null && r.pass_rate !== undefined ? heatColor(r.pass_rate) : "";
+    html += `<tr style="border-bottom:1px solid #eee;">
+      <td style="border:1px solid #ddd; padding:10px;">${escAttr(r.item)}</td>
+      <td style="border:1px solid #ddd; padding:10px;">${escAttr(r.model)}</td>
+      <td style="border:1px solid #ddd; padding:10px; text-align:right;">${r.pass}</td>
+      <td style="border:1px solid #ddd; padding:10px; text-align:right;">${r.check}</td>
+      <td style="border:1px solid #ddd; padding:10px; text-align:right;">${r.fail}</td>
+      <td style="border:1px solid #ddd; padding:10px; text-align:right;">${r.na}</td>
+      <td style="border:1px solid #ddd; padding:10px; text-align:right;">${r.total}</td>
+      <td style="border:1px solid #ddd; padding:10px; text-align:right; background:${bg};"><b>${fmtPct(r.pass_rate)}</b></td>
+    </tr>`;
+  });
+  html += `</tbody></table></div>`;
+  if (!rows.length) html += `<p style="color:#888; padding:10px;">Không có dữ liệu.</p>`;
+  $("#smdContent").innerHTML = html;
+}
+
+function exportSmDetailCsv() {
+  if (!smdCurrent || !smdCurrent.rows.length) return;
+  const esc = (s) => {
+    s = String(s ?? "").replace(/\s+/g, " ").trim();
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  let headers, lines, filename;
+  const dateStr = new Date().toISOString().slice(0, 10);
+  if (smdCurrent.mode === "overall") {
+    headers = ["Item", "Model", "Pass", "Check", "Fail", "NA", "Total", "Pass rate"];
+    lines = [headers.map(esc).join(",")];
+    smdCurrent.rows.forEach((r) => {
+      const rateStr = r.pass_rate === null || r.pass_rate === undefined ? "" : (r.pass_rate * 100).toFixed(1) + "%";
+      lines.push([r.item, r.model, r.pass, r.check, r.fail, r.na, r.total, rateStr].map(esc).join(","));
+    });
+    filename = `overall_C${smdCurrent.cycle}_${dateStr}.csv`;
+  } else {
+    headers = ["#", "Test ID", "SN", "Test Case", "Owner", "Team", "Verdict", "State", "Description"];
+    lines = [headers.map(esc).join(",")];
+    smdCurrent.rows.forEach((r, i) => {
+      lines.push([i + 1, r.test_id || "", r.serial || "", r.test_case, r.author || "", r.team || "", r.state, r.result, r.description || ""].map(esc).join(","));
+    });
+    filename = `detail_${smdCurrent.test_suite}_${smdCurrent.model}_C${smdCurrent.cycle}_${dateStr}.csv`;
+  }
+  const csv = "﻿" + lines.join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // navigator.clipboard chi co o secure context (localhost/https) - LAN HTTP phai fallback execCommand.
@@ -2325,7 +2528,7 @@ async function loadCycleMatrix() {
 function renderCycleMatrixHead() {
   const cycles = state.cycleMatrix.cycles || [];
   const byModel = state.cycleMatrix.groupByModel;
-  let headRow = `<tr><th title="Item / test suite chứa script này">Test suite</th><th title="Tên test case / script">Test Case</th>` +
+  let headRow = `<tr><th data-tt-index="1" title="Số thứ tự dòng đang hiển thị (tự tính lại sau khi sort/lọc)">#</th><th title="Item / test suite chứa script này">Test suite</th><th title="Tên test case / script">Test Case</th>` +
     `${byModel ? `<th title="Model điện thoại">Model</th>` : ""}` +
     `<th title="Người đang được gán xử lý script này">Đang phụ trách</th><th title="Team của người đang phụ trách">Team</th>` +
     `<th title="P0-P3 = còn lỗi; Verify = hết lỗi nhưng chưa đủ cycle xác nhận; Done = ổn định">Tier</th>`;
@@ -2372,11 +2575,12 @@ function renderCycleMatrix() {
     const matchModel = !modelFilter || s.model === modelFilter;
     return matchSearch && matchTier && matchTrend && matchModel;
   });
-  const ncols = 5 + (byModel ? 1 : 0) + cycles.length + 1;
+  const ncols = 6 + (byModel ? 1 : 0) + cycles.length + 1;
   $("#cycleMatrixTable tbody").innerHTML = rows.map((s) => {
     const cycleCells = cycles.map((c) => cycleCellHtml(s.by_cycle[c.cycle])).join("");
     const badge = TREND_BADGE[s.overall_trend] || { label: s.overall_trend, bg: "#999" };
     return `<tr>
+      <td class="tt-index"></td>
       <td>${s.test_suite}</td>
       <td>${s.test_case}</td>
       ${byModel ? `<td><span class="tag" style="background:#3498db">${s.model}</span></td>` : ""}
@@ -3142,6 +3346,15 @@ async function init() {
     const cell = e.target.closest("td.rc-group-link");
     if (cell) showFixRootCauseFails(cell.dataset.group);
   });
+  // Dashboard: click 1 o pass rate trong bang "Pass Rate by Item x Model x Cycle" -> xem chi tiet.
+  // O thuong (co data-item/model) -> tung luot chay; o hang OVERALL (data-overall) -> breakdown theo Item x Model.
+  $("#suiteModelTable")?.addEventListener("click", (e) => {
+    const cell = e.target.closest("td.cyc-click");
+    if (!cell) return;
+    if (cell.dataset.overall) openOverallCellDetail(Number(cell.dataset.cycle));
+    else openScriptCellDetail(cell.dataset.item, cell.dataset.model, Number(cell.dataset.cycle));
+  });
+  $("#smdExport")?.addEventListener("click", exportSmDetailCsv);
   initReports();
   initIntegrations();
   initLeaderboard();
