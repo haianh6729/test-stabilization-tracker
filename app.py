@@ -3623,12 +3623,31 @@ def export_csv(table):
         return jsonify({"error": "invalid table"}), 400
     db = get_db()
     rows = db.execute(f"SELECT * FROM {table} ORDER BY id").fetchall()
+    # Results tu farm import thuong khong co Author/Team -> dien tu nguoi DANG phu trach
+    # (assignments) + Team cua ho (owners), CHI khi o trong. Giu nguyen author that neu da co.
+    assign = {}
+    team_of = {}
+    if table == "results":
+        assign = {
+            (row["test_suite"], row["test_case"]): row["owner"]
+            for row in db.execute("SELECT test_suite, test_case, owner FROM assignments")
+        }
+        team_of = {
+            row["name"]: (row["team"] or "")
+            for row in db.execute("SELECT name, team FROM owners")
+        }
     output = io.StringIO()
     if rows:
         writer = csv.DictWriter(output, fieldnames=rows[0].keys())
         writer.writeheader()
         for r in rows:
-            writer.writerow(dict(r))
+            d = dict(r)
+            if table == "results" and not d.get("author"):
+                owner = assign.get((d.get("test_suite"), d.get("test_case")))
+                if owner:
+                    d["author"] = owner
+                    d["team"] = team_of.get(owner, "")
+            writer.writerow(d)
     mem = io.BytesIO(output.getvalue().encode("utf-8-sig"))
     return send_file(mem, mimetype="text/csv", as_attachment=True,
                       download_name=f"{table}_export.csv")
@@ -3970,16 +3989,12 @@ def build_export_workbook(db):
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
-    from openpyxl.chart import LineChart, BarChart, PieChart, Reference
     from openpyxl.worksheet.table import Table, TableStyleInfo
 
     NAVY = "1F4E78"
     HEADER_FILL = PatternFill("solid", fgColor=NAVY)
     HEADER_FONT = Font(bold=True, color="FFFFFF", name="Calibri", size=10)
-    TITLE_FONT = Font(bold=True, name="Calibri", size=16, color=NAVY)
-    SUB_FONT = Font(bold=True, name="Calibri", size=11, color=NAVY)
     NORMAL = Font(name="Calibri", size=10)
-    ITALIC_HINT = Font(name="Calibri", size=9, italic=True, color="6B7280")
     THIN = Side(style="thin", color="D9D9D9")
     BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
     TIER_FILL = {
@@ -4025,220 +4040,16 @@ def build_export_workbook(db):
         {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "Done": 4}.get(x["priority_tier"], 5),
         x["test_suite"], x["test_case"],
     ))
-    owner_stats = get_owner_stats(db, priority)
-
-    trend = compute_cycle_trend(db)
-
-    latest_cycle = trend[-1]["cycle"] if trend else 0
-    # 1 GROUP BY thay cho 2 COUNT/model (chong N+1). Ket qua Y HET: model khong co du lieu
-    # o latest_cycle -> khong co trong map -> (0,0) -> None, dung nhu vong lap cu.
-    _mc = {r["model"]: (r["total"], r["pass_count"]) for r in db.execute(
-        "SELECT model, COUNT(*) total, SUM(CASE WHEN result='Pass' THEN 1 ELSE 0 END) pass_count "
-        "FROM results WHERE cycle=? AND result <> 'Excluded' GROUP BY model", (latest_cycle,)).fetchall()}
-    model_pass_rate = {}
-    for m in models_list:
-        tot, pas = _mc.get(m, (0, 0))
-        model_pass_rate[m] = (pas / tot) if tot else None
-
-    tier_counts = {"P0": 0, "P1": 0, "P2": 0, "P3": 0, "Verify": 0, "Done": 0}
-    for p in priority:
-        tier_counts[p["priority_tier"]] += 1
-
-    root_causes = compute_root_cause_pareto(db, limit=15)
-
-    suite_agg = {}
-    for p in priority:
-        s = suite_agg.setdefault(p["test_suite"], {"total": 0, "done": 0})
-        s["total"] += 1
-        if p["priority_tier"] == "Done":
-            s["done"] += 1
-    suite_stats = sorted(
-        [{"test_suite": k, "total": v["total"], "done": v["done"],
-          "still_failing": v["total"] - v["done"],
-          "done_pct": (v["done"] / v["total"]) if v["total"] else 0} for k, v in suite_agg.items()],
-        key=lambda x: x["done_pct"],
-    )
-
-    settings_rows = db.execute("SELECT key, value FROM settings").fetchall()
-    settings = {r["key"]: r["value"] for r in settings_rows}
-    target_rate = float(settings.get("target_pass_rate") or 0.88)
-    deadline = settings.get("deadline_date") or ""
-    total_scripts = len(priority)
-    still_failing = sum(1 for p in priority if p["priority_tier"] in ("P0", "P1", "P2", "P3"))
-    current_pass_rate = trend[-1]["pass_rate"] if trend else None
 
     wb = Workbook()
 
     # ================================================================
-    # SHEET: Instructions
-    # ================================================================
-    ws = wb.active
-    ws.title = "Instructions"
-    ws.sheet_view.showGridLines = False
-    ws.column_dimensions["A"].width = 3
-    ws.column_dimensions["B"].width = 105
-    ws["B2"] = "TEST STABILIZATION TRACKER — Bao cao xuat tu he thong web"
-    ws["B2"].font = TITLE_FONT
-    lines = [
-        ("", False),
-        (f"Xuat luc: {datetime.now().strftime('%Y-%m-%d %H:%M')}", False),
-        (f"Cycle gan nhat: {latest_cycle}  |  Tong so script: {total_scripts}  |  Con loi: {still_failing}", False),
-        ("", False),
-        ("VE FILE NAY", True),
-        ("Day la ban SNAPSHOT (chup nhanh so lieu tai thoi diem xuat) tu he thong web Test Stabilization Tracker — dung de bao cao, luu tru, hoac lam phuong an du phong khi he thong web tam thoi khong dung duoc.", False),
-        ("Khac voi ban Excel dung cong thuc truoc day, moi gia tri trong file nay la SO THUC TE da duoc tinh san (khong phai cong thuc) — mo bang Excel/LibreOffice nao cung doc dung, khong lo loi cong thuc.", False),
-        ("Neu he thong web tam ngung hoat dong, co the tiep tuc ghi nhan ket qua/fix thu cong vao 2 sheet 'History_Log' va 'Daily_Fix_Log' o cuoi file (dung dinh dang cot y het), roi nhap lai vao he thong khi hoat dong tro lai.", False),
-        ("", False),
-        ("CAC SHEET TRONG FILE", True),
-        ("- Dashboard: KPI tong quan, cac bieu do xu huong, phan bo priority, root cause pareto.", False),
-        ("- Script_Priority_Tracker: danh sach script sap theo do uu tien P0->P3->Done, co chi tiet Pass/Fail tren TUNG MODEL va nguoi dang phu trach.", False),
-        ("- Owner_Leaderboard: bang xep hang KPI ca nhan — so script da fix, so script da het loi that su, ty le xac minh, ty le hoan thanh.", False),
-        ("- RootCause_Pareto: nhom nguyen nhan loi pho bien nhat (80/20).", False),
-        ("- Test_Suite_Summary: tien do hoan thanh theo tung test suite.", False),
-        ("- Daily_Fix_Log / History_Log: du lieu tho day du, dung de doi chieu hoac nhap lai neu can.", False),
-    ]
-    r = 4
-    for text, is_head in lines:
-        cell = ws.cell(row=r, column=2, value=text)
-        cell.font = SUB_FONT if is_head else NORMAL
-        cell.alignment = Alignment(wrap_text=True, vertical="top")
-        r += 1
-
-    # ================================================================
-    # SHEET: Dashboard
-    # ================================================================
-    ws = wb.create_sheet("Dashboard")
-    ws.sheet_view.showGridLines = False
-    ws["B2"] = "DASHBOARD"
-    ws["B2"].font = TITLE_FONT
-
-    kpis = [
-        ("Pass Rate hien tai", current_pass_rate, "0.0%"),
-        ("Target Pass Rate", target_rate, "0.0%"),
-        ("Tong so script", total_scripts, "0"),
-        ("Script con loi", still_failing, "0"),
-        ("Cycle hien tai", latest_cycle, "0"),
-        ("Deadline", deadline or "(chua dat)", None),
-    ]
-    for i, (label, val, fmt) in enumerate(kpis):
-        row = 4 + i
-        ws.cell(row=row, column=2, value=label).font = SUB_FONT
-        c = ws.cell(row=row, column=4, value=val)
-        c.font = Font(bold=True, size=12, name="Calibri", color=NAVY)
-        if fmt:
-            c.number_format = fmt
-
-    trend_hr = 12
-    ws.cell(row=trend_hr, column=2, value="TREND THEO CYCLE").font = SUB_FONT
-    ws.cell(row=trend_hr, column=6, value="Pass Rate = (Pass+Check+Manual Check) / (Tong - NA)").font = ITALIC_HINT
-    thead = ["Cycle", "Ngay", "Tong luot chay", "Pass-like", "NA", "Fail", "Pass Rate", "Delta Fail vs truoc"]
-    for i, h in enumerate(thead):
-        ws.cell(row=trend_hr + 1, column=2 + i, value=h)
-    style_header_row(ws, trend_hr + 1, 0)
-    for c in range(2, 2 + len(thead)):
-        cell = ws.cell(row=trend_hr + 1, column=c)
-        cell.fill = HEADER_FILL
-        cell.font = HEADER_FONT
-        cell.alignment = Alignment(horizontal="center", wrap_text=True)
-    trend_first = trend_hr + 2
-    for i, t in enumerate(trend):
-        row = trend_first + i
-        ws.cell(row=row, column=2, value=t["cycle"])
-        ws.cell(row=row, column=3, value=t["cycle_date"])
-        ws.cell(row=row, column=4, value=t["total"])
-        ws.cell(row=row, column=5, value=t["pass_count"])
-        ws.cell(row=row, column=6, value=t["na_count"])
-        ws.cell(row=row, column=7, value=t["fail_count"])
-        cc = ws.cell(row=row, column=8, value=t["pass_rate"])
-        cc.number_format = "0.0%"
-        if t["delta_fail"] is not None:
-            dc = ws.cell(row=row, column=9, value=t["delta_fail"])
-            dc.font = Font(color="1E8449" if t["delta_fail"] <= 0 else "C0392B", name="Calibri", size=10)
-    trend_last = trend_first + len(trend) - 1 if trend else trend_first
-
-    # Model pass rate mini-table (for chart)
-    model_hr = trend_last + 3
-    ws.cell(row=model_hr, column=2, value="PASS RATE THEO MODEL (cycle gan nhat)").font = SUB_FONT
-    ws.cell(row=model_hr + 1, column=2, value="Model")
-    ws.cell(row=model_hr + 1, column=3, value="Pass Rate")
-    style_header_row(ws, model_hr + 1, 0)
-    for c in (2, 3):
-        cell = ws.cell(row=model_hr + 1, column=c)
-        cell.fill = HEADER_FILL
-        cell.font = HEADER_FONT
-    for i, m in enumerate(models_list):
-        row = model_hr + 2 + i
-        ws.cell(row=row, column=2, value=m)
-        v = model_pass_rate.get(m)
-        cc = ws.cell(row=row, column=3, value=v if v is not None else 0)
-        cc.number_format = "0.0%"
-    model_last = model_hr + 1 + len(models_list)
-
-    # Tier distribution mini-table (for chart)
-    tier_hr = model_last + 3
-    ws.cell(row=tier_hr, column=2, value="PHAN BO PRIORITY TIER").font = SUB_FONT
-    ws.cell(row=tier_hr + 1, column=2, value="Tier")
-    ws.cell(row=tier_hr + 1, column=3, value="So script")
-    for c in (2, 3):
-        cell = ws.cell(row=tier_hr + 1, column=c)
-        cell.fill = HEADER_FILL
-        cell.font = HEADER_FONT
-    tier_order = ["P0", "P1", "P2", "P3", "Verify", "Done"]
-    for i, t in enumerate(tier_order):
-        row = tier_hr + 2 + i
-        ws.cell(row=row, column=2, value=t)
-        ws.cell(row=row, column=3, value=tier_counts[t])
-    tier_last = tier_hr + 1 + len(tier_order)
-
-    # ---- Charts ----
-    if trend:
-        line = LineChart()
-        line.title = "Pass Rate theo Cycle"
-        line.y_axis.title = "Pass Rate"
-        line.y_axis.numFmt = "0%"
-        data = Reference(ws, min_col=7, min_row=trend_hr + 1, max_row=trend_last)
-        cats = Reference(ws, min_col=2, min_row=trend_first, max_row=trend_last)
-        line.add_data(data, titles_from_data=True)
-        line.set_categories(cats)
-        line.height, line.width = 8, 16
-        ws.add_chart(line, "F4")
-
-        fail_chart = BarChart()
-        fail_chart.title = "Fail Count theo Cycle"
-        data2 = Reference(ws, min_col=6, min_row=trend_hr + 1, max_row=trend_last)
-        fail_chart.add_data(data2, titles_from_data=True)
-        fail_chart.set_categories(cats)
-        fail_chart.height, fail_chart.width = 8, 16
-        ws.add_chart(fail_chart, "N4")
-
-    model_bar = BarChart()
-    model_bar.title = "Pass Rate theo Model"
-    model_bar.y_axis.numFmt = "0%"
-    mdata = Reference(ws, min_col=3, min_row=model_hr + 1, max_row=model_last)
-    mcats = Reference(ws, min_col=2, min_row=model_hr + 2, max_row=model_last)
-    model_bar.add_data(mdata, titles_from_data=True)
-    model_bar.set_categories(mcats)
-    model_bar.height, model_bar.width = 8, 16
-    ws.add_chart(model_bar, "F19")
-
-    tier_pie = PieChart()
-    tier_pie.title = "Phan bo Priority Tier"
-    tdata = Reference(ws, min_col=3, min_row=tier_hr + 1, max_row=tier_last)
-    tcats = Reference(ws, min_col=2, min_row=tier_hr + 2, max_row=tier_last)
-    tier_pie.add_data(tdata, titles_from_data=True)
-    tier_pie.set_categories(tcats)
-    tier_pie.height, tier_pie.width = 8, 16
-    ws.add_chart(tier_pie, "N19")
-
-    for col, w in zip("BCDEFGH", [26, 14, 15, 10, 10, 12, 16]):
-        ws.column_dimensions[col].width = w
-
-    # ================================================================
     # SHEET: Script_Priority_Tracker
     # ================================================================
-    ws = wb.create_sheet("Script_Priority_Tracker")
-    base_headers = ["Test suite", "Test Case", "Priority_Tier", "Current_Owner", "Team",
-                    "Fail_Count", "Pass_Count", "NotRun_Count", "Last_Updated_Cycle"]
+    ws = wb.active
+    ws.title = "Script_Priority_Tracker"
+    base_headers = ["Test suite", "Test Case", "Priority_Tier", "Flaky", "Persistent", "Reopen",
+                    "Current_Owner", "Team", "Fail_Count", "Pass_Count", "NotRun_Count", "Last_Updated_Cycle"]
     headers = base_headers + models_list
     n_base = len(base_headers)
     ws.append(headers)
@@ -4250,12 +4061,18 @@ def build_export_workbook(db):
         tier_cell.fill = TIER_FILL.get(p["priority_tier"], PatternFill())
         tier_cell.font = Font(bold=True, name="Calibri", size=10)
         tier_cell.alignment = Alignment(horizontal="center")
-        ws.cell(row=i, column=4, value=p["current_owner"])
-        ws.cell(row=i, column=5, value=p.get("team", ""))
-        ws.cell(row=i, column=6, value=p["fail_count"])
-        ws.cell(row=i, column=7, value=p["pass_count"])
-        ws.cell(row=i, column=8, value=p["not_run_count"])
-        ws.cell(row=i, column=9, value=p["last_updated_cycle"])
+        fc = ws.cell(row=i, column=4, value="Yes" if p.get("is_flaky") else "")
+        fc.alignment = Alignment(horizontal="center")
+        pc = ws.cell(row=i, column=5, value="Yes" if p.get("is_persistent") else "")
+        pc.alignment = Alignment(horizontal="center")
+        rpc = ws.cell(row=i, column=6, value=p.get("reopen_count", 0))
+        rpc.alignment = Alignment(horizontal="center")
+        ws.cell(row=i, column=7, value=p["current_owner"])
+        ws.cell(row=i, column=8, value=p.get("team", ""))
+        ws.cell(row=i, column=9, value=p["fail_count"])
+        ws.cell(row=i, column=10, value=p["pass_count"])
+        ws.cell(row=i, column=11, value=p["not_run_count"])
+        ws.cell(row=i, column=12, value=p["last_updated_cycle"])
         for j, m in enumerate(models_list):
             res = p["model_detail"].get(m)
             label = res if res else "Not Run"
@@ -4273,116 +4090,6 @@ def build_export_workbook(db):
         ws.add_table(tab)
     ws.freeze_panes = "C2"
     autosize(ws, min_w=10, max_w=22)
-
-    # ================================================================
-    # SHEET: Owner_Leaderboard
-    # ================================================================
-    ws = wb.create_sheet("Owner_Leaderboard")
-    ws["A1"] = "OWNER LEADERBOARD — KPI ca nhan (xep hang theo % script da het loi that su)"
-    ws["A1"].font = TITLE_FONT
-    ws.merge_cells("A1:I1")
-    ws.row_dimensions[1].height = 22
-    ws["A2"] = ("Resolution_Rate = so script da HET LOI HOAN TOAN / so script khac nhau da tung fix (KPI chinh). "
-                "Verification_Rate = ty le cac lan fix duoc xac nhan dung ngay lan dau, khong bi reopen. "
-                "Open_Workload = so script dang duoc gan cho nguoi nay ma van con loi (chua Done).")
-    ws["A2"].font = ITALIC_HINT
-    ws["A2"].alignment = Alignment(wrap_text=True)
-    ws.merge_cells("A2:I2")
-    ws.row_dimensions[2].height = 28
-
-    lb_headers = ["Rank", "Owner", "Scripts_Fixed (khac nhau)", "Scripts_Fully_Resolved",
-                  "Resolution_Rate", "Verified", "Reopened", "Pending", "Verification_Rate", "Open_Workload"]
-    hr = 4
-    for i, h in enumerate(lb_headers, start=1):
-        ws.cell(row=hr, column=i, value=h)
-    style_header_row(ws, hr, len(lb_headers))
-    for i, o in enumerate(owner_stats, start=hr + 1):
-        ws.cell(row=i, column=1, value=o["rank"])
-        ws.cell(row=i, column=2, value=o["owner"])
-        ws.cell(row=i, column=3, value=o["distinct_scripts_fixed"])
-        ws.cell(row=i, column=4, value=o["distinct_scripts_fully_resolved"])
-        rc = ws.cell(row=i, column=5, value=o["resolution_rate"])
-        rc.number_format = "0.0%"
-        ws.cell(row=i, column=6, value=o["verified"])
-        ws.cell(row=i, column=7, value=o["reopened"])
-        ws.cell(row=i, column=8, value=o["pending"])
-        vc = ws.cell(row=i, column=9, value=o["verification_rate"])
-        vc.number_format = "0.0%"
-        ws.cell(row=i, column=10, value=o["open_workload"])
-    lb_last = hr + len(owner_stats)
-    if owner_stats:
-        tab = Table(displayName="tblOwnerLeaderboard", ref=f"A{hr}:J{lb_last}")
-        tab.tableStyleInfo = TableStyleInfo(name="TableStyleLight1", showRowStripes=True)
-        ws.add_table(tab)
-
-        chart = BarChart()
-        chart.title = "Resolution Rate theo Owner"
-        chart.y_axis.numFmt = "0%"
-        data = Reference(ws, min_col=5, min_row=hr, max_row=lb_last)
-        cats = Reference(ws, min_col=2, min_row=hr + 1, max_row=lb_last)
-        chart.add_data(data, titles_from_data=True)
-        chart.set_categories(cats)
-        chart.height, chart.width = 9, 20
-        ws.add_chart(chart, f"A{lb_last + 3}")
-    autosize(ws, start_row=4)
-
-    # ================================================================
-    # SHEET: RootCause_Pareto
-    # ================================================================
-    ws = wb.create_sheet("RootCause_Pareto")
-    ws["A1"] = "ROOT CAUSE PARETO (Top 15, tinh tren toan bo lich su)"
-    ws["A1"].font = TITLE_FONT
-    rc_headers = ["Description (nguyen nhan)", "Fail_Count", "% of Total Fails", "Cumulative %"]
-    hr = 3
-    for i, h in enumerate(rc_headers, start=1):
-        ws.cell(row=hr, column=i, value=h)
-    style_header_row(ws, hr, len(rc_headers))
-    for i, r in enumerate(root_causes, start=hr + 1):
-        ws.cell(row=i, column=1, value=r["description"])
-        ws.cell(row=i, column=2, value=r["count"])
-        c3 = ws.cell(row=i, column=3, value=r["pct"]); c3.number_format = "0.0%"
-        c4 = ws.cell(row=i, column=4, value=r["cum_pct"]); c4.number_format = "0.0%"
-    rc_last = hr + len(root_causes)
-    if root_causes:
-        chart = BarChart()
-        chart.title = "Root Cause Pareto"
-        data = Reference(ws, min_col=2, min_row=hr, max_row=rc_last)
-        cats = Reference(ws, min_col=1, min_row=hr + 1, max_row=rc_last)
-        chart.add_data(data, titles_from_data=True)
-        chart.set_categories(cats)
-        chart.height, chart.width = 9, 22
-        ws.add_chart(chart, f"A{rc_last + 3}")
-    autosize(ws, start_row=3, max_w=50)
-
-    # ================================================================
-    # SHEET: Test_Suite_Summary
-    # ================================================================
-    ws = wb.create_sheet("Test_Suite_Summary")
-    ws["A1"] = "TIEN DO THEO TEST SUITE"
-    ws["A1"].font = TITLE_FONT
-    ts_headers = ["Test suite", "Tong so script", "Da xong (Done)", "Con loi", "% Hoan thanh"]
-    hr = 3
-    for i, h in enumerate(ts_headers, start=1):
-        ws.cell(row=hr, column=i, value=h)
-    style_header_row(ws, hr, len(ts_headers))
-    for i, s in enumerate(suite_stats, start=hr + 1):
-        ws.cell(row=i, column=1, value=s["test_suite"])
-        ws.cell(row=i, column=2, value=s["total"])
-        ws.cell(row=i, column=3, value=s["done"])
-        ws.cell(row=i, column=4, value=s["still_failing"])
-        c5 = ws.cell(row=i, column=5, value=s["done_pct"]); c5.number_format = "0.0%"
-    ts_last = hr + len(suite_stats)
-    if suite_stats:
-        chart = BarChart()
-        chart.title = "% Hoan thanh theo Test Suite"
-        chart.y_axis.numFmt = "0%"
-        data = Reference(ws, min_col=5, min_row=hr, max_row=ts_last)
-        cats = Reference(ws, min_col=1, min_row=hr + 1, max_row=ts_last)
-        chart.add_data(data, titles_from_data=True)
-        chart.set_categories(cats)
-        chart.height, chart.width = 9, 20
-        ws.add_chart(chart, f"A{ts_last + 3}")
-    autosize(ws, start_row=3)
 
     # ================================================================
     # SHEET: Daily_Fix_Log (raw)
@@ -4403,30 +4110,7 @@ def build_export_workbook(db):
     ws.freeze_panes = "A2"
     autosize(ws)
 
-    # ================================================================
-    # SHEET: History_Log (raw)
-    # ================================================================
-    ws = wb.create_sheet("History_Log")
-    hheaders = ["Cycle", "Cycle_Date", "Test ID", "Model", "Test suite", "Test Case", "State", "Description", "Result"]
-    ws.append(hheaders)
-    style_header_row(ws, 1, len(hheaders))
-    results_all = db.execute("SELECT * FROM results ORDER BY id").fetchall()
-    for r in results_all:
-        row_vals = [r["cycle"], r["cycle_date"], r["test_id"], r["model"], r["test_suite"],
-                    r["test_case"], r["state"], r["description"], r["result"]]
-        ws.append(row_vals)
-    if results_all:
-        tab = Table(displayName="tblHistoryExport", ref=f"A1:I{len(results_all) + 1}")
-        tab.tableStyleInfo = TableStyleInfo(name="TableStyleLight1", showRowStripes=True)
-        ws.add_table(tab)
-    ws.freeze_panes = "A2"
-    autosize(ws)
-
-    wb._sheets = [wb[n] for n in [
-        "Instructions", "Dashboard", "Script_Priority_Tracker", "Owner_Leaderboard",
-        "RootCause_Pareto", "Test_Suite_Summary", "Daily_Fix_Log", "History_Log",
-    ]]
-    wb.active = 1
+    wb.active = 0
     return wb
 
 
