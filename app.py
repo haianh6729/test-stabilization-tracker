@@ -24,7 +24,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.formatting.rule import ColorScaleRule
-from openpyxl.chart import LineChart, BarChart, PieChart, Reference
+from openpyxl.chart import LineChart, PieChart, Reference
 
 DB_PATH = "tracker.db"
 USERS_DB_PATH = "users.db"  # DB rieng cho tai khoan - tach khoi tracker.db (du lieu song)
@@ -67,9 +67,10 @@ SENSITIVE_SETTINGS = {"farm_api_token", "github_token", "import_token", "company
 SETTINGS_MASK = "********"
 
 # Trang thai ben TC Hub duoc coi la "da hoan thanh script" / "loai tru" (so sanh lowercase).
-# "excluded" = vocab TC Hub that; "skip" = giu tuong thich voi vocab paste tay cu.
+# "excluded" = vocab TC Hub that; "skip" = giu tuong thich voi vocab paste tay cu;
+# "confirm_requested" = dang cho xac nhan, khong tinh vao total TC can viet script.
 COMPANY_PERFORMED_STATES = {"performed"}
-COMPANY_SKIP_STATES = {"skip", "excluded"}
+COMPANY_SKIP_STATES = {"skip", "excluded", "confirm_requested"}
 # "target" (automationTarget) = TC CAN hoan thanh script nhung CHUA xong (khac performed/excluded).
 COMPANY_TARGET_STATES = {"target"}
 
@@ -3092,6 +3093,8 @@ def _leaderboard_payload(scope, date_from, date_to):
     db = get_db()
     base = get_owner_stats(db)
     base_map = {o["owner"]: o for o in base}
+    priority = get_script_priority(db)
+    priority_map = {(p["test_suite"], p["test_case"]): p for p in priority}
 
     if scope == "cumulative":
         rows = base
@@ -3114,16 +3117,31 @@ def _leaderboard_payload(scope, date_from, date_to):
                 "AND member IS NOT NULL AND TRIM(member)!='' GROUP BY member", (date_from, date_to)
             ).fetchall()
         }
+        # Prefetch fixes trong range theo owner de tinh distinct_scripts_fixed & fully_resolved theo range
+        fixes_by_owner_range = {}
+        for f in db.execute(
+            "SELECT owner, test_suite, test_case FROM fixes WHERE fix_date>=? AND fix_date<=? ORDER BY owner",
+            (date_from, date_to)
+        ).fetchall():
+            fixes_by_owner_range.setdefault(f["owner"], []).append((f["test_suite"], f["test_case"]))
+
         rows = []
         for name in sorted(set(fx_map) | set(wr_map) | set(sk_map)):
             b = base_map.get(name, {})
+            # Tinh distinct_scripts_fixed & fully_resolved theo range (day/week), khong all-time
+            fixes_range = fixes_by_owner_range.get(name, [])
+            distinct_fixed = set(fixes_range)
+            distinct_resolved = {
+                key for key in distinct_fixed
+                if priority_map.get(key, {}).get("fail_count", 1) == 0
+            }
             rows.append({
                 "owner": name,
                 "fixes_logged": fx_map.get(name, 0),
                 "scripts_written": wr_map.get(name, 0),
                 "scripts_skipped": sk_map.get(name, 0),
-                "distinct_scripts_fixed": b.get("distinct_scripts_fixed", 0),
-                "distinct_scripts_fully_resolved": b.get("distinct_scripts_fully_resolved", 0),
+                "distinct_scripts_fixed": len(distinct_fixed),
+                "distinct_scripts_fully_resolved": len(distinct_resolved),
                 "verified": b.get("verified", 0), "reopened": b.get("reopened", 0), "pending": b.get("pending", 0),
                 "verification_rate": b.get("verification_rate"),
                 "resolution_rate": b.get("resolution_rate"),
