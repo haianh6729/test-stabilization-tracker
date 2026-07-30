@@ -113,7 +113,7 @@ Quy trình khi A nghỉ, B tiếp quản:
 ## Owner Leaderboard — KPI cá nhân
 
 Trong tab Dashboard và trong file Excel xuất ra, có bảng xếp hạng theo 2 chỉ số chính:
-- **Resolution Rate** = số script khác nhau mà người đó từng fix và NAY ĐÃ HẾT LỖI HOÀN TOÀN trên mọi model / tổng số script khác nhau người đó từng fix. Đây là KPI phản ánh đúng nhất "chất lượng fix thực sự", không chỉ đếm số lần thao tác.
+- **Resolution Rate** = số script khác nhau mà người đó từng fix và NAY MODEL ĐƯỢC FIX ĐÃ HẾT LỖI (không cần mọi model của script đó đều pass) / tổng số script khác nhau người đó từng fix. Đây là KPI phản ánh đúng nhất "chất lượng fix thực sự", không chỉ đếm số lần thao tác.
 - **Verification Rate** = trong các lần fix đã có dữ liệu cycle sau để đối chiếu, bao nhiêu % được xác nhận đúng ngay lần đầu (không bị fail lại/reopen).
 - **Open Workload** = số script đang được gán cho người đó mà vẫn còn lỗi (dùng để cân bằng khối lượng công việc).
 

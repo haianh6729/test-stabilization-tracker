@@ -79,7 +79,7 @@ Từ Owner Leaderboard (Dashboard + sheet Owner_Leaderboard):
 
 | KPI | Ý nghĩa | Ngưỡng gợi ý |
 |---|---|---|
-| Resolution Rate | % script từng fix nay đã hết lỗi hoàn toàn trên mọi model — chất lượng thật | ≥ 70% |
+| Resolution Rate | % script từng fix nay model được fix đã hết lỗi (không cần mọi model đều pass) — chất lượng thật | ≥ 70% |
 | Verification Rate | % fix được xác nhận đúng ngay lần đầu (không reopen) | ≥ 80% |
 | Open Workload | Số script còn lỗi đang được gán | ≤ 8–10 script/người |
 
