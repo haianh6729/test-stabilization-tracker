@@ -2923,10 +2923,23 @@ def get_script_priority(db):
     return out
 
 
+def _fix_currently_resolved(test_suite, test_case, model_fixed, priority_map):
+    """True neu model ma owner da ghi fix (model_fixed) hien dang Pass o cycle gan nhat.
+    model_fixed == 'All Models' -> yeu cau MOI model cua TC do dang pass (fail_latest_count=0).
+    Khong doi hoi MOI model cua TC deu pass khi fix 1 model cu the - de qua chat voi member."""
+    p = priority_map.get((test_suite, test_case))
+    if not p:
+        return False
+    if model_fixed == "All Models":
+        return p["fail_latest_count"] == 0
+    return p["model_detail"].get(model_fixed) == "Pass"
+
+
 def get_owner_stats(db, priority=None):
-    """Per-owner KPI leaderboard: distinct scripts touched, distinct fully resolved,
-    fix-verification rate (per attempt), resolution rate (per distinct script), and
-    current open workload (from assignments). Used by both /api/dashboard and Excel export."""
+    """Per-owner KPI leaderboard: distinct scripts touched, distinct resolved (model duoc
+    fix hien dang Pass - xem _fix_currently_resolved), fix-verification rate (per attempt),
+    resolution rate (per distinct script), and current open workload (from assignments).
+    Used by both /api/dashboard and Excel export."""
     if priority is None:
         priority = get_script_priority(db)
     priority_map = {(p["test_suite"], p["test_case"]): p for p in priority}
@@ -2983,18 +2996,15 @@ def get_owner_stats(db, priority=None):
         fx = fixes_by_owner.get(owner, [])
         if not fx and owner not in open_workload and not written_map.get(owner) and not skipped_map.get(owner):
             continue
-        seen = set()
-        distinct_scripts = []
-        fully_resolved = []
+        fixes_by_key = {}
+        order = []
         verified = reopened = pending = 0
         for f in fx:
             key = (f["test_suite"], f["test_case"])
-            if key not in seen:
-                seen.add(key)
-                distinct_scripts.append({"test_suite": key[0], "test_case": key[1]})
-                p = priority_map.get(key)
-                if p and p["fail_count"] == 0:
-                    fully_resolved.append({"test_suite": key[0], "test_case": key[1]})
+            if key not in fixes_by_key:
+                fixes_by_key[key] = []
+                order.append(key)
+            fixes_by_key[key].append(f)
 
             # per-fix-attempt verification status (uses cycle-scoped before/after counts)
             verify_cycle = f["fixed_after_cycle"] + 1
@@ -3012,6 +3022,16 @@ def get_owner_stats(db, priority=None):
             else:
                 reopened += 1
 
+        # 1 TC tinh resolved neu BAT KY fix nao cua owner cho TC do dang hien Pass tren
+        # dung model da fix (xem _fix_currently_resolved) - khong doi hoi MOI model pass.
+        distinct_scripts = [{"test_suite": k[0], "test_case": k[1]} for k in order]
+        fully_resolved = [
+            {"test_suite": k[0], "test_case": k[1]}
+            for k in order
+            if any(_fix_currently_resolved(k[0], k[1], f["model_fixed"], priority_map)
+                   for f in fixes_by_key[k])
+        ]
+
         distinct_fixed_n = len(distinct_scripts)
         fully_resolved_n = len(fully_resolved)
         owner_stats.append({
@@ -3024,7 +3044,8 @@ def get_owner_stats(db, priority=None):
             "verified": verified, "reopened": reopened, "pending": pending,
             # % cac lan fix duoc xac nhan dung ngay lan dau (khong bi reopen), tren so lan da co ket qua doi chieu
             "verification_rate": (verified / (verified + reopened)) if (verified + reopened) else None,
-            # % SO SCRIPT KHAC NHAU tung dong gop ma NAY DA HET LOI HOAN TOAN tren tat ca model - KPI chinh
+            # % SO SCRIPT KHAC NHAU tung dong gop ma model DA FIX nay dang Pass (xem
+            # _fix_currently_resolved - khong doi hoi MOI model cua TC deu pass) - KPI chinh
             "resolution_rate": (fully_resolved_n / distinct_fixed_n) if distinct_fixed_n else None,
             "open_workload": open_workload.get(owner, 0),
         })
@@ -3120,20 +3141,27 @@ def _leaderboard_payload(scope, date_from, date_to):
         # Prefetch fixes trong range theo owner de tinh distinct_scripts_fixed & fully_resolved theo range
         fixes_by_owner_range = {}
         for f in db.execute(
-            "SELECT owner, test_suite, test_case FROM fixes WHERE fix_date>=? AND fix_date<=? ORDER BY owner",
+            "SELECT owner, test_suite, test_case, model_fixed FROM fixes "
+            "WHERE fix_date>=? AND fix_date<=? ORDER BY owner",
             (date_from, date_to)
         ).fetchall():
-            fixes_by_owner_range.setdefault(f["owner"], []).append((f["test_suite"], f["test_case"]))
+            fixes_by_owner_range.setdefault(f["owner"], []).append(
+                (f["test_suite"], f["test_case"], f["model_fixed"]))
 
         rows = []
         for name in sorted(set(fx_map) | set(wr_map) | set(sk_map)):
             b = base_map.get(name, {})
-            # Tinh distinct_scripts_fixed & fully_resolved theo range (day/week), khong all-time
+            # Tinh distinct_scripts_fixed & fully_resolved theo range (day/week), khong all-time.
+            # Resolved = bat ky fix nao trong range co model_fixed hien dang Pass (xem
+            # _fix_currently_resolved) - khong doi hoi MOI model cua TC deu pass.
             fixes_range = fixes_by_owner_range.get(name, [])
-            distinct_fixed = set(fixes_range)
+            by_key = {}
+            for ts, tc, mf in fixes_range:
+                by_key.setdefault((ts, tc), []).append(mf)
+            distinct_fixed = set(by_key)
             distinct_resolved = {
-                key for key in distinct_fixed
-                if priority_map.get(key, {}).get("fail_count", 1) == 0
+                key for key, models in by_key.items()
+                if any(_fix_currently_resolved(key[0], key[1], mf, priority_map) for mf in models)
             }
             rows.append({
                 "owner": name,
@@ -4240,6 +4268,7 @@ def api_farm_fetch():
     """Fetch ket qua tu farm API theo danh sach Test ID roi chen vao results.
     Body: {test_ids: [...]} hoac {test_ids: "chuoi cach nhau boi xuong dong/dau phay"}."""
     data = request.get_json(force=True)
+    preview = bool(data.get("preview"))
     test_ids = data.get("test_ids") or []
     if isinstance(test_ids, str):
         test_ids = re.split(r"[\s,;]+", test_ids)
@@ -4248,6 +4277,84 @@ def api_farm_fetch():
         return jsonify({"error": "Chưa nhập Test ID nào."}), 400
 
     db = get_db()
+
+    # Che do "xem tam": fetch + phan loai pass/fail trong bo nho, KHONG ghi bat cu gi vao DB
+    # (khong insert results, khong recompute_cycles, khong ghi settings, khong audit) — de
+    # danh gia nhanh 1 test request ma khong bi tinh thanh Cycle lam sai lech danh gia chung.
+    if preview:
+        try:
+            rows, fetch_errors = farm_fetch_results(db, test_ids)
+        except RuntimeError as e:
+            return jsonify({"error": str(e)}), 400
+        # Phan loai GIONG HET insert_result_rows() de "xem tam" phan anh dung cach danh gia that:
+        # 'running' -> Skip (chua chay xong, khong tinh); file .py he thong / loi whitelist -> Excluded
+        # (khong tinh pass/fail); con lai -> Pass/Fail. Nhung KHONG ghi gi vao DB.
+        whitelist = get_error_whitelist(db)
+        # Owner/Team hien tai dang phu trach script (tra cuu giong get_owner_stats() —
+        # assignments (suite, case) -> owner, owners.name -> team) de hien thi kem trong preview.
+        assignments = {
+            (row["test_suite"], row["test_case"]): row["owner"]
+            for row in db.execute("SELECT test_suite, test_case, owner FROM assignments")
+        }
+        owner_team = {
+            row["name"]: (row["team"] or "")
+            for row in db.execute("SELECT name, team FROM owners")
+        }
+        n_pass = n_fail = n_skip = n_excluded = 0
+        by_model = {}
+        out_rows = []
+        for r in rows:
+            state = str(r.get("state") or "")
+            model = r.get("model") or ""
+            description = str(r.get("description") or "")
+            test_case = extract_test_case_name(r.get("test_case") or "")
+            derived_suite = derive_test_suite(test_case, r.get("test_suite") or "")
+            is_non_test = derived_suite is None
+            test_suite = "Unknown" if is_non_test else derived_suite
+            if is_skip_state(state):
+                label, key = "Skip", "skip"
+                n_skip += 1
+            elif is_non_test or matches_whitelist(description, whitelist):
+                label, key = "Excluded", "excluded"
+                n_excluded += 1
+            else:
+                label = classify_result(state)
+                if label == "Pass":
+                    key = "pass"; n_pass += 1
+                else:
+                    key = "fail"; n_fail += 1
+            bm = by_model.setdefault(model, {"pass": 0, "fail": 0, "skip": 0, "excluded": 0})
+            bm[key] += 1
+            owner = assignments.get((test_suite, test_case), "")
+            out_rows.append({
+                "test_id": r.get("test_id") or "",
+                "test_suite": test_suite,
+                "test_case": test_case,
+                "model": model,
+                "serial": r.get("serial") or "",
+                "owner": owner,
+                "team": owner_team.get(owner, ""),
+                "state": state,
+                "result": label,
+                "description": description,
+            })
+        denom = n_pass + n_fail
+        return jsonify({
+            "preview": True,
+            "rows": out_rows,
+            "summary": {
+                "total": len(out_rows),
+                "pass": n_pass,
+                "fail": n_fail,
+                "skip": n_skip,
+                "excluded": n_excluded,
+                "pass_rate": (n_pass / denom) if denom else None,
+                "by_model": by_model,
+            },
+            "fetch_errors": fetch_errors,
+            "fetched_ok": len(test_ids) - len(fetch_errors),
+        })
+
     # Ghi nho danh sach Test ID cua lan fetch nay (de tu dien lai moi lan mo tab Dong bo,
     # co the fetch lai lan gan nhat ma khong phai nhap tay). Luu ca khi fetch loi.
     for _k, _v in (("farm_last_test_ids", "\n".join(test_ids)),

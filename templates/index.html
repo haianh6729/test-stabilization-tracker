@@ -244,9 +244,9 @@
             <th title="Số script viết mới đã hoàn thành (trạng thái DONE) trong khoảng thời gian đang chọn">Scripts Written</th>
             <th title="Số TC bị đánh SKIP (không cần viết script) của thành viên này trong khoảng thời gian đang chọn">Scripts SKIP</th>
             <th title="Số lần ghi nhận fix trong khoảng thời gian đang chọn">Fixes</th>
-            <th title="Số script KHÁC NHAU mà người này từng fix ít nhất 1 lần (tính từ trước đến nay, không giới hạn theo range đang chọn)">Distinct Fixed</th>
-            <th title="Trong số script đã fix, số script nay đã hết lỗi hoàn toàn trên MỌI model (tính từ trước đến nay)">Fully Resolved</th>
-            <th title="= Fully Resolved / Distinct Fixed — KPI chính đánh giá chất lượng fix, luôn tính theo toàn bộ lịch sử bất kể đang chọn range nào">Resolution Rate</th>
+            <th title="Số script KHÁC NHAU mà người này fix ít nhất 1 lần trong khoảng thời gian đang chọn (Ngày/Tuần); ở Cộng dồn thì tính toàn bộ lịch sử">Distinct Fixed</th>
+            <th title="Trong số script đã fix TRONG KHOẢNG THỜI GIAN ĐANG CHỌN, số script mà model mình đã ghi fix hiện đang Pass (không cần mọi model của TC đó đều pass); ở Cộng dồn thì tính toàn bộ lịch sử">Fully Resolved</th>
+            <th title="KPI chính đánh giá chất lượng fix (tỷ lệ script đã fix mà model được fix nay đang Pass, không cần mọi model của TC đều pass) — LUÔN tính theo toàn bộ lịch sử, không theo range đang chọn (khác với 2 cột Distinct Fixed/Fully Resolved bên trái)">Resolution Rate</th>
             <th title="Số lần fix được xác nhận đúng ngay ở cycle chạy lại tiếp theo (tính từ trước đến nay)">Verified</th>
             <th title="Số lần fix xong nhưng cycle sau lại fail lại (tái lỗi, tính từ trước đến nay)">Reopen</th>
             <th title="= Verified / (Verified + Reopen) — tỷ lệ fix đúng ngay lần đầu không bị tái lỗi, luôn tính theo toàn bộ lịch sử">Verification Rate</th>
@@ -604,11 +604,14 @@ Browser_000202&#9;tuyen.bv1"></textarea>
     <div id="intFarmStatus" class="hint"></div>
     <textarea id="farmTestIds" rows="5" placeholder="260706-01949&#10;260706-01950&#10;260707-02011"></textarea>
     <div id="farmLastFetchHint" class="hint" style="color:#2e7d32"></div>
+    <label style="display:block;margin:6px 0"><input type="checkbox" id="farmPreviewOnly"> Chỉ xem tạm (không lưu vào cycle)</label>
+    <p class="hint" style="margin-top:0">Bật ô này để <b>fetch + xem kết quả pass/fail</b> của test request mà <b>KHÔNG ghi vào dữ liệu / không tính thành Cycle</b> — dùng khi muốn đánh giá nhanh 1 test request lẻ.</p>
     <div class="form-row">
       <button class="btn-primary" id="btnFarmFetch">⬇️ Fetch kết quả từ farm</button>
       <span id="farmFetchMsg"></span>
     </div>
     <div id="farmFetchErrors"></div>
+    <div id="farmPreviewBox"></div>
   </div>
 
   <div class="card" data-perm="integrations">

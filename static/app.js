@@ -3215,20 +3215,69 @@ function renderReconcile() {
   }
 }
 
+// Render bang "xem tam" cho farm fetch preview (khong ghi DB — chi hien thi pass/fail).
+function renderFarmPreview(res) {
+  const msg = $("#farmFetchMsg");
+  const s = res.summary || { total: 0, pass: 0, fail: 0, skip: 0, excluded: 0, pass_rate: null };
+  const rate = (s.pass_rate == null) ? "—" : (s.pass_rate * 100).toFixed(1) + "%";
+  let sum = `👁️ Xem tạm — ${s.total} dòng: ${s.pass} Pass / ${s.fail} Fail`;
+  if (s.skip) sum += ` / ${s.skip} Skip`;
+  if (s.excluded) sum += ` / ${s.excluded} Excluded`;
+  sum += ` (pass rate ${rate}). Không ghi vào dữ liệu.`;
+  msg.textContent = sum;
+  msg.className = "msg-ok";
+
+  if ((res.fetch_errors || []).length) {
+    $("#farmFetchErrors").innerHTML = `<p class="hint" style="color:#c0392b">Lỗi theo Test ID:</p><ul class="hint">` +
+      res.fetch_errors.map((e) => `<li><code>${escAttr(e.test_id)}</code>: ${escAttr(e.error)}</li>`).join("") + "</ul>";
+  }
+
+  const box = $("#farmPreviewBox");
+  if (!box) return;
+  const rows = res.rows || [];
+  if (!rows.length) { box.innerHTML = `<p class="hint">Không có dòng kết quả nào để xem.</p>`; return; }
+  const color = (r) => r === "Pass" ? "#2e7d32" : (r === "Fail" ? "#c0392b" : (r === "Excluded" ? "#e67e22" : "#888"));
+  const body = rows.map((r) => `<tr>` +
+    `<td><code>${escAttr(r.test_id)}</code></td>` +
+    `<td>${escAttr(r.test_suite)}</td>` +
+    `<td>${escAttr(r.test_case)}</td>` +
+    `<td>${escAttr(r.model)}</td>` +
+    `<td>${escAttr(r.serial)}</td>` +
+    `<td>${escAttr(r.owner)}</td>` +
+    `<td>${escAttr(r.team)}</td>` +
+    `<td style="color:${color(r.result)};font-weight:600">${escAttr(r.result)}</td>` +
+    `<td>${escAttr(r.description)}</td>` +
+    `</tr>`).join("");
+  box.innerHTML = `<p class="hint" style="margin-bottom:4px">Bảng xem tạm (không lưu):</p>` +
+    `<table class="data-table" id="farmPreviewTable"><thead><tr>` +
+    `<th>Test ID</th><th>Test suite</th><th>Test Case</th><th>Model</th><th>SN</th><th>Owner</th><th>Team</th><th>Kết quả</th><th>Mô tả</th>` +
+    `</tr></thead><tbody>${body}</tbody></table>`;
+  // Tai su dung he sort/filter/export chung (ttSetup) de co san nut "Xuat Excel (CSV)"
+  // ma khong phai viet lai logic export rieng — dung pattern nhu cac bang khac trong app.
+  const tbl = document.getElementById("farmPreviewTable");
+  if (tbl) ttSetup(tbl);
+}
+
 function initIntegrations() {
   if (!$("#btnFarmFetch")) return;
 
   $("#btnFarmFetch").addEventListener("click", async () => {
     const msg = $("#farmFetchMsg");
     const ids = $("#farmTestIds").value.trim();
+    const preview = $("#farmPreviewOnly") && $("#farmPreviewOnly").checked;
     if (!ids) { msg.textContent = "Nhập ít nhất 1 Test ID."; msg.className = "msg-err"; return; }
-    msg.textContent = "Đang fetch từ farm..."; msg.className = "";
+    msg.textContent = preview ? "Đang fetch (xem tạm)..." : "Đang fetch từ farm..."; msg.className = "";
     $("#farmFetchErrors").innerHTML = "";
+    if ($("#farmPreviewBox")) $("#farmPreviewBox").innerHTML = "";
     try {
       const res = await api("/api/integrations/farm/fetch", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ test_ids: ids }),
+        body: JSON.stringify({ test_ids: ids, preview }),
       });
+      if (res.preview) {
+        renderFarmPreview(res);
+        return;
+      }
       let text = `✅ Fetch OK ${res.fetched_ok} Test ID — đã lưu ${res.inserted} dòng kết quả.`;
       if (res.skipped_duplicate) text += ` (${res.skipped_duplicate} dòng trùng bỏ qua)`;
       if (res.warnings && res.warnings.length) text += " ⚠️ " + res.warnings.join(" ");
