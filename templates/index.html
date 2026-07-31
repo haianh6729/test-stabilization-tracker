@@ -103,6 +103,18 @@
 <!-- ============ DASHBOARD ============ -->
 <section id="tab-dashboard" class="tab-panel active">
 
+  <div class="card" id="dashTempPreviewCard" style="padding:8px 14px;">
+    <label style="font-size:13px; display:flex; align-items:center; gap:8px; margin:0;">
+      <input type="checkbox" id="dashTempPreviewToggle" disabled>
+      🧪 Try showing temp Test ID data on the 3 sections below (Pass Rate Matrix / Root Cause Pareto / Pass Rate by Cycle)
+    </label>
+    <p class="hint" id="dashTempPreviewHint" style="margin:4px 0 0">No temp preview data yet — fetch one first in the 🔗 Đồng bộ tab (farm card, "Chỉ xem tạm").</p>
+  </div>
+  <div id="dashTempPreviewBanner" style="display:none; background:#fff3e0; border:1px solid #e67e22; color:#8a4b00; padding:8px 14px; border-radius:6px; margin-bottom:12px; font-size:13px;">
+    🧪 <b>SIMULATION MODE</b> — Pass Rate Matrix / Root Cause Pareto / Pass Rate by Cycle below include temp Test ID data as an extra "Temp" cycle. <b>NOT saved to the system.</b>
+    <button class="btn-tiny rename" id="btnDashTempPreviewOff" style="margin-left:10px;">Turn off</button>
+  </div>
+
   <div class="kpi-row" id="kpiRow"></div>
 
   <div id="insightsBox" class="insights-box">
@@ -202,6 +214,7 @@
       </h3>
       <canvas id="chartPareto"></canvas>
       <p style="margin-top:8px; font-size:12px; color:#888;">💡 Bấm vào một cột để xem script đang fail vì lỗi đó (gom batch để fix)</p>
+      <p id="paretoTempNote" style="display:none; margin-top:4px; font-size:12px; color:#8a4b00;">🧪 Simulation mode: computed over ALL items/cycles, ignoring the Item/Cycle filters above.</p>
     </div>
     <div class="card">
       <h3>🏆 Resolution Rate by Owner (KPI)</h3>

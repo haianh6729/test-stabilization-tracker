@@ -954,14 +954,50 @@ def _translate_root_cause_label(label):
     return label
 
 
-def compute_root_cause_pareto(db, limit=15, english=False, test_suite=None, cycles=None):
+def _results_union_sql(extra_table):
+    """Doan SQL nguon du lieu 'results', UNION ALL them 1 TEMP TABLE preview neu co (che do
+    'xem thu tac dong' cua Test ID tam tren Dashboard - xem _create_preview_temp_table()).
+    extra_table (neu co) BAT BUOC co dung cac cot duoi day. KHONG doi hanh vi khi extra_table=None
+    (moi call site hien tai giu nguyen 100%)."""
+    if not extra_table:
+        return "results"
+    cols = "cycle, cycle_date, test_suite, test_case, model, state, description, result"
+    return f"(SELECT {cols} FROM results UNION ALL SELECT {cols} FROM {extra_table})"
+
+
+def _create_preview_temp_table(db, rows):
+    """Tao TEMP TABLE (chi song trong connection cua request hien tai - xem get_db()/
+    teardown_appcontext, KHONG BAO GIO ghi vao file tracker.db) chua cac dong 'xem tam' tu
+    nhanh preview cua /api/integrations/farm/fetch, gan tat ca vao 1 cycle MOI rieng o cuoi
+    (khong dung cycle that nao). Dung de cac ham compute_* UNION vao qua _results_union_sql().
+    Tra ve so cycle tam da gan (temp_cycle)."""
+    temp_cycle = db.execute("SELECT COALESCE(MAX(cycle), 0) + 1 AS c FROM results").fetchone()["c"]
+    temp_cycle_date = date.today().isoformat()
+    db.execute(
+        "CREATE TEMP TABLE preview_results "
+        "(cycle INTEGER, cycle_date TEXT, test_suite TEXT, test_case TEXT, model TEXT, "
+        "state TEXT, description TEXT, result TEXT)"
+    )
+    for r in rows:
+        db.execute(
+            "INSERT INTO preview_results (cycle, cycle_date, test_suite, test_case, model, state, description, result) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (temp_cycle, temp_cycle_date, r.get("test_suite") or "", r.get("test_case") or "",
+             r.get("model") or "", r.get("state") or "", r.get("description") or "", r.get("result") or ""),
+        )
+    return temp_cycle
+
+
+def compute_root_cause_pareto(db, limit=15, english=False, test_suite=None, cycles=None, extra_table=None):
     """Pareto nguyen nhan loi da GOM NHOM (thay vi group text tho). Tra ve list dict
     {description(=ten nhom), count, pct, cum_pct} da sap giam dan + tinh % cong don.
     english=True: dich nhan sang tieng Anh (chi dung cho Dashboard/bao cao).
     test_suite: loc theo 1 item cu the (None = toan bo).
-    cycles: loc theo danh sach cycle cu the (None/rong = toan bo cycle, hanh vi cu)."""
+    cycles: loc theo danh sach cycle cu the (None/rong = toan bo cycle, hanh vi cu).
+    extra_table: ten 1 TEMP TABLE (xem _create_preview_temp_table) de UNION them vao nguon
+    du lieu - dung cho che do 'xem thu tac dong' cua du lieu Test ID tam, KHONG ghi DB that."""
     groups = {}
-    q = "SELECT description, state FROM results WHERE result='Fail'"
+    q = f"SELECT description, state FROM {_results_union_sql(extra_table)} WHERE result='Fail'"
     args = []
     if test_suite:
         q += " AND test_suite=?"
@@ -1019,20 +1055,23 @@ def compute_root_cause_by_item_cycle(db, cycles, limit_per_item=5, english=True)
     return out
 
 
-def compute_cycle_trend(db):
+def compute_cycle_trend(db, extra_table=None):
     """Pass Rate theo cycle, theo cong thuc rieng (khac voi cot 'result' dung cho fail_count/
     priority engine): NA duoc coi la trung lap - KHONG tinh vao ca tu so lan mau so.
 
     Pass rate = (so PASS + so CHECK + so MANUAL CHECK) / (Tong so - Skip - NA)
     Vi RUNNING (Skip) da bi loai bo tu luc import (khong bao gio duoc luu vao DB), nen
     o day chi can tru NA khoi mau so: denom = total - na_count.
+
+    extra_table: xem _results_union_sql() - UNION them 1 TEMP TABLE preview (che do 'xem thu
+    tac dong' Test ID tam), KHONG doi hanh vi khi None.
     """
     rows = db.execute(
-        """
+        f"""
         SELECT cycle, MIN(cycle_date) as cycle_date, COUNT(*) as total,
                SUM(CASE WHEN LOWER(TRIM(state)) IN ('pass','check','manual check') THEN 1 ELSE 0 END) as pass_like_count,
                SUM(CASE WHEN LOWER(TRIM(state))='na' THEN 1 ELSE 0 END) as na_count
-        FROM results WHERE result <> 'Excluded' GROUP BY cycle ORDER BY cycle
+        FROM {_results_union_sql(extra_table)} WHERE result <> 'Excluded' GROUP BY cycle ORDER BY cycle
         """
     ).fetchall()
     trend = []
@@ -1276,7 +1315,7 @@ def compute_script_cycle_matrix(db, group_by_model=False):
     return {"cycles": cycle_list, "scripts": scripts_out}
 
 
-def compute_suite_model_matrix(db):
+def compute_suite_model_matrix(db, extra_table=None):
     """Pass rate cua TUNG ITEM (test_suite: Reminder, Wallpaper, Weather...) tren TUNG MODEL,
     tach rieng theo TUNG CYCLE. Dung cho Dashboard de xem 1 item chay tren 1 model qua cac cycle
     tot len/xau di ra sao, va tinh overall pass rate cho cac cycle nguoi dung chon.
@@ -1291,8 +1330,12 @@ def compute_suite_model_matrix(db):
     pass_only/check_count/manual_check_count la breakdown chi tiet cua pass_count (pass_count =
     pass_only + check_count + manual_check_count) - phuc vu hien thi P/C/F/NA/T tren tung o matrix
     va modal drill-down cho hang OVERALL, khong thay doi cac key cu (giu tuong thich renderSmOverall()).
+
+    extra_table: xem _results_union_sql() - UNION them 1 TEMP TABLE preview (che do 'xem thu
+    tac dong' Test ID tam), KHONG doi hanh vi khi None.
     """
-    cycles = db.execute("SELECT DISTINCT cycle, cycle_date FROM results ORDER BY cycle").fetchall()
+    src = _results_union_sql(extra_table)
+    cycles = db.execute(f"SELECT DISTINCT cycle, cycle_date FROM {src} ORDER BY cycle").fetchall()
     cycle_list = [{"cycle": r["cycle"], "cycle_date": r["cycle_date"]} for r in cycles]
 
     def cell(total, pass_like, na, pass_only, check_cnt, manual_cnt):
@@ -1305,14 +1348,14 @@ def compute_suite_model_matrix(db):
         }
 
     rows_raw = db.execute(
-        """
+        f"""
         SELECT test_suite, model, cycle, COUNT(*) as total,
                SUM(CASE WHEN LOWER(TRIM(state)) IN ('pass','check','manual check') THEN 1 ELSE 0 END) as pass_like,
                SUM(CASE WHEN LOWER(TRIM(state))='na' THEN 1 ELSE 0 END) as na,
                SUM(CASE WHEN LOWER(TRIM(state))='pass' THEN 1 ELSE 0 END) as pass_only,
                SUM(CASE WHEN LOWER(TRIM(state))='check' THEN 1 ELSE 0 END) as check_cnt,
                SUM(CASE WHEN LOWER(TRIM(state))='manual check' THEN 1 ELSE 0 END) as manual_cnt
-        FROM results WHERE result <> 'Excluded' GROUP BY test_suite, model, cycle
+        FROM {src} WHERE result <> 'Excluded' GROUP BY test_suite, model, cycle
         """
     ).fetchall()
     by_key = {}
@@ -1326,14 +1369,14 @@ def compute_suite_model_matrix(db):
         rows.append({"test_suite": suite, "model": model, "by_cycle": by_cycle})
 
     overall_raw = db.execute(
-        """
+        f"""
         SELECT cycle, COUNT(*) as total,
                SUM(CASE WHEN LOWER(TRIM(state)) IN ('pass','check','manual check') THEN 1 ELSE 0 END) as pass_like,
                SUM(CASE WHEN LOWER(TRIM(state))='na' THEN 1 ELSE 0 END) as na,
                SUM(CASE WHEN LOWER(TRIM(state))='pass' THEN 1 ELSE 0 END) as pass_only,
                SUM(CASE WHEN LOWER(TRIM(state))='check' THEN 1 ELSE 0 END) as check_cnt,
                SUM(CASE WHEN LOWER(TRIM(state))='manual check' THEN 1 ELSE 0 END) as manual_cnt
-        FROM results WHERE result <> 'Excluded' GROUP BY cycle
+        FROM {src} WHERE result <> 'Excluded' GROUP BY cycle
         """
     ).fetchall()
     overall_by_cycle = {
@@ -4381,6 +4424,36 @@ def api_farm_fetch():
               detail=f"test_ids={len(test_ids)}, ok={summary['fetched_ok']}, inserted={summary['inserted']}")
     db.commit()
     return jsonify(summary)
+
+
+@app.route("/api/integrations/farm/dashboard-preview", methods=["POST"])
+@require_perm("input-results")
+def api_farm_dashboard_preview():
+    """Xem thu tac dong cua du lieu 'xem tam' (rows tra ve tu nhanh preview cua
+    /api/integrations/farm/fetch) len 3 muc Dashboard: Pass Rate by Item x Model x Cycle,
+    Root Cause Pareto (Top 15), Pass Rate by Cycle. Du lieu duoc gan vao 1 cycle MOI rieng
+    o cuoi (khong dung cycle that nao) qua TEMP TABLE (_create_preview_temp_table) - KHONG
+    BAO GIO ghi vao tracker.db (khong commit, khong insert/recompute_cycles). Pareto tinh
+    tren TOAN BO item/cycle, khong ap dung bo loc hien tai tren Dashboard (giu don gian)."""
+    data = request.get_json(force=True)
+    rows = data.get("rows") or []
+    if not rows:
+        return jsonify({"error": "Không có dòng dữ liệu tạm nào để xem thử."}), 400
+
+    db = get_db()
+    temp_cycle = _create_preview_temp_table(db, rows)
+    trend = compute_cycle_trend(db, extra_table="preview_results")
+    matrix = compute_suite_model_matrix(db, extra_table="preview_results")
+    root_causes = compute_root_cause_pareto(db, limit=15, english=True, extra_table="preview_results")
+
+    for t in trend:
+        if t["cycle"] == temp_cycle:
+            t["is_temp"] = True
+    for c in matrix["cycles"]:
+        if c["cycle"] == temp_cycle:
+            c["is_temp"] = True
+
+    return jsonify({"trend": trend, "matrix": matrix, "root_causes": root_causes, "temp_cycle": temp_cycle})
 
 
 # ------------------------------------------------------------------

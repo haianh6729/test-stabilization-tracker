@@ -24,6 +24,9 @@ const state = {
   paretoItem: "",
   rcCycles: [],       // danh sách cycle cho bộ lọc Root Cause Pareto
   rcSelected: null,   // Set các cycle đang chọn (null = chưa init, mặc định chọn tất cả)
+  farmPreviewRows: null,   // rows tra ve tu nhanh "Xem tam" (Dong bo tab) - dung cho Dashboard temp-preview toggle
+  dashTempPreviewOn: false,
+  dashTempPreviewData: null,   // {trend, matrix, root_causes, temp_cycle} tu /api/integrations/farm/dashboard-preview
 };
 
 const TREND_BADGE = {
@@ -577,9 +580,11 @@ function renderPassRateTable(trend) {
       const color = t.delta_rate >= 0 ? "#1e8449" : "#c0392b";
       deltaStr = `<span style="color:${color}">${sign}${pct}%</span>`;
     }
+    const tempAttrs = t.is_temp ? ` style="background:#fff3e0"` : "";
+    const cycleLabel = t.is_temp ? "🧪 Temp" : t.cycle;
     return `
-    <tr>
-      <td>${t.cycle}</td>
+    <tr${tempAttrs}>
+      <td>${cycleLabel}</td>
       <td>${t.cycle_date || "—"}</td>
       <td>${t.total}</td>
       <td>${t.pass_count}</td>
@@ -600,6 +605,102 @@ function renderPassRateTable(trend) {
       <td><b>${overallRate}</b></td><td>—</td>
     </tr>`;
   tbody.innerHTML = body + totalRow;
+}
+
+// ---------------- Dashboard: "xem thử" tác động dữ liệu Test ID tạm (simulation, không lưu) ----------------
+// Nguồn dữ liệu = state.farmPreviewRows (đã lưu từ nhánh "Xem tạm" ở tab Đồng bộ).
+// Bật toggle -> gọi /api/integrations/farm/dashboard-preview 1 lần, cache kết quả vào
+// state.dashTempPreviewData, và re-áp overlay này sau mỗi lần refreshDashboard() (poll 15s)
+// mà KHÔNG gọi lại endpoint (snapshot tĩnh cho tới khi user tắt/bật lại).
+function renderTempTrendChart(trend) {
+  destroyChart("trend");
+  const pointColors = trend.map((t) => (t.is_temp ? "#e67e22" : "#2E6DA4"));
+  state.charts.trend = new Chart($("#chartTrend"), {
+    type: "line",
+    data: {
+      labels: trend.map((t) => (t.is_temp ? "Temp" : "C" + t.cycle)),
+      datasets: [{
+        label: "Pass Rate",
+        data: trend.map((t) => (t.pass_rate === null ? null : (t.pass_rate * 100).toFixed(1))),
+        borderColor: "#2E6DA4",
+        backgroundColor: "rgba(46,109,164,0.1)",
+        pointBackgroundColor: pointColors,
+        pointBorderColor: pointColors,
+        pointRadius: trend.map((t) => (t.is_temp ? 6 : 3)),
+        tension: 0.25,
+        fill: true,
+      }],
+    },
+    options: { scales: { y: { min: 0, max: 100, ticks: { callback: (v) => v + "%" } } }, plugins: { legend: { display: false } } },
+  });
+}
+
+function applyDashTempPreviewOverlay() {
+  const banner = $("#dashTempPreviewBanner");
+  const note = $("#paretoTempNote");
+  if (!state.dashTempPreviewOn || !state.dashTempPreviewData) {
+    if (banner) banner.style.display = "none";
+    if (note) note.style.display = "none";
+    return;
+  }
+  if (banner) banner.style.display = "";
+  if (note) note.style.display = "";
+  const { trend, matrix, root_causes } = state.dashTempPreviewData;
+  renderPassRateTable(trend);
+  renderTempTrendChart(trend);
+  renderPareto(root_causes, "");
+  state.suiteModel = matrix;
+  const validCycles = new Set((matrix.cycles || []).map((c) => c.cycle));
+  if (!state.smSelected) {
+    state.smSelected = new Set(validCycles);
+  } else {
+    state.smSelected = new Set([...state.smSelected].filter((c) => validCycles.has(c)));
+    if (!state.smSelected.size) state.smSelected = new Set(validCycles);
+  }
+  renderSmChooser();
+  renderSuiteModelHead();
+  renderSuiteModelMatrix();
+  renderSmOverall();
+}
+
+async function setDashTempPreview(on) {
+  const toggle = $("#dashTempPreviewToggle");
+  if (on) {
+    if (!state.farmPreviewRows || !state.farmPreviewRows.length) {
+      if (toggle) toggle.checked = false;
+      return;
+    }
+    try {
+      const merged = await api("/api/integrations/farm/dashboard-preview", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows: state.farmPreviewRows }),
+      });
+      state.dashTempPreviewData = merged;
+      state.dashTempPreviewOn = true;
+      if (toggle) toggle.checked = true;
+      applyDashTempPreviewOverlay();
+    } catch (e) {
+      alert("Lỗi khi xem thử tác động: " + e.message);
+      if (toggle) toggle.checked = false;
+      state.dashTempPreviewOn = false;
+      state.dashTempPreviewData = null;
+    }
+  } else {
+    state.dashTempPreviewOn = false;
+    state.dashTempPreviewData = null;
+    if (toggle) toggle.checked = false;
+    const banner = $("#dashTempPreviewBanner");
+    const note = $("#paretoTempNote");
+    if (banner) banner.style.display = "none";
+    if (note) note.style.display = "none";
+    await refreshDashboard();
+  }
+}
+
+function initDashTempPreview() {
+  const toggle = $("#dashTempPreviewToggle");
+  if (toggle) toggle.addEventListener("change", (e) => setDashTempPreview(e.target.checked));
+  $("#btnDashTempPreviewOff")?.addEventListener("click", () => setDashTempPreview(false));
 }
 
 // ---------------- Dashboard: Suite × Model × Cycle matrix ----------------
@@ -640,9 +741,9 @@ function renderSmChooser() {
         </div>
         <div class="ms-options">
           ${cycles.map((c) => `
-            <label>
+            <label${c.is_temp ? ' style="color:#8a4b00"' : ""}>
               <input type="checkbox" class="sm-cyc-cb" value="${c.cycle}" ${state.smSelected.has(c.cycle) ? "checked" : ""}>
-              Cycle ${c.cycle} <span class="ms-date">${c.cycle_date || ""}</span>
+              ${c.is_temp ? "🧪 Temp" : "Cycle " + c.cycle} <span class="ms-date">${c.cycle_date || ""}</span>
             </label>`).join("")}
         </div>
       </div>
@@ -707,7 +808,7 @@ function updateSmToggleLabel() {
   const toggle = $("#smMsToggle");
   if (!toggle) return;
   const sel = smSelectedCyclesList();
-  const label = sel.length ? sel.map((c) => "C" + c.cycle).join(", ") : "No cycle selected";
+  const label = sel.length ? sel.map((c) => c.is_temp ? "🧪Temp" : "C" + c.cycle).join(", ") : "No cycle selected";
   toggle.innerHTML = `<span class="ms-count">${sel.length} cycle</span> ${label} <span class="ms-caret">▾</span>`;
 }
 
@@ -749,7 +850,9 @@ function renderSuiteModelHead() {
   const sel = smSelectedCyclesList();
   let h = `<tr><th class="sm-col-item">Item (Test suite)</th><th class="sm-col-model">Model</th>`;
   for (const c of sel) {
-    h += `<th>Cycle ${c.cycle}<br><span style="font-weight:400;font-size:11px;color:#888">${c.cycle_date || ""}</span></th>`;
+    const style = c.is_temp ? ' style="background:#fff3e0;color:#8a4b00"' : "";
+    const label = c.is_temp ? "🧪 Temp" : "Cycle " + c.cycle;
+    h += `<th${style}>${label}<br><span style="font-weight:400;font-size:11px;color:#888">${c.cycle_date || ""}</span></th>`;
   }
   h += `</tr>`;
   $("#suiteModelHead").innerHTML = h;
@@ -940,6 +1043,9 @@ async function refreshDashboard() {
     renderSuiteTable(d.suite_stats);
     renderPassRateTable(d.trend);
     try { await loadSuiteModelMatrix(); } catch (e) { console.error("Suite-model matrix failed:", e); }
+    // Neu dang bat "xem thu tac dong Test ID tam" -> phu lai overlay (snapshot tinh, khong
+    // goi lai endpoint moi 15s) SAU khi da render du lieu that o tren.
+    if (state.dashTempPreviewOn) applyDashTempPreviewOverlay();
     reapplyAllTableFilters();
     setConn(true);
     $("#lastRefresh").textContent = "Cập nhật: " + new Date().toLocaleTimeString("vi-VN");
@@ -3232,9 +3338,23 @@ function renderFarmPreview(res) {
       res.fetch_errors.map((e) => `<li><code>${escAttr(e.test_id)}</code>: ${escAttr(e.error)}</li>`).join("") + "</ul>";
   }
 
+  const rows = res.rows || [];
+  // Luu lai de tab Dashboard dung cho toggle "xem thu tac dong" (Pass Rate Matrix / Pareto /
+  // Pass Rate by Cycle). Fetch tam MOI -> tat toggle dang bat (neu co) de tranh xem nham du
+  // lieu cu con sot lai tren Dashboard.
+  state.farmPreviewRows = rows.length ? rows : null;
+  const dashToggle = $("#dashTempPreviewToggle");
+  const dashHint = $("#dashTempPreviewHint");
+  if (dashToggle) dashToggle.disabled = !rows.length;
+  if (dashHint) {
+    dashHint.textContent = rows.length
+      ? `Có ${rows.length} dòng dữ liệu tạm sẵn sàng — bật ô trên để xem thử tác động lên 3 mục bên dưới.`
+      : `Chưa có dữ liệu xem tạm — vào tab Đồng bộ để fetch trước.`;
+  }
+  if (state.dashTempPreviewOn) setDashTempPreview(false);
+
   const box = $("#farmPreviewBox");
   if (!box) return;
-  const rows = res.rows || [];
   if (!rows.length) { box.innerHTML = `<p class="hint">Không có dòng kết quả nào để xem.</p>`; return; }
   const color = (r) => r === "Pass" ? "#2e7d32" : (r === "Fail" ? "#c0392b" : (r === "Excluded" ? "#e67e22" : "#888"));
   const body = rows.map((r) => `<tr>` +
@@ -3406,6 +3526,7 @@ async function init() {
   $("#smdExport")?.addEventListener("click", exportSmDetailCsv);
   initReports();
   initIntegrations();
+  initDashTempPreview();
   initLeaderboard();
   initParetoFilter();
 
