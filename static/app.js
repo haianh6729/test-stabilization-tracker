@@ -27,6 +27,7 @@ const state = {
   farmPreviewRows: null,   // rows tra ve tu nhanh "Xem tam" (Dong bo tab) - dung cho Dashboard temp-preview toggle
   dashTempPreviewOn: false,
   dashTempPreviewData: null,   // {trend, matrix, root_causes, temp_cycle} tu /api/integrations/farm/dashboard-preview
+  rcTempIncluded: false,   // co dang tick "🧪 Temp" trong Cycles chooser cua Root Cause Pareto khong
 };
 
 const TREND_BADGE = {
@@ -365,24 +366,40 @@ function renderRcChooser() {
   const box = $("#rcCycleChooser");
   if (!box) return;
   const cycles = state.rcCycles || [];
+  const tempActive = !!(state.dashTempPreviewOn && state.dashTempPreviewData);
+  const tempChecked = tempActive && state.rcTempIncluded;
+  // Khi dang xem tam (Temp) tick: cac bo loc cycle/item that KHONG ap dung duoc dong thoi
+  // (pham vi da chot: pareto tam luon tinh tren TOAN BO item/cycle) -> disable ro rang thay
+  // vi de nguoi dung tick roi ra ket qua sai.
+  const disableReal = tempChecked ? "disabled" : "";
   box.innerHTML = `
     <div class="ms-dropdown" id="rcMs">
       <button type="button" class="ms-toggle" id="rcMsToggle" aria-expanded="false"></button>
       <div class="ms-panel" id="rcMsPanel" hidden>
+        ${tempActive ? `
+        <div class="ms-options" style="border-bottom:1px solid #eee; margin-bottom:4px; padding-bottom:4px;">
+          <label style="color:#8a4b00">
+            <input type="checkbox" class="rc-temp-cb" ${tempChecked ? "checked" : ""}>
+            🧪 Temp (dữ liệu Test ID tạm — bỏ tick để xem lại dữ liệu thật có lọc)
+          </label>
+        </div>` : ""}
         <div class="ms-actions">
-          <button type="button" data-act="all">All</button>
-          <button type="button" data-act="recent5">Last 5</button>
-          <button type="button" data-act="none">Clear</button>
+          <button type="button" data-act="all" ${disableReal}>All</button>
+          <button type="button" data-act="recent5" ${disableReal}>Last 5</button>
+          <button type="button" data-act="none" ${disableReal}>Clear</button>
         </div>
         <div class="ms-options">
           ${cycles.map((c) => `
-            <label>
-              <input type="checkbox" class="rc-cyc-cb" value="${c.cycle}" ${state.rcSelected.has(c.cycle) ? "checked" : ""}>
+            <label${disableReal ? ' style="color:#aaa"' : ""}>
+              <input type="checkbox" class="rc-cyc-cb" value="${c.cycle}" ${disableReal} ${state.rcSelected.has(c.cycle) ? "checked" : ""}>
               Cycle ${c.cycle} <span class="ms-date">${c.cycle_date || ""}</span>
             </label>`).join("")}
         </div>
       </div>
     </div>`;
+
+  const itemSel = $("#paretoItemSel");
+  if (itemSel) itemSel.disabled = !!disableReal;
 
   updateRcToggleLabel();
 
@@ -423,6 +440,23 @@ function renderRcChooser() {
     if (cb.checked) state.rcSelected.add(cyc); else state.rcSelected.delete(cyc);
     applySelection();
   }));
+
+  // Checkbox "Temp" xu ly RIENG (khong dung applySelection()/state.rcSelected — cycle tam
+  // khong ton tai trong DB that nen KHONG the gui vao cycles= cho /api/root-cause/pareto).
+  const tempCb = box.querySelector(".rc-temp-cb");
+  if (tempCb) tempCb.addEventListener("change", () => {
+    state.rcTempIncluded = tempCb.checked;
+    renderRcChooser();  // re-render de disable/enable cac control khac cho dung
+    if (state.rcTempIncluded) {
+      renderPareto(state.dashTempPreviewData.root_causes, "");
+      const note = $("#paretoTempNote");
+      if (note) note.style.display = "";
+    } else {
+      const note = $("#paretoTempNote");
+      if (note) note.style.display = "none";
+      fetchAndRenderPareto().catch((e) => console.error("Pareto chart failed:", e));
+    }
+  });
 
   $$("#rcMsPanel .ms-actions button").forEach((btn) => btn.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -649,6 +683,11 @@ function applyDashTempPreviewOverlay() {
   renderPassRateTable(trend);
   renderTempTrendChart(trend);
   renderPareto(root_causes, "");
+  // Bat "Temp" mac dinh moi lan vua bat overlay + ve lai chooser cua Pareto de option
+  // "🧪 Temp" xuat hien (renderRcChooser() truoc gio khong duoc goi lai o day - day la
+  // dong con thieu khien user bat overlay ma khong thay option Temp o Pareto).
+  state.rcTempIncluded = true;
+  renderRcChooser();
   state.suiteModel = matrix;
   const validCycles = new Set((matrix.cycles || []).map((c) => c.cycle));
   const tempCyc = (matrix.cycles || []).find((c) => c.is_temp)?.cycle;
