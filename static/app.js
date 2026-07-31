@@ -651,12 +651,16 @@ function applyDashTempPreviewOverlay() {
   renderPareto(root_causes, "");
   state.suiteModel = matrix;
   const validCycles = new Set((matrix.cycles || []).map((c) => c.cycle));
+  const tempCyc = (matrix.cycles || []).find((c) => c.is_temp)?.cycle;
   if (!state.smSelected) {
     state.smSelected = new Set(validCycles);
   } else {
     state.smSelected = new Set([...state.smSelected].filter((c) => validCycles.has(c)));
     if (!state.smSelected.size) state.smSelected = new Set(validCycles);
   }
+  // Cycle tam moi luon phai duoc chon san khi vua bat overlay - neu khong nguoi dung se
+  // khong thay gi khac biet o bang matrix (phai tu mo dropdown chon tay).
+  if (tempCyc !== undefined) state.smSelected.add(tempCyc);
   renderSmChooser();
   renderSuiteModelHead();
   renderSuiteModelMatrix();
@@ -2517,13 +2521,15 @@ async function openRcBreakdown(labelKey, item) {
   try {
     let url = "/api/root-cause/breakdown?label=" + encodeURIComponent(labelKey);
     if (item) url += "&item=" + encodeURIComponent(item);
+    const cycles = rcSelectedCyclesList().map((c) => c.cycle).join(",");
+    if (cycles) url += "&cycles=" + encodeURIComponent(cycles);
     const d = await api(url);
     state.lastRcBreakdown = d;
 
-    $("#rcbTitle").textContent = d.label + " — " + d.affected_scripts + " script / " + d.current_fail_count + " lần đang fail hiện tại";
+    $("#rcbTitle").textContent = d.label + " — " + d.affected_scripts + " script / " + d.current_fail_count + " lần Fail trong cycle đã chọn";
 
     let html = `<p style="margin:0 0 12px; padding:10px; background:#e3f2fd; border-radius:4px; font-size:12px; color:#555; border-left:3px solid #2196F3;">
-      💡 Danh sách item×model <b>đang fail ở lần chạy gần nhất</b> (không phải toàn bộ lịch sử fail) do nhóm nguyên nhân này gây ra — dùng để gom batch giao người fix.
+      💡 Danh sách item×model <b>đã Fail trong (các) cycle đang lọc</b> do nhóm nguyên nhân này gây ra — số dòng khớp đúng với cột trên biểu đồ Pareto, dùng để gom batch giao người fix.
     </p>`;
 
     html += `<div style="display:flex; gap:16px; margin-bottom:16px; flex-wrap:wrap;">

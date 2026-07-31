@@ -3356,29 +3356,27 @@ def api_fix_root_cause_fail_details():
 @app.route("/api/root-cause/breakdown")
 def api_root_cause_breakdown():
     """Drill-down cho Pareto 'dang fail vi gi': voi 1 nhan root-cause (query param `label`,
-    nhan VN goc tu summarize_root_cause), tra ve danh sach item x model DANG FAIL HIEN TAI
-    (latest status = Fail, khong phai toan bo lich su Fail) khop nhan do, kem owner/team,
-    de gom batch giao nguoi fix. Khong truyen `label` -> tra ve tong hop theo nhan (groups)."""
+    nhan VN goc tu summarize_root_cause) va danh sach cycle qua query param `cycles` (CSV so
+    nguyen, giong /api/root-cause/pareto), tra ve DUNG cac dong Fail dang sau cot chart tuong
+    ung (mirror compute_root_cause_pareto: dem tung dong result='Fail' trong cac cycle da chon,
+    khong phai latest-status). Khong truyen `cycles` -> tat ca cycle (khop cot khong loc). Khong
+    truyen `label` -> tra ve tong hop theo nhan (groups)."""
     db = get_db()
     label = (request.args.get("label") or "").strip()
     item = (request.args.get("item") or "").strip()
+    cycles_raw = (request.args.get("cycles") or "").strip()
+    cycles = [int(c) for c in cycles_raw.split(",") if c.strip().isdigit()] if cycles_raw else None
 
-    q = """
-        SELECT test_suite, test_case, model, serial, script_index, description, test_id, cycle, cycle_date
-        FROM (
-            SELECT *, ROW_NUMBER() OVER (
-                PARTITION BY test_suite, test_case, model
-                ORDER BY cycle DESC, id DESC
-            ) as rn
-            FROM results WHERE result <> 'Excluded'
-        )
-        WHERE rn = 1 AND result='Fail'
-        """
+    q = ("SELECT test_suite, test_case, model, serial, script_index, description, state, "
+         "test_id, cycle, cycle_date FROM results WHERE result='Fail'")
     args = []
+    if cycles:
+        q += " AND cycle IN ({})".format(",".join("?" * len(cycles)))
+        args.extend(cycles)
     if item:
         q += " AND test_suite=?"
         args.append(item)
-    latest_fails = db.execute(q, args).fetchall()
+    fail_rows = db.execute(q, args).fetchall()
 
     owner_map = {(r["test_suite"], r["test_case"]): r["owner"]
                  for r in db.execute("SELECT test_suite, test_case, owner FROM assignments")}
@@ -3386,8 +3384,8 @@ def api_root_cause_breakdown():
 
     if not label:
         groups = {}
-        for r in latest_fails:
-            key = summarize_root_cause(r["description"], "")
+        for r in fail_rows:
+            key = summarize_root_cause(r["description"], r["state"])
             g = groups.setdefault(key, {"key": key, "current_fail_count": 0, "scripts": set()})
             g["current_fail_count"] += 1
             g["scripts"].add((r["test_suite"], r["test_case"]))
@@ -3401,8 +3399,8 @@ def api_root_cause_breakdown():
 
     items = []
     scripts = set()
-    for r in latest_fails:
-        if summarize_root_cause(r["description"], "") != label:
+    for r in fail_rows:
+        if summarize_root_cause(r["description"], r["state"]) != label:
             continue
         owner = owner_map.get((r["test_suite"], r["test_case"]), "")
         items.append({
@@ -6539,6 +6537,31 @@ def admin_delete_result(result_id):
     db.commit()
 
     return jsonify({"status": "deleted"})
+
+
+@app.route("/api/admin/results/latest-cycle", methods=["DELETE"])
+def admin_delete_latest_cycle():
+    """Xoa TOAN BO ket qua cua cycle MOI NHAT (chi cycle cuoi cung - KHONG cho xoa cycle
+    giua). Pham vi co tinh: xoa cycle cuoi khong lam dich so bat ky cycle nao khac sau khi
+    recompute_cycles() chay lai (cac ngay con lai giu nguyen thu tu), nen KHONG lam sai lech
+    fixes.fixed_after_cycle cua bat ky fix nao - khac voi xoa 1 cycle giua chung se can xu ly
+    them (chua lam, ngoai pham vi tinh nang nay)."""
+    secret_key = request.headers.get("X-Admin-Key", "")
+    if secret_key != ADMIN_SECRET_KEY:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    db = get_db()
+    latest = db.execute("SELECT MAX(cycle) c FROM results").fetchone()["c"]
+    if latest is None:
+        return jsonify({"error": "Không có cycle nào để xóa."}), 400
+    info = db.execute("SELECT COUNT(*) n, MIN(cycle_date) d FROM results WHERE cycle=?", (latest,)).fetchone()
+    db.execute("DELETE FROM results WHERE cycle=?", (latest,))
+    recompute_cycles(db)  # an toan: xoa cycle CUOI khong dich so cycle nao khac
+    log_audit(db, "admin.result.delete_latest_cycle", target=f"cycle#{latest}",
+              detail=f"deleted={info['n']} rows, cycle_date={info['d']}")
+    db.commit()
+
+    return jsonify({"status": "deleted", "cycle": latest, "cycle_date": info["d"], "deleted": info["n"]})
 
 
 # ------------------------------------------------------------------

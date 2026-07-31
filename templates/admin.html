@@ -265,6 +265,7 @@
     <input type="text" id="searchInput" placeholder="Tìm kiếm (script, model, người nhập...)">
     <button onclick="searchResults()">🔍 Tìm kiếm</button>
     <button onclick="loadAllResults()" style="background: #666;">⟳ Tải lại</button>
+    <button class="btn-sm btn-delete" onclick="deleteLatestCycle()">🗑️ Xóa cycle mới nhất</button>
   </div>
 
   <div style="overflow-x: auto;">
@@ -970,6 +971,29 @@ async function deleteResult(id) {
     loadAllResults();
   } else {
     alert('❌ Lỗi xóa!');
+  }
+}
+
+async function deleteLatestCycle() {
+  const data = (ADM.resultsTable && ADM.resultsTable.data) || [];
+  if (!data.length) { alert('Không có dữ liệu.'); return; }
+  const latest = Math.max(...data.map(r => r.cycle));
+  const count = data.filter(r => r.cycle === latest).length;
+  const dateRow = data.find(r => r.cycle === latest);
+  if (!confirm(`⚠️ Xác nhận XÓA TOÀN BỘ Cycle ${latest} (${dateRow ? dateRow.cycle_date : ""}, ${count} dòng)? Không thể hoàn tác!`)) {
+    return;
+  }
+
+  const response = await fetch('/api/admin/results/latest-cycle', {
+    method: 'DELETE',
+    headers: { 'X-Admin-Key': ADMIN_KEY }
+  });
+  const body = await response.json().catch(() => ({}));
+  if (response.ok) {
+    alert(`✅ Đã xóa Cycle ${body.cycle} (${body.deleted} dòng).`);
+    loadAllResults();
+  } else {
+    alert('❌ Lỗi: ' + (body.error || 'không xác định'));
   }
 }
 
